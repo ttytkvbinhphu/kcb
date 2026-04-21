@@ -547,6 +547,111 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       activeCategory === 'specialties' ? specialties : roles;
 
   const currentCategory = categories.find(c => c.id === activeCategory) || categories[0];
+  const sortedFeatures = [...ALL_FEATURES].sort((a, b) => {
+    const orderA = featureSettings[a.id]?.order ?? 999;
+    const orderB = featureSettings[b.id]?.order ?? 999;
+    return orderA - orderB;
+  });
+  const featureStateGroups: Array<{ id: 'open' | 'maintenance' | 'closed'; label: string; emptyText: string }> = [
+    { id: 'open', label: 'Mở', emptyText: 'Không có tiện ích nào đang mở.' },
+    { id: 'maintenance', label: 'Bảo trì', emptyText: 'Không có tiện ích nào ở trạng thái bảo trì.' },
+    { id: 'closed', label: 'Đóng', emptyText: 'Không có tiện ích nào đang đóng.' }
+  ];
+  const renderFeatureCard = (feature: typeof ALL_FEATURES[number]) => {
+    const state = featureStates[feature.id] || 'open';
+    const settings = featureSettings[feature.id] || {};
+
+    return (
+      <div
+        key={feature.id}
+        onClick={() => setSelectedFeatureForDetail(feature.id)}
+        className={cn(
+          "p-3 sm:p-6 rounded-3xl border-2 transition-all relative group cursor-pointer",
+          isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-primary" : "bg-white border-slate-50 hover:border-primary"
+        )}
+      >
+        <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
+          <div className={cn(
+            "p-2.5 sm:p-4 rounded-2xl shrink-0",
+            isDarkMode ? "bg-slate-800 text-primary" : "bg-primary-light/30 text-primary"
+          )}>
+            <feature.icon size={20} className="sm:hidden" />
+            <feature.icon size={24} className="hidden sm:block" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className={cn("font-black text-[12px] sm:text-sm truncate", isDarkMode ? "text-white" : "text-slate-900")}>
+              {settings.customTitle || feature.label}
+            </h4>
+            <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 truncate">{feature.desc}</p>
+          </div>
+        </div>
+
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex gap-1 sm:gap-2 p-1 rounded-xl bg-slate-900/50">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                updateFeatureState(feature.id, 'open');
+              }}
+              className={cn(
+                "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
+                state === 'open' ? "bg-emerald-500 text-white" : "text-slate-500 hover:text-emerald-400"
+              )}
+            >
+              Mở
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                updateFeatureState(feature.id, 'maintenance');
+              }}
+              className={cn(
+                "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
+                state === 'maintenance' ? "bg-amber-500 text-white" : "text-slate-500 hover:text-amber-400"
+              )}
+            >
+              Bảo trì
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                updateFeatureState(feature.id, 'closed');
+              }}
+              className={cn(
+                "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
+                state === 'closed' ? "bg-rose-500 text-white" : "text-slate-500 hover:text-rose-400"
+              )}
+            >
+              Đóng
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Tiêu đề tùy chỉnh</label>
+            <input
+              type="text"
+              placeholder={feature.label}
+              value={settings.customTitle || ''}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const newSettings = { ...settings, customTitle: e.target.value };
+                updateFeatureSettings(feature.id, newSettings);
+              }}
+              className={cn(
+                "w-full px-3 py-2 sm:px-4 sm:py-3 border-2 rounded-xl focus:ring-0 transition-all font-bold outline-none text-[10px] sm:text-xs",
+                isDarkMode ? "bg-slate-900 border-slate-800 text-white focus:border-primary" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-primary"
+              )}
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1">
+            <Settings size={12} /> Cài đặt chi tiết
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -942,93 +1047,31 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   "p-4 sm:p-8 rounded-[32px] border transition-all",
                   isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
                 )}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                    {[...ALL_FEATURES].sort((a, b) => {
-                      const orderA = featureSettings[a.id]?.order ?? 999;
-                      const orderB = featureSettings[b.id]?.order ?? 999;
-                      return orderA - orderB;
-                    }).map((feature) => {
-                      const state = featureStates[feature.id] || 'open';
-                      const settings = featureSettings[feature.id] || {};
+                  <div className="space-y-6">
+                    {featureStateGroups.map(group => {
+                      const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
                       return (
-                        <div 
-                          key={feature.id}
-                          onClick={() => setSelectedFeatureForDetail(feature.id)}
-                          className={cn(
-                            "p-3 sm:p-6 rounded-3xl border-2 transition-all relative group cursor-pointer",
-                            isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-primary" : "bg-white border-slate-50 hover:border-primary"
-                          )}
-                        >
-                          <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
+                        <div key={group.id} className="space-y-3">
+                          <div className="flex items-center justify-between px-1">
+                            <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                              {group.label}
+                            </h4>
+                            <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                              {featuresInGroup.length} tiện ích
+                            </span>
+                          </div>
+                          {featuresInGroup.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                              {featuresInGroup.map(renderFeatureCard)}
+                            </div>
+                          ) : (
                             <div className={cn(
-                              "p-2.5 sm:p-4 rounded-2xl shrink-0",
-                              isDarkMode ? "bg-slate-800 text-primary" : "bg-primary-light/30 text-primary"
+                              "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                              isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
                             )}>
-                              <feature.icon size={20} className="sm:hidden" />
-                              <feature.icon size={24} className="hidden sm:block" />
+                              {group.emptyText}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <h4 className={cn("font-black text-[12px] sm:text-sm truncate", isDarkMode ? "text-white" : "text-slate-900")}>
-                                {settings.customTitle || feature.label}
-                              </h4>
-                              <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 truncate">{feature.desc}</p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 sm:space-y-4">
-                            <div className="flex gap-1 sm:gap-2 p-1 rounded-xl bg-slate-900/50">
-                              <button
-                                onClick={() => updateFeatureState(feature.id, 'open')}
-                                className={cn(
-                                  "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                                  state === 'open' ? "bg-emerald-500 text-white" : "text-slate-500 hover:text-emerald-400"
-                                )}
-                              >
-                                Mở
-                              </button>
-                              <button
-                                onClick={() => updateFeatureState(feature.id, 'maintenance')}
-                                className={cn(
-                                  "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                                  state === 'maintenance' ? "bg-amber-500 text-white" : "text-slate-500 hover:text-amber-400"
-                                )}
-                              >
-                                Bảo trì
-                              </button>
-                              <button
-                                onClick={() => updateFeatureState(feature.id, 'closed')}
-                                className={cn(
-                                  "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                                  state === 'closed' ? "bg-rose-500 text-white" : "text-slate-500 hover:text-rose-400"
-                                )}
-                              >
-                                Đóng
-                              </button>
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <label className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Tiêu đề tùy chỉnh</label>
-                              <input
-                                type="text"
-                                placeholder={feature.label}
-                                value={settings.customTitle || ''}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  const newSettings = { ...settings, customTitle: e.target.value };
-                                  updateFeatureSettings(feature.id, newSettings);
-                                }}
-                                className={cn(
-                                  "w-full px-3 py-2 sm:px-4 sm:py-3 border-2 rounded-xl focus:ring-0 transition-all font-bold outline-none text-[10px] sm:text-xs",
-                                  isDarkMode ? "bg-slate-900 border-slate-800 text-white focus:border-primary" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-primary"
-                                )}
-                              />
-                            </div>
-                          </div>
-                          <div className="mt-3 flex justify-end">
-                            <button className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1">
-                              <Settings size={12} /> Cài đặt chi tiết
-                            </button>
-                          </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1273,93 +1316,31 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               "p-4 sm:p-8 rounded-[32px] border transition-all",
               isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
             )}>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                {[...ALL_FEATURES].sort((a, b) => {
-                  const orderA = featureSettings[a.id]?.order ?? 999;
-                  const orderB = featureSettings[b.id]?.order ?? 999;
-                  return orderA - orderB;
-                }).map((feature) => {
-                  const state = featureStates[feature.id] || 'open';
-                  const settings = featureSettings[feature.id] || {};
-                  
+              <div className="space-y-6">
+                {featureStateGroups.map(group => {
+                  const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
                   return (
-                    <div 
-                      key={feature.id}
-                      onClick={() => setSelectedFeatureForDetail(feature.id)}
-                      className={cn(
-                        "p-3 sm:p-6 rounded-3xl border-2 transition-all relative group cursor-pointer",
-                        isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-primary" : "bg-white border-slate-50 hover:border-primary"
-                      )}
-                    >
-                      <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
+                    <div key={group.id} className="space-y-3">
+                      <div className="flex items-center justify-between px-1">
+                        <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                          {group.label}
+                        </h4>
+                        <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                          {featuresInGroup.length} tiện ích
+                        </span>
+                      </div>
+                      {featuresInGroup.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                          {featuresInGroup.map(renderFeatureCard)}
+                        </div>
+                      ) : (
                         <div className={cn(
-                          "p-2.5 sm:p-4 rounded-2xl shrink-0",
-                          isDarkMode ? "bg-slate-800 text-primary" : "bg-primary-light/30 text-primary"
+                          "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                          isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
                         )}>
-                          <feature.icon size={20} className="sm:hidden" />
-                          <feature.icon size={24} className="hidden sm:block" />
+                          {group.emptyText}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className={cn("font-black text-[12px] sm:text-sm truncate", isDarkMode ? "text-white" : "text-slate-900")}>
-                            {settings.customTitle || feature.label}
-                          </h4>
-                          <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 truncate">{feature.desc}</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3 sm:space-y-4">
-                        <div className="flex gap-1 sm:gap-2 p-1 rounded-xl bg-slate-900/50">
-                          <button
-                            onClick={() => updateFeatureState(feature.id, 'open')}
-                            className={cn(
-                              "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                              state === 'open' ? "bg-emerald-500 text-white" : "text-slate-500 hover:text-emerald-400"
-                            )}
-                          >
-                            Mở
-                          </button>
-                          <button
-                            onClick={() => updateFeatureState(feature.id, 'maintenance')}
-                            className={cn(
-                              "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                              state === 'maintenance' ? "bg-amber-500 text-white" : "text-slate-500 hover:text-amber-400"
-                            )}
-                          >
-                            Bảo trì
-                          </button>
-                          <button
-                            onClick={() => updateFeatureState(feature.id, 'closed')}
-                            className={cn(
-                              "flex-1 py-1.5 sm:py-2 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-tighter transition-all",
-                              state === 'closed' ? "bg-rose-500 text-white" : "text-slate-500 hover:text-rose-400"
-                            )}
-                          >
-                            Đóng
-                          </button>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Tiêu đề tùy chỉnh</label>
-                          <input
-                            type="text"
-                            placeholder={feature.label}
-                            value={settings.customTitle || ''}
-                            onChange={(e) => {
-                              const newSettings = { ...settings, customTitle: e.target.value };
-                              updateFeatureSettings(feature.id, newSettings);
-                            }}
-                            className={cn(
-                              "w-full px-3 py-2 sm:px-4 sm:py-3 border-2 rounded-xl focus:ring-0 transition-all font-bold outline-none text-[10px] sm:text-xs",
-                              isDarkMode ? "bg-slate-900 border-slate-800 text-white focus:border-primary" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-primary"
-                            )}
-                          />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex justify-end">
-                        <button className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1">
-                          <Settings size={12} /> Cài đặt chi tiết
-                        </button>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
