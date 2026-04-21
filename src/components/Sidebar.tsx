@@ -58,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     const allPossibleItems: SidebarItem[] = [
       { id: 'dashboard', label: featureSettings['dashboard']?.customTitle || 'Tổng quan', icon: LayoutDashboard, section: 'member', group: 'general' },
+      { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, section: 'member', group: 'general' },
       { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
       { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tra cứu tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
