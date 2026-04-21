@@ -1175,6 +1175,7 @@ export default function App() {
           subHeaderPortalId="mobile-subheader-portal" 
           featureSettings={featureSettings[activeTab]}
           userRole={userProfile.role}
+          isApproved={userProfile.isApproved}
         />;
       case 'interaction':
         return <InteractionChecker 
