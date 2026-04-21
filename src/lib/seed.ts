@@ -204,6 +204,55 @@ export const seedInitialData = async () => {
 * Dữ liệu thuốc và phác đồ được cập nhật liên tục từ các nguồn tin cậy.`
       });
     }
+
+    // One-time migration: set default utilities box visibility for key features
+    const featureSettingsRef = doc(db, 'system_config', 'feature_settings');
+    const featureSettingsSnap = await getDoc(featureSettingsRef);
+    const migrationKey = '_migrations';
+    const migrationFlag = 'utilitiesBoxDefaultsV1';
+    const targetFeatureIds = ['view_notes', 'view_icd10', 'view_interaction'];
+
+    if (!featureSettingsSnap.exists()) {
+      const initialFeatureSettings: Record<string, any> = {
+        [migrationKey]: { [migrationFlag]: true }
+      };
+
+      for (const featureId of targetFeatureIds) {
+        initialFeatureSettings[featureId] = {
+          hiddenLocations: ['utilities_box']
+        };
+      }
+
+      await setDoc(featureSettingsRef, initialFeatureSettings);
+    } else {
+      const featureSettingsData = featureSettingsSnap.data() as Record<string, any>;
+      const migrations = featureSettingsData[migrationKey] || {};
+      const alreadyMigrated = migrations[migrationFlag] === true;
+
+      if (!alreadyMigrated) {
+        const nextFeatureSettings: Record<string, any> = { ...featureSettingsData };
+
+        for (const featureId of targetFeatureIds) {
+          const current = nextFeatureSettings[featureId] || {};
+          const currentHiddenLocations = Array.isArray(current.hiddenLocations) ? current.hiddenLocations : [];
+          const nextHiddenLocations = currentHiddenLocations.includes('utilities_box')
+            ? currentHiddenLocations
+            : [...currentHiddenLocations, 'utilities_box'];
+
+          nextFeatureSettings[featureId] = {
+            ...current,
+            hiddenLocations: nextHiddenLocations
+          };
+        }
+
+        nextFeatureSettings[migrationKey] = {
+          ...migrations,
+          [migrationFlag]: true
+        };
+
+        await setDoc(featureSettingsRef, nextFeatureSettings);
+      }
+    }
   } catch (e) {
     console.warn("Could not seed initial data:", e);
   }

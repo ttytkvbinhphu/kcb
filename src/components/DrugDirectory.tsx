@@ -159,6 +159,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
   const [searchingIcdIndex, setSearchingIcdIndex] = useState<number | null>(null);
   const [searchingContraIcdIndex, setSearchingContraIcdIndex] = useState<number | null>(null);
   const [icdQuery, setIcdQuery] = useState('');
+  const hasLoadedIcdRef = useRef(false);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     indications: true,
@@ -242,11 +243,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       handleFirestoreError(error, OperationType.LIST, 'drugs');
     });
 
-    const unsubscribeICD = onSnapshot(collection(db, 'icd10'), (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data());
-      setIcdList(list);
-    });
-
     const unsubscribeGroups = onSnapshot(query(collection(db, 'drug_groups'), orderBy('order')), (snapshot) => {
       const groups = snapshot.docs.map(doc => doc.data() as DrugGroup);
       setDrugGroups(groups);
@@ -254,10 +250,25 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
 
     return () => {
       unsubscribe();
-      unsubscribeICD();
       unsubscribeGroups();
     };
   }, []);
+
+  useEffect(() => {
+    const shouldLoadIcd = isModalOpen || searchingIcdIndex !== null || searchingContraIcdIndex !== null;
+    if (!shouldLoadIcd || hasLoadedIcdRef.current) return;
+
+    hasLoadedIcdRef.current = true;
+    const unsubscribeICD = onSnapshot(collection(db, 'icd10'), (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data());
+      setIcdList(list);
+    });
+
+    return () => {
+      unsubscribeICD();
+      hasLoadedIcdRef.current = false;
+    };
+  }, [isModalOpen, searchingIcdIndex, searchingContraIcdIndex]);
 
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
 
@@ -353,33 +364,38 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     return Array.from(ingredientsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [drugs]);
 
-  const filteredDrugs = drugs.filter(drug => {
+  const filteredDrugs = useMemo(() => {
     const term = (searchTerm || '').toLowerCase();
-    
-    let matchesSearch = false;
-    if (searchMode === 'all') {
-      matchesSearch = (drug.name || '').toLowerCase().includes(term) || 
-                      (drug.activeIngredients || []).some(ing => 
-                         (ing.name || '').toLowerCase().includes(term) || 
-                         (ing.strength || '').toLowerCase().includes(term)
-                      ) ||
-                      (drug.atcCode || '').toLowerCase().includes(term);
-    } else if (searchMode === 'name') {
-      matchesSearch = (drug.name || '').toLowerCase().includes(term);
-    } else if (searchMode === 'ingredient') {
-      matchesSearch = (drug.activeIngredients || []).some(ing => 
-                         (ing.name || '').toLowerCase().includes(term)
-                      );
-    }
+    const selectedIngredientNormalized = (selectedIngredient || '').toLowerCase();
 
-    const matchesGroup = groupFilter === 'Tất cả' || (
-      (drug.groupId && groupDescendantsMap[groupFilter]?.has(drug.groupId)) ||
-      (drug.groupIds || []).some(id => groupDescendantsMap[groupFilter]?.has(id))
-    );
-    const matchesIngredient = !selectedIngredient || (drug.activeIngredients || []).some(ing => (ing.name || '').toLowerCase() === selectedIngredient.toLowerCase());
-    
-    return matchesSearch && matchesGroup && matchesIngredient;
-  });
+    return drugs.filter(drug => {
+      let matchesSearch = false;
+      if (searchMode === 'all') {
+        matchesSearch = (drug.name || '').toLowerCase().includes(term) ||
+                        (drug.activeIngredients || []).some(ing =>
+                           (ing.name || '').toLowerCase().includes(term) ||
+                           (ing.strength || '').toLowerCase().includes(term)
+                        ) ||
+                        (drug.atcCode || '').toLowerCase().includes(term);
+      } else if (searchMode === 'name') {
+        matchesSearch = (drug.name || '').toLowerCase().includes(term);
+      } else if (searchMode === 'ingredient') {
+        matchesSearch = (drug.activeIngredients || []).some(ing =>
+                           (ing.name || '').toLowerCase().includes(term)
+                        );
+      }
+
+      const matchesGroup = groupFilter === 'Tất cả' || (
+        (drug.groupId && groupDescendantsMap[groupFilter]?.has(drug.groupId)) ||
+        (drug.groupIds || []).some(id => groupDescendantsMap[groupFilter]?.has(id))
+      );
+      const matchesIngredient = !selectedIngredientNormalized || (drug.activeIngredients || []).some(
+        ing => (ing.name || '').toLowerCase() === selectedIngredientNormalized
+      );
+
+      return matchesSearch && matchesGroup && matchesIngredient;
+    });
+  }, [drugs, searchTerm, searchMode, groupFilter, groupDescendantsMap, selectedIngredient]);
 
   const handleOpenModal = (drug?: Drug) => {
     setSelectedFile(null);
@@ -1289,7 +1305,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                           )
                     )}>
                       {drug.avatarUrl ? (
-                        <img src={drug.avatarUrl} alt={drug.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
+                        <img src={drug.avatarUrl} alt={drug.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
                       ) : (
                         <Pill size={28} className="lg:size-5 transition-transform duration-500 group-hover:rotate-12" />
                       )}

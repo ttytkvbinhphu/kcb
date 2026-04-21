@@ -1551,18 +1551,18 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             {[
                               { id: 'sidebar', label: 'Thanh menu bên' },
                               { id: 'home_grid', label: 'Lưới trang chủ' },
-                              { id: 'quick_access', label: 'Thanh tiện ích (ngoài)' }
+                              { id: 'utilities_box', label: 'Hộp tiện ích' }
                             ].map(loc => (
                               <label key={loc.id} className="flex items-center gap-3 cursor-pointer group">
                                 <div className="relative flex items-center">
                                   <input
                                     type="checkbox"
-                                    checked={!(settings.hiddenLocations || []).includes(loc.id)}
+                                    checked={(settings.hiddenLocations || []).includes(loc.id)}
                                     onChange={(e) => {
                                       const hidden = settings.hiddenLocations || [];
                                       const newHidden = e.target.checked
-                                        ? hidden.filter((h: string) => h !== loc.id)
-                                        : [...hidden, loc.id];
+                                        ? [...hidden, loc.id].filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+                                        : hidden.filter((h: string) => h !== loc.id);
                                       updateFeatureSettings(feature.id, { ...settings, hiddenLocations: newHidden });
                                     }}
                                     className="peer sr-only"

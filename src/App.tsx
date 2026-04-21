@@ -1482,8 +1482,7 @@ export default function App() {
                 const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
                 const roleAllowed = (settings?.allowedRoles || []).length === 0 || (settings?.allowedRoles || []).includes(userProfile?.role);
                 const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                const showOutside = !(settings?.hiddenLocations || []).includes('quick_access');
-                return isVisible && allowedTabs.includes(t.id) && showOutside && !t.id.startsWith('manage_');
+                return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_');
               }).map(item => (
                 <button
                   key={`mob-quick-${item.id}`}
@@ -1542,7 +1541,7 @@ export default function App() {
                           const settings = featureSettings[t.id];
                           const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
                           const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned;
-                          const showInUtilities = (settings?.hiddenLocations || []).includes('quick_access');
+                          const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
                           return isVisible && allowedTabs.includes(t.id) && showInUtilities;
                         }).map(item => (
                           <button 
@@ -1856,8 +1855,7 @@ export default function App() {
                 const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
                 const roleAllowed = (settings?.allowedRoles || []).length === 0 || (settings?.allowedRoles || []).includes(userProfile?.role);
                 const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                const showOutside = !(settings?.hiddenLocations || []).includes('quick_access');
-                return isVisible && allowedTabs.includes(t.id) && showOutside && !t.id.startsWith('manage_');
+                return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_');
               }).map(item => (
                 <button
                   key={`quick-${item.id}`}
@@ -1919,7 +1917,7 @@ export default function App() {
                           const allowedRoles = settings?.allowedRoles || [];
                           const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
                           const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                          const showInUtilities = (settings?.hiddenLocations || []).includes('quick_access');
+                          const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
                           return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
                         }).sort((a, b) => {
                           const orderA = featureSettings[a.id]?.order ?? 999;
