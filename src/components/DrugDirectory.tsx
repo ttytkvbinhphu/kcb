@@ -4,7 +4,7 @@ import { Search, Info, ChevronRight, Pill, Filter, ShieldAlert, Plus, Edit2, Tra
 import { Drug, DrugGroup } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, storage } from '../firebase';
+import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, storage, getDoc, writeBatch } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import DrugGroupManagement from './DrugGroupManagement';
@@ -556,8 +556,52 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           : parseList(sideEffectsText)
       };
 
+      const extractIcdCodes = (indications: any[] = []) => {
+        return Array.from(new Set(
+          indications
+            .flatMap(ind => ind?.icd10s || [])
+            .map((code: string) => (code || '').trim())
+            .filter((code: string) => !!code)
+        ));
+      };
+
       try {
-        await setDoc(doc(db, 'drugs', formData.id), drugData);
+        const drugRef = doc(db, 'drugs', formData.id);
+        const previousDrugSnap = await getDoc(drugRef);
+        const previousDrugData = previousDrugSnap.exists() ? previousDrugSnap.data() as Drug : null;
+        const previousDrugName = (previousDrugData?.name || '').trim();
+        const previousIcdCodes = extractIcdCodes(previousDrugData?.indications || []);
+        const nextDrugName = (drugData.name || '').trim();
+        const nextIcdCodes = extractIcdCodes(drugData.indications || []);
+
+        await setDoc(drugRef, drugData);
+
+        const allCodesToSync = Array.from(new Set([...previousIcdCodes, ...nextIcdCodes]));
+        if (allCodesToSync.length > 0 && nextDrugName) {
+          const batch = writeBatch(db);
+
+          for (const code of allCodesToSync) {
+            const icdRef = doc(db, 'icd10', code);
+            const icdSnap = await getDoc(icdRef);
+            const currentData = icdSnap.exists() ? (icdSnap.data() as any) : {};
+            const currentDrugs = Array.isArray(currentData.commonDrugs) ? currentData.commonDrugs : [];
+
+            let nextCommonDrugs = currentDrugs.filter((name: string) => name !== previousDrugName);
+            if (nextIcdCodes.includes(code) && !nextCommonDrugs.includes(nextDrugName)) {
+              nextCommonDrugs = [...nextCommonDrugs, nextDrugName];
+            }
+
+            batch.set(icdRef, {
+              ...currentData,
+              code: currentData.code || code,
+              description: currentData.description || (icdList.find((icd: any) => icd.code === code)?.description || ''),
+              commonDrugs: nextCommonDrugs
+            }, { merge: true });
+          }
+
+          await batch.commit();
+        }
+
         setIsModalOpen(false);
         setSelectedFile(null); // Clear selected file after successful save
       } catch (firestoreError) {
