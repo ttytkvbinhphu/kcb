@@ -202,6 +202,18 @@ export default function App() {
     }
   };
 
+  const handleSaveProfileField = async (changes: Partial<typeof profileEditData>) => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        ...changes,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error saving profile field:", error);
+    }
+  };
+
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, 'system_settings', 'main'), (snapshot) => {
       if (snapshot.exists()) {
@@ -2266,6 +2278,7 @@ export default function App() {
                           type="text"
                           value={profileEditData.zaloNumber}
                           onChange={(e) => setProfileEditData(prev => ({ ...prev, zaloNumber: e.target.value }))}
+                          onBlur={() => handleSaveProfileField({ zaloNumber: profileEditData.zaloNumber })}
                           placeholder="Nhập số Zalo của bạn..."
                           className={cn(
                             "w-full px-4 py-3 rounded-xl border text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all",
@@ -2291,7 +2304,11 @@ export default function App() {
                             </div>
                           </div>
                           <button 
-                            onClick={() => setProfileEditData(prev => ({ ...prev, hideEmail: !prev.hideEmail }))}
+                            onClick={() => {
+                              const nextHideEmail = !profileEditData.hideEmail;
+                              setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
+                              handleSaveProfileField({ hideEmail: nextHideEmail });
+                            }}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors",
                               !profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
@@ -2320,7 +2337,11 @@ export default function App() {
                             </div>
                           </div>
                           <button 
-                            onClick={() => setProfileEditData(prev => ({ ...prev, hideZalo: !prev.hideZalo }))}
+                            onClick={() => {
+                              const nextHideZalo = !profileEditData.hideZalo;
+                              setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                              handleSaveProfileField({ hideZalo: nextHideZalo });
+                            }}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors",
                               !profileEditData.hideZalo ? "bg-emerald-500" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
@@ -2334,16 +2355,6 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={handleSaveProfile}
-                        className={cn(
-                          "w-full py-3 bg-primary text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all hover:bg-primary/90 flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98]",
-                          isDarkMode ? "shadow-none" : ""
-                        )}
-                      >
-                        <Check size={14} />
-                        Lưu thay đổi
-                      </button>
                     </div>
                   </div>
 
