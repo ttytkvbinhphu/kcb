@@ -19,6 +19,7 @@ interface DrugDirectoryProps {
   subHeaderPortalId?: string;
   featureSettings?: any;
   userRole?: string;
+  isApproved?: boolean;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -45,8 +46,10 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
-const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, subHeaderPortalId, featureSettings, userRole }) => {
-  const isInternalUser = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole || '');
+const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, subHeaderPortalId, featureSettings, userRole, isApproved = false }) => {
+  const isGuestUser = !userRole;
+  const isPendingUser = !!userRole && !isApproved;
+  const canAccessDirectoryHintsWhenToggleOff = !isGuestUser && !isPendingUser;
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [drugGroups, setDrugGroups] = useState<DrugGroup[]>([]);
   const [icdList, setIcdList] = useState<any[]>([]);
@@ -1648,11 +1651,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                       <span className="inline-flex items-center gap-2 mr-2 -mt-0.5 align-middle">
                                         <div className={cn(
                                           "w-2.5 h-2.5 rounded-full shrink-0 shadow-sm transition-all",
-                                          (item.isPrimary && isInternalUser && featureSettings?.showCommonIndications !== false) 
+                                          (item.isPrimary && ((featureSettings?.showCommonIndications !== false) || canAccessDirectoryHintsWhenToggleOff))
                                             ? "bg-amber-500 shadow-amber-200 scale-125" 
                                             : "bg-blue-500 shadow-blue-200"
                                         )}></div>
-                                        {item.isPrimary && isInternalUser && featureSettings?.showCommonIndications !== false && (
+                                        {item.isPrimary && ((featureSettings?.showCommonIndications !== false) || canAccessDirectoryHintsWhenToggleOff) && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-500 text-white uppercase tracking-wider shadow-sm">
                                             <Star size={8} fill="currentColor" /> Chỉ định thường dùng
                                           </span>
@@ -1660,7 +1663,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                       </span>
                                       {item.content}
                                     </div>
-                                    {item.icd10s?.[0] && isInternalUser && featureSettings?.showIcdSuggestions !== false && (
+                                    {item.icd10s?.[0] && ((featureSettings?.showIcdSuggestions !== false) || canAccessDirectoryHintsWhenToggleOff) && (
                                       <div className="mt-2 flex items-center gap-1.5">
                                         <span className={cn(
                                           "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider",
