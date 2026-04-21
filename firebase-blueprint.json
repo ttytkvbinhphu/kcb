@@ -1,0 +1,561 @@
+{
+  "entities": {
+    "Drug": {
+      "title": "Drug",
+      "description": "Thông tin chi tiết về thuốc trong danh mục.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất của thuốc" },
+        "name": { "type": "string", "description": "Tên thuốc" },
+        "activeIngredients": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "strength": { "type": "string" }
+            }
+          },
+          "description": "Danh sách các hoạt chất và hàm lượng" 
+        },
+        "atcCode": { "type": "string", "description": "Mã ATC" },
+        "dosageForm": { "type": "string", "description": "Dạng bào chế" },
+        "excipients": { "type": "string", "description": "Tá dược" },
+        "manufacturer": { "type": "string", "description": "Nhà sản xuất" },
+        "indications": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "content": { "type": "string" },
+              "icd10": { "type": "string" }
+            }
+          }, 
+          "description": "Chỉ định kèm mã ICD-10 gợi ý" 
+        },
+        "contraindications": { "type": "array", "items": { "type": "string" }, "description": "Chống chỉ định" },
+        "sideEffects": { "type": "array", "items": { "type": "string" }, "description": "Tác dụng phụ" },
+        "category": { "type": "string", "description": "Phân loại thuốc" },
+        "groupId": { "type": "string", "description": "ID nhóm thuốc" },
+        "avatarUrl": { "type": "string", "description": "URL ảnh đại diện thuốc" }
+      },
+      "required": ["id", "name", "activeIngredients", "category"]
+    },
+    "Prescription": {
+      "title": "Prescription",
+      "description": "Thông tin đơn thuốc đã kê cho bệnh nhân.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất của đơn thuốc" },
+        "patientName": { "type": "string", "description": "Tên bệnh nhân" },
+        "patientAge": { "type": "number", "description": "Tuổi bệnh nhân" },
+        "patientGender": { "type": "string", "enum": ["Nam", "Nữ"], "description": "Giới tính" },
+        "diagnosis": { "type": "string", "description": "Chẩn đoán lâm sàng" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "drugId": { "type": "string" },
+              "drugName": { "type": "string" },
+              "dosage": { "type": "string" },
+              "frequency": { "type": "string" },
+              "duration": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Thời gian tạo đơn" },
+        "doctorName": { "type": "string", "description": "Tên bác sĩ kê toa" },
+        "doctorUid": { "type": "string", "description": "UID của bác sĩ" }
+      },
+      "required": ["id", "patientName", "diagnosis", "items", "createdAt", "doctorUid"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Thông tin người dùng hệ thống (Bác sĩ/Dược sĩ).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "UID từ Firebase Auth" },
+        "email": { "type": "string", "format": "email", "description": "Email người dùng" },
+        "displayName": { "type": "string", "description": "Tên hiển thị" },
+        "title": { "type": "string", "description": "Chức danh (Bác sĩ, Dược sĩ...)" },
+        "position": { "type": "string", "description": "Chức vụ (Giám đốc, Nhân viên...)" },
+        "specialty": { "type": "string", "description": "Chuyên môn (Tiến sĩ, Thạc sĩ...)" },
+        "role": { "type": "string", "enum": ["admin", "operator", "member"], "description": "Vai trò trong hệ thống" },
+        "isApproved": { "type": "boolean", "description": "Trạng thái phê duyệt tài khoản" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "ICD10": {
+      "title": "ICD10",
+      "description": "Danh mục mã bệnh ICD-10.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Mã bệnh" },
+        "description": { "type": "string", "description": "Mô tả bệnh" },
+        "commonDrugs": { "type": "array", "items": { "type": "string" }, "description": "Gợi ý thuốc thường dùng" }
+      },
+      "required": ["code", "description"]
+    },
+    "ADRReport": {
+      "title": "ADRReport",
+      "description": "Báo cáo phản ứng có hại của thuốc (ADR).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID báo cáo" },
+        "patientInitials": { "type": "string", "description": "Tên viết tắt bệnh nhân" },
+        "patientAge": { "type": "number", "description": "Tuổi bệnh nhân" },
+        "patientGender": { "type": "string", "enum": ["Nam", "Nữ", "Khác"], "description": "Giới tính" },
+        "drugId": { "type": "string", "description": "ID thuốc nghi ngờ" },
+        "drugName": { "type": "string", "description": "Tên thuốc nghi ngờ" },
+        "reactionDescription": { "type": "string", "description": "Mô tả phản ứng" },
+        "severity": { "type": "string", "enum": ["Nhẹ", "Trung bình", "Nặng", "Nghiêm trọng"], "description": "Mức độ nghiêm trọng" },
+        "outcome": { "type": "string", "enum": ["Hồi phục", "Đang hồi phục", "Có di chứng", "Tử vong", "Không rõ"], "description": "Kết quả" },
+        "reporterName": { "type": "string", "description": "Tên người báo cáo" },
+        "reporterUid": { "type": "string", "description": "UID người báo cáo" },
+        "reportedAt": { "type": "string", "format": "date-time", "description": "Thời gian báo cáo" },
+        "status": { "type": "string", "enum": ["Mới", "Đang xử lý", "Đã hoàn thành"], "description": "Trạng thái xử lý" },
+        "notes": { "type": "string", "description": "Ghi chú thêm" }
+      },
+      "required": ["id", "patientInitials", "drugId", "reactionDescription", "severity", "reporterUid", "reportedAt", "status"]
+    },
+    "ADRCatalogItem": {
+      "title": "ADRCatalogItem",
+      "description": "Danh mục các phản ứng có hại (ADR) thường gặp.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất" },
+        "reactionName": { "type": "string", "description": "Tên phản ứng" },
+        "description": { "type": "string", "description": "Mô tả chi tiết" },
+        "commonDrugs": { "type": "array", "items": { "type": "string" }, "description": "Các thuốc thường gây ra phản ứng này" },
+        "severityLevel": { "type": "string", "enum": ["Nhẹ", "Trung bình", "Nặng", "Nghiêm trọng"], "description": "Mức độ thường gặp" },
+        "management": { "type": "string", "description": "Hướng dẫn xử trí" },
+        "category": { "type": "string", "description": "Phân loại (Da liễu, Tiêu hóa...)" },
+        "sortOrder": { "type": "number", "description": "Thứ tự sắp xếp" }
+      },
+      "required": ["id", "reactionName", "severityLevel", "category"]
+    },
+    "ConfigItem": {
+      "title": "ConfigItem",
+      "description": "Mục cấu hình hệ thống (Chức danh, Chức vụ, Chuyên môn).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất" },
+        "name": { "type": "string", "description": "Tên mục" },
+        "order": { "type": "number", "description": "Thứ tự hiển thị" }
+      },
+      "required": ["id", "name"]
+    },
+    "RolePermission": {
+      "title": "RolePermission",
+      "description": "Cấu hình quyền quản lý cho từng vai trò.",
+      "type": "object",
+      "properties": {
+        "roleId": { "type": "string", "description": "ID vai trò (admin, operator, member)" },
+        "allowedTabs": { "type": "array", "items": { "type": "string" }, "description": "Danh sách các tab được phép truy cập" }
+      },
+      "required": ["roleId", "allowedTabs"]
+    },
+    "TitlePermission": {
+      "title": "TitlePermission",
+      "description": "Cấu hình quyền sử dụng làm việc cho từng chức danh.",
+      "type": "object",
+      "properties": {
+        "titleId": { "type": "string", "description": "ID chức danh (Bác sĩ, Dược sĩ...)" },
+        "allowedTabs": { "type": "array", "items": { "type": "string" }, "description": "Danh sách các tab được phép truy cập" }
+      },
+      "required": ["titleId", "allowedTabs"]
+    },
+    "DrugGroup": {
+      "title": "DrugGroup",
+      "description": "Nhóm thuốc phân cấp (3 cấp).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất" },
+        "name": { "type": "string", "description": "Tên nhóm thuốc" },
+        "parentId": { "type": "string", "description": "ID nhóm cha (null nếu là cấp 1)" },
+        "level": { "type": "number", "description": "Cấp độ (0, 1, 2)" },
+        "order": { "type": "number", "description": "Thứ tự hiển thị" },
+        "bannerUrl": { "type": "string", "description": "URL ảnh bìa nhóm thuốc" }
+      },
+      "required": ["id", "name", "level", "order"]
+    },
+    "ManualInteraction": {
+      "title": "ManualInteraction",
+      "description": "Tương tác thuốc được nhập thủ công.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["Thuốc - Thuốc", "Thuốc - ICD-10", "Thuốc - Đối tượng", "Tương tác phức tạp"] },
+        "sourceIds": { "type": "array", "items": { "type": "string" } },
+        "sourceNames": { "type": "array", "items": { "type": "string" } },
+        "targetName": { "type": "string" },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "description": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" },
+        "updatedByName": { "type": "string" }
+      },
+      "required": ["id", "type", "sourceIds", "sourceNames", "severity", "description", "recommendation"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Thông tin hành chính và nhập viện của bệnh nhân.",
+      "type": "object",
+      "properties": {
+        "MA_LK": { "type": "string" },
+        "MA_BN": { "type": "string" },
+        "HO_TEN": { "type": "string" },
+        "NGAY_SINH": { "type": "string" },
+        "GIOI_TINH": { "type": "string" },
+        "SO_CCCD": { "type": "string" },
+        "NGAY_VAO": { "type": "string" }
+      },
+      "required": ["MA_LK", "MA_BN", "HO_TEN"]
+    },
+    "PatientDrug": {
+      "title": "PatientDrug",
+      "description": "Thông tin thuốc sử dụng của bệnh nhân.",
+      "type": "object",
+      "properties": {
+        "MA_LK": { "type": "string" },
+        "TEN_THUOC": { "type": "string" },
+        "SO_LUONG": { "type": "string" },
+        "DON_GIA": { "type": "string" }
+      },
+      "required": ["MA_LK", "TEN_THUOC"]
+    },
+    "PatientSupply": {
+      "title": "PatientSupply",
+      "description": "Thông tin vật tư y tế sử dụng của bệnh nhân.",
+      "type": "object",
+      "properties": {
+        "MA_LK": { "type": "string" },
+        "TEN_VAT_TU": { "type": "string" },
+        "SO_LUONG": { "type": "string" }
+      },
+      "required": ["MA_LK"]
+    },
+    "PatientSubclinical": {
+      "title": "PatientSubclinical",
+      "description": "Thông tin cận lâm sàng của bệnh nhân.",
+      "type": "object",
+      "properties": {
+        "MA_LK": { "type": "string" },
+        "TEN_CHI_SO": { "type": "string" },
+        "GIA_TRI": { "type": "string" }
+      },
+      "required": ["MA_LK"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Thông tin nhân sự bệnh viện (Bác sĩ, Dược sĩ, Điều dưỡng).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "type": { "type": "string", "enum": ["Bác sĩ", "Dược sĩ", "Điều dưỡng"] },
+        "gender": { "type": "string", "enum": ["Nam", "Nữ"] },
+        "dob": { "type": "string" },
+        "address": { "type": "string" },
+        "specialty": { "type": "string" },
+        "position": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "certificateCode": { "type": "string" },
+        "department": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "fullName", "type", "gender", "dob"]
+    },
+    "CalendarEvent": {
+      "title": "CalendarEvent",
+      "description": "Sự kiện trong lịch công tác.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["meeting", "duty", "surgery", "other"] },
+        "location": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "startDate", "endDate", "type", "createdBy"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "Ghi chú cá nhân.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "color": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "content", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Thông báo hệ thống cho người dùng.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "UID của người nhận thông báo" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "error"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "link": { "type": "string", "description": "Tab ID để chuyển hướng khi nhấn" }
+      },
+      "required": ["id", "userId", "title", "message", "type", "isRead", "createdAt"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Cấu hình giao diện và nội dung toàn hệ thống.",
+      "type": "object",
+      "properties": {
+        "appName": { "type": "string", "description": "Tên ứng dụng (hiển thị ở sidebar/login)" },
+        "loginTitle": { "type": "string", "description": "Tiêu đề chính ở trang đăng nhập" },
+        "loginSubtitle": { "type": "string", "description": "Tiêu đề phụ ở trang đăng nhập" },
+        "appDescription": { "type": "string", "description": "Mô tả ứng dụng ở trang đăng nhập" },
+        "defaultTheme": { "type": "string", "enum": ["light", "dark"], "description": "Giao diện mặc định cho người dùng mới" }
+      }
+    },
+    "SocialPost": {
+      "title": "SocialPost",
+      "description": "Bài đăng trên mạng xã hội nội bộ.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" }
+      },
+      "required": ["id", "authorUid", "authorName", "content", "createdAt", "likesCount", "commentsCount"]
+    },
+    "SocialLike": {
+      "title": "SocialLike",
+      "description": "Lượt thích bài đăng.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "postId", "createdAt"]
+    },
+    "SocialComment": {
+      "title": "SocialComment",
+      "description": "Bình luận trên bài đăng.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "authorUid", "authorName", "content", "createdAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Thông báo/Thông cáo hệ thống cho toàn bộ nhân viên.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "createdAt"]
+    },
+    "RegistrationSettings": {
+      "title": "RegistrationSettings",
+      "description": "Cấu hình quy trình đăng ký người dùng mới.",
+      "type": "object",
+      "properties": {
+        "allowNewRegistration": { "type": "boolean" },
+        "autoApprove": { "type": "boolean" },
+        "defaultRoleId": { "type": "string" },
+        "defaultTitleId": { "type": "string" }
+      },
+      "required": ["allowNewRegistration", "autoApprove", "defaultRoleId"]
+    },
+    "Ingredient": {
+      "title": "Ingredient",
+      "description": "Danh mục các hoạt chất thuốc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "categoryId": { "type": "string", "description": "ID phân loại hoạt chất" }
+      },
+      "required": ["id", "name"]
+    },
+    "IngredientCategory": {
+      "title": "IngredientCategory",
+      "description": "Danh mục phân loại hoạt chất.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Excipient": {
+      "title": "Excipient",
+      "description": "Danh mục các tá dược thuốc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "/patients/{maLk}": {
+      "schema": "Patient",
+      "description": "Danh sách bệnh nhân."
+    },
+    "/patient_drugs/{id}": {
+      "schema": "PatientDrug",
+      "description": "Chi tiết thuốc sử dụng của bệnh nhân."
+    },
+    "/patient_supplies/{id}": {
+      "schema": "PatientSupply",
+      "description": "Chi tiết vật tư sử dụng của bệnh nhân."
+    },
+    "/patient_subclinical/{id}": {
+      "schema": "PatientSubclinical",
+      "description": "Chi tiết cận lâm sàng của bệnh nhân."
+    },
+    "/drugs/{drugId}": {
+      "schema": "Drug",
+      "description": "Danh mục thuốc hệ thống."
+    },
+    "/prescriptions/{prescriptionId}": {
+      "schema": "Prescription",
+      "description": "Danh sách đơn thuốc đã kê."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Thông tin cá nhân người dùng."
+    },
+    "/icd10/{code}": {
+      "schema": "ICD10",
+      "description": "Danh mục mã bệnh ICD-10."
+    },
+    "/adr_reports/{reportId}": {
+      "schema": "ADRReport",
+      "description": "Danh sách báo cáo ADR."
+    },
+    "/adr_catalog/{itemId}": {
+      "schema": "ADRCatalogItem",
+      "description": "Danh mục tham khảo các phản ứng ADR."
+    },
+    "/config_titles/{itemId}": {
+      "schema": "ConfigItem",
+      "description": "Danh mục chức danh."
+    },
+    "/config_positions/{itemId}": {
+      "schema": "ConfigItem",
+      "description": "Danh mục chức vụ."
+    },
+    "/config_specialties/{itemId}": {
+      "schema": "ConfigItem",
+      "description": "Danh mục chuyên môn."
+    },
+    "/config_roles/{itemId}": {
+      "schema": "ConfigItem",
+      "description": "Danh mục vai trò hệ thống."
+    },
+    "/role_permissions/{roleId}": {
+      "schema": "RolePermission",
+      "description": "Cấu hình phân quyền quản lý theo vai trò."
+    },
+    "/title_permissions/{titleId}": {
+      "schema": "TitlePermission",
+      "description": "Cấu hình phân quyền sử dụng làm việc theo chức danh."
+    },
+    "/drug_groups/{groupId}": {
+      "schema": "DrugGroup",
+      "description": "Danh mục nhóm thuốc phân cấp."
+    },
+    "/manual_interactions/{interactionId}": {
+      "schema": "ManualInteraction",
+      "description": "Danh mục tương tác thuốc thủ công."
+    },
+    "/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Danh sách nhân sự bệnh viện."
+    },
+    "/calendar_events/{eventId}": {
+      "schema": "CalendarEvent",
+      "description": "Danh sách sự kiện lịch công tác."
+    },
+    "/notes/{noteId}": {
+      "schema": "Note",
+      "description": "Danh sách ghi chú cá nhân."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Danh sách thông báo người dùng."
+    },
+    "/system_settings/main": {
+      "schema": "SystemSettings",
+      "description": "Cấu hình chung của hệ thống."
+    },
+    "/social_posts/{postId}": {
+      "schema": "SocialPost",
+      "description": "Danh sách bài đăng mạng xã hội."
+    },
+    "/social_likes/{likeId}": {
+      "schema": "SocialLike",
+      "description": "Danh sách lượt thích bài đăng."
+    },
+    "/social_comments/{commentId}": {
+      "schema": "SocialComment",
+      "description": "Danh sách bình luận bài đăng."
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Danh sách thông cáo hệ thống."
+    },
+    "/system_config/registration": {
+      "schema": "RegistrationSettings",
+      "description": "Cấu hình đăng ký tài khoản."
+    },
+    "/ingredients/{id}": {
+      "schema": "Ingredient",
+      "description": "Danh mục hoạt chất."
+    },
+    "/ingredient_categories/{id}": {
+      "schema": "IngredientCategory",
+      "description": "Danh mục phân loại hoạt chất."
+    },
+    "/excipients/{id}": {
+      "schema": "Excipient",
+      "description": "Danh mục tá dược."
+    }
+  }
+}

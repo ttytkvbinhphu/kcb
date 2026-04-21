@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+}
+
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+}
+
+.dark {
+  --primary: #60a5fa;
+  --primary-hover: #3b82f6;
+  --primary-light: rgba(255, 255, 255, 0.05);
+}
+
+/* Compact Utilities */
+.compact-grid {
+  gap: 0.75rem;
+}
+
+.compact-card {
+  padding: 1rem;
+  border-radius: 1rem;
+}
+
+.compact-text {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* Terms of Use Styling */
+.terms-content h1 {
+  @apply text-xl font-black uppercase tracking-[0.2em] text-primary mb-6 mt-10 border-b-2 border-primary/20 pb-3 flex items-center gap-3;
+}
+.terms-content h1::before {
+  content: "";
+  @apply w-1.5 h-6 bg-primary rounded-full;
+}
+
+.terms-content h2 {
+  @apply text-lg font-black text-slate-800 mb-4 mt-8 flex items-center gap-2;
+}
+.dark .terms-content h2 {
+  @apply text-white;
+}
+.terms-content h2::before {
+  content: "§";
+  @apply text-primary font-serif text-xl font-normal;
+}
+
+.terms-content h3 {
+  @apply text-base font-black text-slate-700 mb-3 mt-6;
+}
+.dark .terms-content h3 {
+  @apply text-slate-300;
+}
+
+.terms-content p {
+  @apply text-sm leading-relaxed text-slate-600 mb-4 font-medium;
+  white-space: pre-wrap;
+}
+.dark .terms-content p {
+  @apply text-slate-400;
+}
+
+.terms-content blockquote {
+  @apply bg-primary/5 border-l-4 border-primary px-6 py-4 rounded-r-[24px] italic mb-8 font-medium text-primary shadow-sm;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.dark .terms-content blockquote {
+  @apply bg-blue-500/10 border-blue-400 text-blue-300 shadow-none;
+}
+
+.terms-content ul, .terms-content ol {
+  @apply mb-6 pl-8 space-y-2.5;
+}
+
+.terms-content li {
+  @apply text-sm text-slate-600 font-medium;
+}
+.dark .terms-content li {
+  @apply text-slate-400;
+}
+
+.terms-content ul {
+  @apply list-disc;
+}
+.terms-content ol {
+  @apply list-decimal;
+}
+
+.terms-content li ul, .terms-content li ol {
+  @apply mt-2.5 mb-2.5;
+}
+.terms-content ol ol {
+  @apply list-[lower-alpha];
+}
+.terms-content ol ol ol {
+  @apply list-[lower-roman];
+}
+
+.terms-content mark {
+  @apply bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md font-bold;
+}
+.dark .terms-content mark {
+  @apply bg-amber-900/40 text-amber-200;
+}
+
+.terms-content strong {
+  @apply font-black text-slate-900;
+}
+.dark .terms-content strong {
+  @apply text-slate-200;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom Header Button Styling - Requested by user */
+div#root:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > button:nth-of-type(1) {
+  @apply hover:scale-110 active:scale-95 transition-all duration-300;
+}
+
+/* Fix input color in Edit Drug form - Requested by user */
+#drug-form input, 
+#drug-form textarea, 
+#drug-form select {
+  color: #000000 !important;
+}
+
+.dark #drug-form input,
+.dark #drug-form textarea,
+.dark #drug-form select {
+  color: #ffffff !important;
+}

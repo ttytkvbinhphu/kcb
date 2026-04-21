@@ -1,0 +1,522 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: drugs
+    // Fields: id, name, activeIngredients, dosageForm, excipients, manufacturer, indications, contraindications, sideEffects, category
+    //
+    // Collection: prescriptions
+    // Fields: id, patientName, patientAge, patientGender, diagnosis, items, createdAt, doctorName, doctorUid
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, role
+    //
+    // Collection: adr_reports
+    // Fields: id, patientInitials, patientAge, patientGender, drugId, drugName, reactionDescription, severity, outcome, reporterName, reporterUid, reportedAt, status, notes
+    //
+    // Collection: calendar_events
+    // Fields: id, title, description, startDate, endDate, type, location, createdBy, createdAt
+    //
+    // Collection: notes
+    // Fields: id, title, content, color, isPinned, createdBy, createdAt, updatedAt
+    //
+    // Collection: notifications
+    // Fields: id, userId, title, message, type, isRead, createdAt, link
+    //
+    // Collection: ingredients
+    // Fields: id, name, description, categoryId
+    //
+    // Collection: ingredient_categories
+    // Fields: id, name, description
+    //
+    // Collection: excipients
+    // Fields: id, name, description
+    //
+    // Collection: system_settings
+    // Fields: appName, loginTitle, loginSubtitle, appDescription, defaultTheme
+    //
+    // Collection: social_posts
+    // Fields: id, authorUid, authorName, authorPhoto, content, imageUrl, createdAt, likesCount, commentsCount
+    //
+    // Collection: social_likes
+    // Fields: id, userId, postId, createdAt
+    //
+    // Collection: social_comments
+    // Fields: id, postId, authorUid, authorName, content, createdAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "ttytkvbinhphu@gmail.com" ||
+         request.auth.token.get('email', '') == "ttytkvbinhphu@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'));
+    }
+
+    function isOperator() {
+      return isAuthenticated() && (isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist']));
+    }
+
+    function isMember() {
+      return isAuthenticated() && (isOperator() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'member'));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidDrug(data) {
+      return hasRequiredFields(['id', 'name', 'activeIngredients', 'category', 'isActive']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.activeIngredients is list && data.activeIngredients.size() > 0 &&
+             data.indications is list &&
+             data.category is string && data.category.size() > 0 &&
+             data.isActive is bool &&
+             (!('excipients' in data) || data.excipients is string) &&
+             (!('groupId' in data) || data.groupId is string) &&
+             (!('pdfUrl' in data) || data.pdfUrl is string);
+    }
+
+    function isValidDrugGroup(data) {
+      return hasRequiredFields(['id', 'name', 'level', 'order']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.level is number && data.level >= 0 && data.level <= 2 &&
+             data.order is number &&
+             (!('parentId' in data) || data.parentId == null || data.parentId is string);
+    }
+
+    function isValidPrescription(data) {
+      return hasRequiredFields(['id', 'patientName', 'diagnosis', 'items', 'createdAt', 'doctorUid']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.patientName is string && data.patientName.size() > 0 && data.patientName.size() < 100 &&
+             data.diagnosis is string && data.diagnosis.size() > 0 && data.diagnosis.size() < 1000 &&
+             data.items is list && data.items.size() > 0 && data.items.size() < 50 &&
+             isValidDateString(data.createdAt) &&
+             data.doctorUid == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'displayName']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.displayName is string && data.displayName.size() > 0 &&
+             data.displayName.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['operator', 'admin', 'member', 'operator_doctor', 'operator_pharmacist'] &&
+             (!('isApproved' in data) || data.isApproved is bool) &&
+             (!('title' in data) || (data.title is string && data.title.size() < 100)) &&
+             (!('position' in data) || (data.position is string && data.position.size() < 100)) &&
+             (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 100));
+    }
+
+    function isValidICD10(data) {
+      return hasRequiredFields(['code', 'description']) &&
+             data.code is string && data.code.size() > 0 &&
+             data.description is string && data.description.size() > 0;
+    }
+
+    function isValidADRReport(data) {
+      return hasRequiredFields(['id', 'patientInitials', 'drugId', 'reactionDescription', 'severity', 'reporterUid', 'reportedAt', 'status']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.patientInitials is string && data.patientInitials.size() > 0 && data.patientInitials.size() < 10 &&
+             data.drugId is string && data.drugId.size() > 0 &&
+             data.reactionDescription is string && data.reactionDescription.size() > 0 && data.reactionDescription.size() < 2000 &&
+             data.severity in ['Nhẹ', 'Trung bình', 'Nặng', 'Nghiêm trọng'] &&
+             data.reporterUid == request.auth.uid &&
+             isValidDateString(data.reportedAt) &&
+             data.status in ['Mới', 'Đang xử lý', 'Đã hoàn thành'];
+    }
+
+    function isValidADRCatalogItem(data) {
+      return hasRequiredFields(['id', 'reactionName', 'severityLevel', 'category']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.reactionName is string && data.reactionName.size() > 0 && data.reactionName.size() < 200 &&
+             data.severityLevel in ['Nhẹ', 'Trung bình', 'Nặng', 'Nghiêm trọng'] &&
+             data.category is string && data.category.size() > 0 &&
+             (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
+             (!('commonDrugs' in data) || data.commonDrugs is list) &&
+             (!('management' in data) || (data.management is string && data.management.size() < 2000));
+    }
+
+    function isValidManualInteraction(data) {
+      return hasRequiredFields(['id', 'type', 'sourceIds', 'sourceNames', 'severity', 'description', 'recommendation']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.type in ['Thuốc - Thuốc', 'Thuốc - ICD-10', 'Thuốc - Đối tượng', 'Tương tác phức tạp'] &&
+             data.sourceIds is list && data.sourceIds.size() > 0 &&
+             data.sourceNames is list && data.sourceNames.size() > 0 &&
+             data.severity in ['low', 'medium', 'high'] &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 5000 &&
+             data.recommendation is string && data.recommendation.size() > 0 && data.recommendation.size() < 5000 &&
+             (!('targetName' in data) || (data.targetName is string && data.targetName.size() < 500)) &&
+             (!('updatedAt' in data) || isValidDateString(data.updatedAt)) &&
+             (!('updatedBy' in data) || data.updatedBy is string) &&
+             (!('updatedByName' in data) || data.updatedByName is string);
+    }
+
+    function isValidConfigItem(data) {
+      return hasRequiredFields(['name']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             (!('order' in data) || data.order is number);
+    }
+
+    function isValidCatalogEntry(data) {
+      return hasRequiredFields(['id', 'name']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
+             (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() > 0));
+    }
+
+    function isValidStaff(data) {
+      return hasRequiredFields(['id', 'fullName', 'type', 'gender', 'dob']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 200 &&
+             data.type in ['Bác sĩ', 'Dược sĩ', 'Điều dưỡng'] &&
+             data.gender in ['Nam', 'Nữ'] &&
+             data.dob is string &&
+             (!('phone' in data) || data.phone is string) &&
+             (!('address' in data) || data.address is string) &&
+             (!('email' in data) || (data.email == "" || isValidEmail(data.email))) &&
+             (!('isActive' in data) || data.isActive is bool);
+    }
+
+    function isValidCalendarEvent(data) {
+      return hasRequiredFields(['id', 'title', 'startDate', 'endDate', 'type', 'createdBy']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             isValidDateString(data.startDate) &&
+             isValidDateString(data.endDate) &&
+             data.type in ['meeting', 'duty', 'surgery', 'other'] &&
+             data.createdBy == request.auth.uid &&
+             (!('location' in data) || (data.location is string && data.location.size() < 200)) &&
+             (!('description' in data) || (data.description is string && data.description.size() < 2000));
+    }
+
+    function isValidNote(data) {
+      return hasRequiredFields(['id', 'title', 'content', 'createdBy', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             data.createdBy == request.auth.uid &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt) &&
+             (!('color' in data) || data.color is string) &&
+             (!('isPinned' in data) || data.isPinned is bool);
+    }
+
+    function isValidNotification(data) {
+      return hasRequiredFields(['id', 'userId', 'title', 'message', 'type', 'isRead', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 1000 &&
+             data.type in ['info', 'success', 'warning', 'error'] &&
+             data.isRead is bool &&
+             isValidDateString(data.createdAt) &&
+             (!('link' in data) || (data.link is string && data.link.size() < 100));
+    }
+
+    function isValidSystemSettings(data) {
+      return (!('appName' in data) || (data.appName is string && data.appName.size() < 100)) &&
+             (!('loginTitle' in data) || (data.loginTitle is string && data.loginTitle.size() < 200)) &&
+             (!('loginSubtitle' in data) || (data.loginSubtitle is string && data.loginSubtitle.size() < 200)) &&
+             (!('appDescription' in data) || (data.appDescription is string && data.appDescription.size() < 2000)) &&
+             (!('defaultTheme' in data) || (data.defaultTheme in ['light', 'dark']));
+    }
+
+    function isValidSocialPost(data) {
+      return hasRequiredFields(['id', 'authorUid', 'authorName', 'content', 'createdAt', 'likesCount', 'commentsCount']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.authorUid == request.auth.uid &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             isValidDateString(data.createdAt) &&
+             data.likesCount is number &&
+             data.commentsCount is number &&
+             (!('authorPhoto' in data) || data.authorPhoto is string) &&
+             (!('imageUrl' in data) || data.imageUrl is string);
+    }
+
+    function isValidSocialLike(data) {
+      return hasRequiredFields(['id', 'userId', 'postId', 'createdAt']) &&
+             data.id == data.userId + '_' + data.postId &&
+             data.userId == request.auth.uid &&
+             data.postId is string &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidSocialComment(data) {
+      return hasRequiredFields(['id', 'postId', 'authorUid', 'authorName', 'content', 'createdAt']) &&
+             data.id is string &&
+             data.postId is string &&
+             data.authorUid == request.auth.uid &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() < 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 1000 &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidAnnouncement(data) {
+      return hasRequiredFields(['content', 'createdAt']) &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             data.createdAt is string && data.createdAt.size() > 10;
+    }
+
+    function isValidRegistrationSettings(data) {
+      return hasRequiredFields(['allowNewRegistration', 'autoApprove', 'defaultRoleId']) &&
+             data.allowNewRegistration is bool &&
+             data.autoApprove is bool &&
+             data.defaultRoleId is string &&
+             (!('defaultTitleId' in data) || data.defaultTitleId is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Drugs: Publicly readable, writable only by operators/admins
+    match /drugs/{drugId} {
+      allow read: if true;
+      allow create, update: if isOperator() && isValidDrug(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /drug_groups/{groupId} {
+      allow read: if true;
+      allow create, update: if isOperator() && isValidDrugGroup(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /manual_interactions/{interactionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidManualInteraction(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    // ICD-10: Publicly readable, writable only by operators/admins
+    match /icd10/{code} {
+      allow read: if true;
+      allow create, update: if isOperator() && isValidICD10(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /ingredients/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /ingredient_categories/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /excipients/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    // Prescriptions: Operators can create and read their own prescriptions. Admins can read all.
+    match /prescriptions/{prescriptionId} {
+      allow read: if isOperator() && (resource.data.doctorUid == request.auth.uid || isAdmin());
+      allow create: if isOperator() && isValidPrescription(request.resource.data);
+      allow update: if isOperator() && (resource.data.doctorUid == request.auth.uid || isAdmin()) && isValidPrescription(request.resource.data);
+      allow delete: if isOperator() && (resource.data.doctorUid == request.auth.uid || isAdmin());
+    }
+
+    // Users: All authenticated users can read profiles for Social Wall. Admins manage all.
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (isOwner(userId) && 
+         isValidUser(request.resource.data) && 
+         (request.resource.data.role == resource.data.role || (resource.data.role == 'operator' && request.resource.data.role in ['operator_doctor', 'operator_pharmacist'])) && 
+         request.resource.data.get('isApproved', false) == resource.data.get('isApproved', false))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ADR Reports: All authenticated users can create. Only reporters or operators/admins can read/update.
+    match /adr_reports/{reportId} {
+      allow read: if isMember() && (resource.data.reporterUid == request.auth.uid || isOperator());
+      allow create: if isMember() && isValidADRReport(request.resource.data);
+      allow update: if isMember() && (resource.data.reporterUid == request.auth.uid || isOperator()) && isValidADRReport(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    // ADR Catalog: Publicly readable for authenticated users, writable only by operators/admins
+    match /adr_catalog/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidADRCatalogItem(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    // Config: Only admins can manage
+    match /config_titles/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    match /config_positions/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    match /config_specialties/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    match /config_roles/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    match /role_permissions/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /title_permissions/{titleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Patients: Only operators/admins can manage
+    match /patients/{maLk} {
+      allow read: if isOperator();
+      allow write: if isOperator();
+    }
+    match /patient_drugs/{id} {
+      allow read: if isOperator();
+      allow write: if isOperator();
+    }
+    match /patient_supplies/{id} {
+      allow read: if isOperator();
+      allow write: if isOperator();
+    }
+    match /patient_subclinical/{id} {
+      allow read: if isOperator();
+      allow write: if isOperator();
+    }
+
+    match /staff/{staffId} {
+      allow read: if isOperator();
+      allow write: if isOperator() && isValidStaff(request.resource.data);
+    }
+
+    match /calendar_events/{eventId} {
+      allow read: if isMember();
+      allow create: if isMember() && isValidCalendarEvent(request.resource.data);
+      allow update: if isMember() && (resource.data.createdBy == request.auth.uid || isAdmin()) && isValidCalendarEvent(request.resource.data);
+      allow delete: if isMember() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    match /notes/{noteId} {
+      allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && 
+                    isValidNotification(request.resource.data) &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /system_settings/{docId} {
+      allow read: if true; // Allow unauthenticated read for login screen
+      allow write: if isAdmin() && isValidSystemSettings(request.resource.data);
+    }
+
+    match /system_config/registration {
+      allow read: if true; // Allowed for registration screen
+      allow write: if isAdmin() && isValidRegistrationSettings(request.resource.data);
+    }
+
+    match /system_config/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidAnnouncement(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Social Network Rules
+    match /social_posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSocialPost(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.authorUid == request.auth.uid && isValidSocialPost(request.resource.data)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'commentsCount']))
+      );
+      allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+
+    match /social_likes/{likeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSocialLike(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    match /social_comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidSocialComment(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.authorUid == request.auth.uid && isValidSocialComment(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
