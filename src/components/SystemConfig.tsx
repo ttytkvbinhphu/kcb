@@ -1549,18 +1549,21 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vị trí hiển thị</label>
                           <div className="space-y-3">
                             {[
-                              { id: 'sidebar', label: 'Thanh menu bên' },
-                              { id: 'home_grid', label: 'Lưới trang chủ' },
-                              { id: 'utilities_box', label: 'Hộp tiện ích' }
+                              { id: 'sidebar', label: 'Thanh menu bên', checkedWhenVisible: true },
+                              { id: 'home_grid', label: 'Lưới trang chủ', checkedWhenVisible: true },
+                              { id: 'utilities_box', label: 'Hộp tiện ích', checkedWhenVisible: false }
                             ].map(loc => (
                               <label key={loc.id} className="flex items-center gap-3 cursor-pointer group">
                                 <div className="relative flex items-center">
                                   <input
                                     type="checkbox"
-                                    checked={(settings.hiddenLocations || []).includes(loc.id)}
+                                    checked={loc.checkedWhenVisible
+                                      ? !(settings.hiddenLocations || []).includes(loc.id)
+                                      : (settings.hiddenLocations || []).includes(loc.id)}
                                     onChange={(e) => {
                                       const hidden = settings.hiddenLocations || [];
-                                      const newHidden = e.target.checked
+                                      const shouldHide = loc.checkedWhenVisible ? !e.target.checked : e.target.checked;
+                                      const newHidden = shouldHide
                                         ? [...hidden, loc.id].filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
                                         : hidden.filter((h: string) => h !== loc.id);
                                       updateFeatureSettings(feature.id, { ...settings, hiddenLocations: newHidden });
