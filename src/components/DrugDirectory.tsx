@@ -576,30 +576,36 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
 
         await setDoc(drugRef, drugData);
 
+        // Keep drug save resilient: ICD-10 sync is best-effort and must not block save.
         const allCodesToSync = Array.from(new Set([...previousIcdCodes, ...nextIcdCodes]));
         if (allCodesToSync.length > 0 && nextDrugName) {
-          const batch = writeBatch(db);
+          try {
+            const batch = writeBatch(db);
+            let hasIcdUpdate = false;
 
-          for (const code of allCodesToSync) {
-            const icdRef = doc(db, 'icd10', code);
-            const icdSnap = await getDoc(icdRef);
-            const currentData = icdSnap.exists() ? (icdSnap.data() as any) : {};
-            const currentDrugs = Array.isArray(currentData.commonDrugs) ? currentData.commonDrugs : [];
+            for (const code of allCodesToSync) {
+              const icdRef = doc(db, 'icd10', code);
+              const icdSnap = await getDoc(icdRef);
+              if (!icdSnap.exists()) continue;
 
-            let nextCommonDrugs = currentDrugs.filter((name: string) => name !== previousDrugName);
-            if (nextIcdCodes.includes(code) && !nextCommonDrugs.includes(nextDrugName)) {
-              nextCommonDrugs = [...nextCommonDrugs, nextDrugName];
+              const currentData = icdSnap.data() as any;
+              const currentDrugs = Array.isArray(currentData.commonDrugs) ? currentData.commonDrugs : [];
+              let nextCommonDrugs = currentDrugs.filter((name: string) => name !== previousDrugName);
+
+              if (nextIcdCodes.includes(code) && !nextCommonDrugs.includes(nextDrugName)) {
+                nextCommonDrugs = [...nextCommonDrugs, nextDrugName];
+              }
+
+              batch.update(icdRef, { commonDrugs: nextCommonDrugs });
+              hasIcdUpdate = true;
             }
 
-            batch.set(icdRef, {
-              ...currentData,
-              code: currentData.code || code,
-              description: currentData.description || (icdList.find((icd: any) => icd.code === code)?.description || ''),
-              commonDrugs: nextCommonDrugs
-            }, { merge: true });
+            if (hasIcdUpdate) {
+              await batch.commit();
+            }
+          } catch (syncError) {
+            console.warn("ICD-10 sync skipped due to permission/validation issue:", syncError);
           }
-
-          await batch.commit();
         }
 
         setIsModalOpen(false);
