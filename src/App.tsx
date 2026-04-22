@@ -1512,7 +1512,7 @@ export default function App() {
               ));
             })()}
 
-            <div className="hidden" ref={mobileAppsMenuRef}>
+            <div className="relative" ref={mobileAppsMenuRef}>
               <button 
                 onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
                 className={cn(
@@ -1886,7 +1886,7 @@ export default function App() {
               ));
             })()}
 
-            <div className="hidden" ref={desktopAppsMenuRef}>
+            <div className="relative" ref={desktopAppsMenuRef}>
               <button 
                 onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
                 className={cn(
