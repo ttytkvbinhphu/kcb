@@ -62,7 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, section: 'member', group: 'general' },
       { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
-      { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tra cứu tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
+      { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
       { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Tra cứu ADR', icon: AlertTriangle, section: 'member', group: 'general' },
       { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Tra cứu bệnh nhân', icon: Users, section: 'member', group: 'general' },
       { id: 'view_prescription', label: featureSettings['view_prescription']?.customTitle || 'Kê toa thử', icon: FileText, section: 'member', group: 'general' },
