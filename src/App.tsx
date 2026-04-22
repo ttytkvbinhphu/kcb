@@ -1224,6 +1224,7 @@ export default function App() {
           currentUserUid={userProfile.uid} 
           currentUserName={userProfile.displayName} 
           featureSettings={featureSettings[activeTab]}
+          userRole={userProfile.role}
         />;
       case 'patients':
         return <PatientManagement isDarkMode={isDarkMode} canManage={isManagementMode} />;
