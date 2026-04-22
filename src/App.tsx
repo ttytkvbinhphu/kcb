@@ -27,7 +27,7 @@ const ALL_TABS = [
   { id: 'view_notes', label: 'Ghi chú', icon: MessageSquare },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList },
-  { id: 'view_interaction', label: 'Tra cứu tương tác thuốc', icon: ShieldAlert },
+  { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert },
   { id: 'view_adr', label: 'Tra cứu ADR', icon: AlertTriangle },
   { id: 'view_patients', label: 'Tra cứu bệnh nhân', icon: Users },
   { id: 'view_prescription', label: 'Kê toa thử', icon: FileText },
@@ -1555,7 +1555,7 @@ export default function App() {
                           const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
                           const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned;
                           const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
-                          return isVisible && allowedTabs.includes(t.id) && showInUtilities;
+                          return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
                         }).map(item => (
                           <button 
                             key={item.id}
