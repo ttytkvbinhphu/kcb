@@ -101,7 +101,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) return false;
       
       // Hide if restricted location
-      if (settings?.hiddenLocations?.includes('sidebar')) return false;
+      // manage_interaction follows view_interaction's sidebar setting (linked features)
+      if (item.id === 'manage_interaction') {
+        if (featureSettings['view_interaction']?.hiddenLocations?.includes('sidebar')) return false;
+      } else if (settings?.hiddenLocations?.includes('sidebar')) {
+        return false;
+      }
 
       if (status === 'closed') return false;
       if (status === 'maintenance' && !isPrivileged) return false;

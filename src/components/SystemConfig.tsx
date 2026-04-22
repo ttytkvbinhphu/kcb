@@ -61,7 +61,6 @@ const ALL_FEATURES = [
   { id: 'view_prescription', label: 'Kê toa thử', icon: FileText, desc: 'Tạo đơn thuốc mẫu' },
   { id: 'view_history', label: 'Lịch sử kê toa', icon: History, desc: 'Xem lại các đơn đã kê' },
   { id: 'manage_users', label: 'Quản lý người dùng', icon: Users, desc: 'Quản lý tài khoản và phê duyệt' },
-  { id: 'manage_interaction', label: 'Quản lý tương tác', icon: ShieldAlert, desc: 'Thiết lập quy tắc tương tác' },
   { id: 'manage_adr', label: 'Quản lý ADR', icon: AlertTriangle, desc: 'Báo cáo và thống kê ADR' },
 ];
 
