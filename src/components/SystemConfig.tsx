@@ -1605,6 +1605,88 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             </div>
                           </div>
                         )}
+
+                        {feature.id === 'view_adr' && (
+                          <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Phân quyền theo chức năng con</label>
+                            
+                            {/* Danh mục ADR */}
+                            <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                              <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                                Danh mục ADR — Vai trò được xem
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {roles.map(role => {
+                                  const catalogAllowedRoles: string[] = settings.catalogAllowedRoles || [];
+                                  const isAllowed = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(role.id);
+                                  return (
+                                    <button
+                                      key={role.id}
+                                      onClick={() => {
+                                        let newAllowed: string[];
+                                        if (catalogAllowedRoles.includes(role.id)) {
+                                          newAllowed = catalogAllowedRoles.filter((r: string) => r !== role.id);
+                                        } else {
+                                          newAllowed = [...catalogAllowedRoles, role.id];
+                                        }
+                                        if (newAllowed.length === roles.length) newAllowed = [];
+                                        updateFeatureSettings(feature.id, { ...settings, catalogAllowedRoles: newAllowed });
+                                      }}
+                                      className={cn(
+                                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                        isAllowed
+                                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                                      )}
+                                    >
+                                      {role.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-[9px] font-medium text-slate-500 italic">Mặc định (không chọn hoặc chọn tất cả) = tất cả vai trò đều xem được.</p>
+                            </div>
+
+                            {/* Báo cáo ADR */}
+                            <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                              <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                                <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                                Báo cáo ADR — Vai trò được xem
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {roles.map(role => {
+                                  const reportsAllowedRoles: string[] = settings.reportsAllowedRoles || [];
+                                  const isAllowed = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(role.id);
+                                  return (
+                                    <button
+                                      key={role.id}
+                                      onClick={() => {
+                                        let newAllowed: string[];
+                                        if (reportsAllowedRoles.includes(role.id)) {
+                                          newAllowed = reportsAllowedRoles.filter((r: string) => r !== role.id);
+                                        } else {
+                                          newAllowed = [...reportsAllowedRoles, role.id];
+                                        }
+                                        if (newAllowed.length === roles.length) newAllowed = [];
+                                        updateFeatureSettings(feature.id, { ...settings, reportsAllowedRoles: newAllowed });
+                                      }}
+                                      className={cn(
+                                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                        isAllowed
+                                          ? "bg-blue-500/10 border-blue-500 text-blue-500"
+                                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                                      )}
+                                    >
+                                      {role.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-[9px] font-medium text-slate-500 italic">Mặc định (không chọn hoặc chọn tất cả) = tất cả vai trò đều xem được.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="space-y-4">

@@ -50,6 +50,7 @@ interface ADRManagementProps {
   currentUserUid: string;
   currentUserName: string;
   featureSettings?: any;
+  userRole?: string;
 }
 
 const ADR_CATEGORIES = [
@@ -94,7 +95,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   isDarkMode, 
   currentUserUid,
   currentUserName,
-  featureSettings
+  featureSettings,
+  userRole = 'member'
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'reports' | 'catalog'>('catalog');
   const [reports, setReports] = useState<ADRReport[]>([]);
@@ -352,6 +354,21 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
 
   const isPharmacist = canManage;
 
+  // Sub-tab role permissions
+  const catalogAllowedRoles: string[] = featureSettings?.catalogAllowedRoles || [];
+  const reportsAllowedRoles: string[] = featureSettings?.reportsAllowedRoles || [];
+  const canSeeCatalog = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(userRole);
+  const canSeeReports = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(userRole);
+
+  // Auto-switch if current sub-tab is restricted
+  React.useEffect(() => {
+    if (activeSubTab === 'catalog' && !canSeeCatalog && canSeeReports) {
+      setActiveSubTab('reports');
+    } else if (activeSubTab === 'reports' && !canSeeReports && canSeeCatalog) {
+      setActiveSubTab('catalog');
+    }
+  }, [canSeeCatalog, canSeeReports, activeSubTab]);
+
   return (
     <div className={cn(
       "p-1 lg:p-6 max-w-full mx-auto min-h-screen transition-colors",
@@ -464,13 +481,15 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - only show tabs that are allowed */}
+      {(canSeeCatalog || canSeeReports) && (
       <div className={cn(
         "flex gap-1 lg:gap-2 mb-6 lg:mb-10 p-1 rounded-xl lg:rounded-2xl w-full lg:w-fit transition-all border overflow-x-auto",
         isDarkMode 
           ? "bg-slate-900 border-slate-800" 
           : "bg-white border-slate-100 shadow-sm shadow-slate-100"
       )}>
+        {canSeeCatalog && (
         <button
           onClick={() => setActiveSubTab('catalog')}
           className={cn(
@@ -491,6 +510,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
             {catalogItems.length}
           </span>
         </button>
+        )}
+        {canSeeReports && (
         <button
           onClick={() => setActiveSubTab('reports')}
           className={cn(
@@ -511,7 +532,9 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
             {reports.length}
           </span>
         </button>
+        )}
       </div>
+      )}
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20">
