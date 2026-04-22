@@ -102,8 +102,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       // Hide if restricted location
       // manage_interaction follows view_interaction's sidebar setting (linked features)
+      // manage_adr follows view_adr's sidebar setting (linked features)
       if (item.id === 'manage_interaction') {
         if (featureSettings['view_interaction']?.hiddenLocations?.includes('sidebar')) return false;
+      } else if (item.id === 'manage_adr') {
+        if (featureSettings['view_adr']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (settings?.hiddenLocations?.includes('sidebar')) {
         return false;
       }
