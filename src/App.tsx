@@ -1486,8 +1486,8 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {/* Mobile Quick Access */}
-            {(() => {
+            {/* Mobile Quick Access - HIDDEN */}
+            {false && (() => {
               const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
               return ALL_TABS.filter(t => {
                 const status = featureStates[t.id];
@@ -1859,8 +1859,8 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Quick Access Icons */}
-            {(() => {
+            {/* Quick Access Icons - HIDDEN */}
+            {false && (() => {
               const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
               return ALL_TABS.filter(t => {
                 const status = featureStates[t.id];
