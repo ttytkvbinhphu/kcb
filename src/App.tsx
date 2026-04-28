@@ -965,7 +965,9 @@ export default function App() {
                   <div className="h-full p-4 lg:p-8">
                     <ICD10Management 
                       canManage={false} 
-                      isDarkMode={isDarkMode} 
+                      isDarkMode={isDarkMode}
+                      featureSettings={featureSettings['view_icd10']}
+                      userRole={userProfile?.role}
                     />
                   </div>
                 )}
@@ -2598,7 +2600,9 @@ export default function App() {
                   <div className="h-full p-4 lg:p-8">
                     <ICD10Management 
                       canManage={false} 
-                      isDarkMode={isDarkMode} 
+                      isDarkMode={isDarkMode}
+                      featureSettings={featureSettings['view_icd10']}
+                      userRole={userProfile?.role}
                     />
                   </div>
                 )}
