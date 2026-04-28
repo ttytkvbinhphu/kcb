@@ -692,94 +692,46 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
                 
                 <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                      Chỉ định thường dùng — Vai trò được xem
-                    </p>
-                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
-                      return allOptions.map(role => {
-                        const allowedRoles: string[] = settings.commonIndicationsAllowedRoles || [];
-                        const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
-                        return (
-                          <button
-                            key={role.id}
-                            onClick={() => {
-                              let newAllowed: string[];
-                              if (allowedRoles.includes(role.id)) {
-                                newAllowed = allowedRoles.filter((r: string) => r !== role.id);
-                              } else {
-                                newAllowed = [...allowedRoles, role.id];
-                              }
-                              if (newAllowed.length === allOptions.length) newAllowed = [];
-                              updateFeatureSettings(feature.id, { ...settings, commonIndicationsAllowedRoles: newAllowed });
-                            }}
-                            className={cn(
-                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                              isAllowed
-                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                            )}
-                          >
-                            {role.name}
-                          </button>
-                        );
-                      });
-                    })()}
+                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                    Chỉ định thường dùng — Điểm quyền lực tối thiểu
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      value={settings.commonIndicationsMinPower ?? 0}
+                      onChange={(e) => updateFeatureSettings(feature.id, { ...settings, commonIndicationsMinPower: parseInt(e.target.value) || 0 })}
+                      className={cn(
+                        "w-28 px-4 py-2.5 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                        isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                      )}
+                    />
+                    <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
+                    </span>
                   </div>
                 </div>
 
                 <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
-                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                      Gợi ý ICD-10 — Vai trò được xem
-                    </p>
-                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
-                      return allOptions.map(role => {
-                        const allowedRoles: string[] = settings.icdSuggestionsAllowedRoles || [];
-                        const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
-                        return (
-                          <button
-                            key={role.id}
-                            onClick={() => {
-                              let newAllowed: string[];
-                              if (allowedRoles.includes(role.id)) {
-                                newAllowed = allowedRoles.filter((r: string) => r !== role.id);
-                              } else {
-                                newAllowed = [...allowedRoles, role.id];
-                              }
-                              if (newAllowed.length === allOptions.length) newAllowed = [];
-                              updateFeatureSettings(feature.id, { ...settings, icdSuggestionsAllowedRoles: newAllowed });
-                            }}
-                            className={cn(
-                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                              isAllowed
-                                ? "bg-blue-500/10 border-blue-500 text-blue-500"
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                            )}
-                          >
-                            {role.name}
-                          </button>
-                        );
-                      });
-                    })()}
+                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                    Gợi ý ICD-10 — Điểm quyền lực tối thiểu
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      value={settings.icdSuggestionsMinPower ?? 0}
+                      onChange={(e) => updateFeatureSettings(feature.id, { ...settings, icdSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                      className={cn(
+                        "w-28 px-4 py-2.5 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                        isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                      )}
+                    />
+                    <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1000,48 +952,24 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình Gợi ý thuốc điều trị</label>
                 
                 <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                      Gợi ý thuốc — Vai trò được xem
-                    </p>
-                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
-                      return allOptions.map(role => {
-                        const drugSuggestionsAllowedRoles: string[] = settings.drugSuggestionsAllowedRoles || [];
-                        const isAllowed = drugSuggestionsAllowedRoles.length === 0 || drugSuggestionsAllowedRoles.includes(role.id);
-                        return (
-                          <button
-                            key={role.id}
-                            onClick={() => {
-                              let newAllowed: string[];
-                              if (drugSuggestionsAllowedRoles.includes(role.id)) {
-                                newAllowed = drugSuggestionsAllowedRoles.filter((r: string) => r !== role.id);
-                              } else {
-                                newAllowed = [...drugSuggestionsAllowedRoles, role.id];
-                              }
-                              if (newAllowed.length === allOptions.length) newAllowed = [];
-                              updateFeatureSettings(feature.id, { ...settings, drugSuggestionsAllowedRoles: newAllowed });
-                            }}
-                            className={cn(
-                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                              isAllowed
-                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                            )}
-                          >
-                            {role.name}
-                          </button>
-                        );
-                      });
-                    })()}
+                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                    Gợi ý thuốc — Điểm quyền lực tối thiểu
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min={0}
+                      value={settings.drugSuggestionsMinPower ?? 0}
+                      onChange={(e) => updateFeatureSettings(feature.id, { ...settings, drugSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                      className={cn(
+                        "w-28 px-4 py-2.5 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                        isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                      )}
+                    />
+                    <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
+                    </span>
                   </div>
                 </div>
               </div>

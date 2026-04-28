@@ -20,6 +20,7 @@ interface DrugDirectoryProps {
   featureSettings?: any;
   userRole?: string;
   isApproved?: boolean;
+  userPowerPoints?: number;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -46,10 +47,15 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
-const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, subHeaderPortalId, featureSettings, userRole, isApproved = false }) => {
+const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, subHeaderPortalId, featureSettings, userRole, isApproved = false, userPowerPoints = 0 }) => {
   const isGuestUser = !userRole;
   const isPendingUser = !!userRole && !isApproved;
-  const userRoleForPerms = isGuestUser ? 'guest' : (isPendingUser ? 'unapproved' : userRole);
+
+  // Power-point threshold helpers
+  const canSeeCommonIndications = !isGuestUser && !isPendingUser &&
+    (userPowerPoints >= (featureSettings?.commonIndicationsMinPower ?? 0));
+  const canSeeIcdSuggestions = !isGuestUser && !isPendingUser &&
+    (userPowerPoints >= (featureSettings?.icdSuggestionsMinPower ?? 0));
 
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [drugGroups, setDrugGroups] = useState<DrugGroup[]>([]);
@@ -1730,28 +1736,16 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                       <div className="shrink-0 mt-1.5">
                                         <div className={cn(
                                           "w-2.5 h-2.5 rounded-full shadow-sm transition-all",
-                                          (item.isPrimary && (
-                                            (featureSettings?.commonIndicationsAllowedRoles || []).length === 0 
-                                              ? (!isGuestUser && !isPendingUser && (featureSettings?.showCommonIndications !== false))
-                                              : featureSettings?.commonIndicationsAllowedRoles?.includes(userRoleForPerms || '')
-                                          ))
+                                          (item.isPrimary && canSeeCommonIndications)
                                             ? "bg-amber-500 shadow-amber-200 scale-125" 
                                             : "bg-blue-500 shadow-blue-200"
                                         )}></div>
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        {(item.title || (item.isPrimary && (
-                                          (featureSettings?.commonIndicationsAllowedRoles || []).length === 0 
-                                            ? (!isGuestUser && !isPendingUser && (featureSettings?.showCommonIndications !== false))
-                                            : featureSettings?.commonIndicationsAllowedRoles?.includes(userRoleForPerms || '')
-                                        ))) ? (
+                                        {(item.title || (item.isPrimary && canSeeCommonIndications)) ? (
                                           <>
                                             <div className="flex items-center flex-wrap gap-2 mb-1">
-                                              {item.isPrimary && (
-                                                (featureSettings?.commonIndicationsAllowedRoles || []).length === 0 
-                                                  ? (!isGuestUser && !isPendingUser && (featureSettings?.showCommonIndications !== false))
-                                                  : featureSettings?.commonIndicationsAllowedRoles?.includes(userRoleForPerms || '')
-                                              ) && (
+                                              {item.isPrimary && canSeeCommonIndications && (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-500 text-white uppercase tracking-wider shadow-sm">
                                                   <Star size={8} fill="currentColor" /> Chỉ định thường dùng
                                                 </span>
@@ -1769,11 +1763,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         )}
                                       </div>
                                     </div>
-                                    {item.icd10s?.[0] && (
-                                      (featureSettings?.icdSuggestionsAllowedRoles || []).length === 0 
-                                        ? (!isGuestUser && !isPendingUser && (featureSettings?.showIcdSuggestions !== false))
-                                        : featureSettings?.icdSuggestionsAllowedRoles?.includes(userRoleForPerms || '')
-                                    ) && (
+                                    {item.icd10s?.[0] && canSeeIcdSuggestions && (
                                       <div className="mt-2 flex items-center gap-1.5">
                                         <span className={cn(
                                           "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider",
