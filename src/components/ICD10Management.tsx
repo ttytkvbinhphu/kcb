@@ -10,9 +10,10 @@ interface ICD10ManagementProps {
   canManage: boolean;
   isDarkMode?: boolean;
   featureSettings?: any;
+  userRole?: string;
 }
 
-const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode, featureSettings }) => {
+const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode, featureSettings, userRole }) => {
   const [icdList, setIcdList] = useState<ICD10[]>([]);
   const [drugList, setDrugList] = useState<Drug[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,9 +30,36 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
 
   const [formData, setFormData] = useState<ICD10>({
     code: '',
-    description: '',
-    commonDrugs: []
+    description: ''
   });
+
+  const drugsByIcd = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    drugList.forEach(drug => {
+      const codes = new Set<string>();
+      (drug.indications || []).forEach(ind => {
+        (ind.icd10s || []).forEach(icdItem => {
+          if (icdItem && typeof icdItem === 'string') {
+            const codeOnly = icdItem.split(' - ')[0].trim().toUpperCase();
+            if (codeOnly) codes.add(codeOnly);
+          }
+        });
+      });
+      codes.forEach(code => {
+        if (!map[code]) map[code] = [];
+        if (!map[code].includes(drug.name)) {
+          map[code].push(drug.name);
+        }
+      });
+    });
+    return map;
+  }, [drugList]);
+
+  const isDrugSuggestionsAllowed = useMemo(() => {
+    const allowedRoles = featureSettings?.drugSuggestionsAllowedRoles || [];
+    if (allowedRoles.length === 0) return true;
+    return allowedRoles.includes(userRole || '');
+  }, [featureSettings, userRole]);
 
   useEffect(() => {
     const unsubscribeICD = onSnapshot(collection(db, 'icd10'), (snapshot) => {
@@ -75,7 +103,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
       setFormData(icd);
     } else {
       setEditingIcd(null);
-      setFormData({ code: '', description: '', commonDrugs: [] });
+      setFormData({ code: '', description: '' });
     }
     setIsModalOpen(true);
   };
@@ -132,8 +160,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
             const icdRef = doc(db, 'icd10', code);
             batch.set(icdRef, {
               code,
-              description,
-              commonDrugs: []
+              description
             });
           });
           
@@ -162,22 +189,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
       console.error("Error deleting ICD-10:", error);
     }
   };
-
-  const toggleDrug = (drugName: string) => {
-    const currentDrugs = formData.commonDrugs || [];
-    if (currentDrugs.includes(drugName)) {
-      setFormData({ ...formData, commonDrugs: currentDrugs.filter(d => d !== drugName) });
-    } else {
-      setFormData({ ...formData, commonDrugs: [...currentDrugs, drugName] });
-    }
-  };
-
-  const filteredDrugs = useMemo(() => {
-    return drugList.filter(drug => 
-      (drug.name || '').toLowerCase().includes((drugSearchTerm || '').toLowerCase()) ||
-      (drug.activeIngredients?.some(ai => ai.name.toLowerCase().includes(drugSearchTerm.toLowerCase())) || false)
-    );
-  }, [drugList, drugSearchTerm]);
 
   if (loading) {
     return (
@@ -293,8 +304,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
               >
                 <div className="flex items-start justify-between mb-3">
                   <span className={cn(
-                    "px-3 py-1 rounded-lg font-black text-[10px] tracking-wider border",
-                    isDarkMode ? "bg-emerald-900/20 text-emerald-400 border-emerald-800/30" : "bg-white text-emerald-700 border-emerald-100"
+                    "px-2.5 py-1 rounded-md font-mono font-bold text-[10px] tracking-tight border",
+                    isDarkMode ? "bg-emerald-900/20 text-emerald-400 border-emerald-800/30" : "bg-emerald-50/50 text-emerald-700 border-emerald-100"
                   )}>
                     {icd.code}
                   </span>
@@ -330,8 +341,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                     isDarkMode ? "text-slate-500" : "text-slate-400"
                   )}>Gợi ý thuốc</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {icd.commonDrugs && icd.commonDrugs.length > 0 ? (
-                      icd.commonDrugs.map((drug, idx) => (
+                    {isDrugSuggestionsAllowed && drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
+                      drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
                         <span key={idx} className={cn(
                           "px-2 py-0.5 rounded-md text-[9px] font-bold border transition-colors",
                           isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
@@ -382,24 +393,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                     isDarkMode ? "hover:bg-slate-800/50" : "hover:bg-slate-50/80"
                   )}
                 >
-                  <td className="w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-4">
+                  <td className="w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-5">
                     <span className={cn(
-                      "px-3 lg:px-4 py-1 rounded-lg font-black text-[10px] lg:text-xs tracking-wider transition-colors border",
-                      isDarkMode ? "bg-emerald-900/20 text-emerald-400 border-emerald-800/30" : "bg-white text-emerald-700 border-emerald-100"
+                      "px-2.5 lg:px-3 py-1 rounded-md font-mono font-bold text-[10px] lg:text-xs tracking-tight transition-colors border shadow-sm",
+                      isDarkMode ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30" : "bg-emerald-50/50 text-emerald-700 border-emerald-100"
                     )}>
                       {icd.code}
                     </span>
                   </td>
-                  <td className="px-4 sm:px-6 lg:px-8 py-4">
+                  <td className="px-4 sm:px-6 lg:px-8 py-5">
                     <p className={cn(
-                      "font-bold text-sm lg:text-base transition-colors",
-                      isDarkMode ? "text-white" : "text-black"
+                      "font-semibold text-sm lg:text-[15px] leading-relaxed transition-colors",
+                      isDarkMode ? "text-slate-200" : "text-slate-900"
                     )}>{icd.description}</p>
                   </td>
                   <td className="px-4 sm:px-6 lg:px-8 py-4">
                     <div className="flex flex-wrap gap-1.5">
-                      {icd.commonDrugs && icd.commonDrugs.length > 0 ? (
-                        icd.commonDrugs.map((drug, idx) => (
+                      {isDrugSuggestionsAllowed && drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
+                        drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
                           <span key={idx} className={cn(
                             "px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-md text-[9px] lg:text-[11px] font-bold border transition-colors",
                             isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
@@ -621,54 +632,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                         isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
                       )}
                     />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Gợi ý thuốc điều trị</label>
-                    <span className={cn(
-                      "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                      isDarkMode ? "text-emerald-400 bg-emerald-900/30" : "text-emerald-600 bg-emerald-50"
-                    )}>
-                      Đã chọn: {formData.commonDrugs?.length || 0}
-                    </span>
-                  </div>
-                  
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                      type="text"
-                      placeholder="Tìm thuốc trong danh mục..."
-                      value={drugSearchTerm || ''}
-                      onChange={(e) => setDrugSearchTerm(e.target.value)}
-                      className={cn(
-                        "w-full pl-9 pr-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all text-xs font-medium",
-                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
-                      )}
-                    />
-                  </div>
-
-                  <div className={cn(
-                    "grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 rounded-xl border custom-scrollbar transition-colors",
-                    isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-white"
-                  )}>
-                    {filteredDrugs.map(drug => (
-                      <button
-                        key={drug.id}
-                        type="button"
-                        onClick={() => toggleDrug(drug.name)}
-                        className={cn(
-                          "px-3 py-2 rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 border",
-                          formData.commonDrugs?.includes(drug.name)
-                            ? "bg-emerald-600 border-emerald-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:border-emerald-900" : "bg-white border-slate-100 text-slate-600 hover:border-emerald-200")
-                        )}
-                      >
-                        <Pill size={12} />
-                        <span className="truncate">{drug.name}</span>
-                      </button>
-                    ))}
                   </div>
                 </div>
 

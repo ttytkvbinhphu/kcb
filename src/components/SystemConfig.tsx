@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search } from 'lucide-react';
-import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut } from 'lucide-react';
+import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { SystemSettings, UserProfile } from '../types';
+import { SystemSettings, UserProfile, AuthLog } from '../types';
 import ThemeSettings from './ThemeSettings';
 import ConfirmModal from './ConfirmModal';
 
@@ -46,7 +46,6 @@ const TITLE_TABS = [
   { id: 'view_interaction', label: 'Tra cứu tương tác thuốc' },
   { id: 'view_adr', label: 'Tra cứu ADR' },
   { id: 'view_prescription', label: 'Kê toa thử' },
-  { id: 'view_history', label: 'Lịch sử kê toa' },
 ];
 
 const ALL_FEATURES = [
@@ -59,8 +58,7 @@ const ALL_FEATURES = [
   { id: 'view_adr', label: 'Tra cứu ADR', icon: AlertTriangle, desc: 'Phản ứng có hại của thuốc' },
   { id: 'view_patients', label: 'Tra cứu bệnh nhân', icon: Users, desc: 'Hồ sơ bệnh nhân' },
   { id: 'view_prescription', label: 'Kê toa thử', icon: FileText, desc: 'Tạo đơn thuốc mẫu' },
-  { id: 'view_history', label: 'Lịch sử kê toa', icon: History, desc: 'Xem lại các đơn đã kê' },
-  { id: 'manage_users', label: 'Quản lý người dùng', icon: Users, desc: 'Quản lý tài khoản và phê duyệt' },
+  { id: 'view_social', label: 'Mạng xã hội', icon: MessageSquare, desc: 'Giao lưu và chia sẻ chuyên môn' },
 ];
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -137,7 +135,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isSavingFeature, setIsSavingFeature] = useState(false);
-  const [homeSubTab, setHomeSubTab] = useState<'overview' | 'features' | 'registration' | 'notifications' | 'permissions'>('overview');
+  const [homeSubTab, setHomeSubTab] = useState<'overview' | 'features_main' | 'utilities' | 'registration' | 'notifications'>('overview');
   const [regSettings, setRegSettings] = useState<any>({
     allowNewRegistration: true,
     autoApprove: false,
@@ -150,6 +148,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [targetTitles, setTargetTitles] = useState<string[]>([]);
   const [isSavingReg, setIsSavingReg] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const [authLogs, setAuthLogs] = useState<AuthLog[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -197,10 +197,18 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => b.createdAt - a.createdAt));
     });
 
+    const unsubAuthLogs = onSnapshot(
+      query(collection(db, 'auth_logs'), orderBy('timestamp', 'desc'), limit(50)),
+      (snapshot) => {
+        setAuthLogs(snapshot.docs.map(doc => doc.data() as AuthLog));
+      }
+    );
+
     return () => {
       unsubFeatures();
       unsubReg();
       unsubAnnouncements();
+      unsubAuthLogs();
     };
   }, []);
 
@@ -353,6 +361,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       if (activeCategory === 'roles') {
         await deleteDoc(doc(db, 'role_permissions', id));
       }
+      setConfirmDelete(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${id}`);
     }
@@ -490,7 +499,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
   const categories = [
     { id: 'home', label: 'Trang chủ Admin', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-    { id: 'overview', label: 'Tổng quan', icon: Activity, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { id: 'general', label: 'Cài đặt chung', icon: Globe, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
     { id: 'titles', label: 'Chức danh', icon: Award, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'positions', label: 'Chức vụ', icon: Briefcase, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
@@ -504,9 +512,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [selectedFeatureForDetail, setSelectedFeatureForDetail] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [featureCategoryFilter, setFeatureCategoryFilter] = useState<'all' | 'features_main' | 'utilities'>('all');
 
   useEffect(() => {
-    if (activeCategory === 'features' || (activeCategory === 'home' && homeSubTab === 'features')) {
+    if (activeCategory === 'features' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities'))) {
       const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
         setAllUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
       });
@@ -515,7 +524,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   }, [activeCategory, homeSubTab]);
 
   useEffect(() => {
-    if (activeCategory === 'features' || (activeCategory === 'home' && homeSubTab === 'features')) {
+    if (activeCategory === 'features' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities'))) {
       const unsub = onSnapshot(doc(db, 'system_config', 'feature_settings'), (doc) => {
         if (doc.exists()) {
           setFeatureSettings(doc.data());
@@ -554,6 +563,607 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'maintenance', label: 'Bảo trì', emptyText: 'Không có tiện ích nào ở trạng thái bảo trì.' },
     { id: 'closed', label: 'Đóng', emptyText: 'Không có tiện ích nào đang đóng.' }
   ];
+  const renderFeatureDetailContent = () => {
+    const feature = ALL_FEATURES.find(f => f.id === selectedFeatureForDetail);
+    if (!feature) return null;
+    const settings = featureSettings[feature.id] || {};
+    const bannedUsers = settings.bannedUsers || [];
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className={cn(
+          "rounded-[32px] border overflow-hidden transition-all",
+          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+        )}
+      >
+        <div className={cn(
+          "p-6 sm:p-8 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors",
+          isDarkMode ? "border-slate-800" : "border-slate-100"
+        )}>
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg",
+              isDarkMode ? "bg-slate-800" : "bg-primary shadow-primary/20"
+            )}>
+              <feature.icon size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <button 
+                  onClick={() => setSelectedFeatureForDetail(null)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors mr-1"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                  {settings.customTitle || feature.label}
+                </h3>
+              </div>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest ml-9">{feature.desc}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 self-end sm:self-center">
+            <button 
+              onClick={() => setSelectedFeatureForDetail(null)}
+              className={cn(
+                "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                isDarkMode ? "bg-slate-800 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Quay lại
+            </button>
+            <button
+              onClick={() => setSelectedFeatureForDetail(null)}
+              className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
+            >
+              Hoàn tất thay đổi
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 sm:p-8 space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Thứ tự hiển thị</label>
+              <input
+                type="number"
+                value={settings.order || 0}
+                onChange={(e) => {
+                  const newSettings = { ...settings, order: parseInt(e.target.value) || 0 };
+                  updateFeatureSettings(feature.id, newSettings);
+                }}
+                className={cn(
+                  "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all font-black text-lg",
+                  isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                )}
+              />
+              <p className="mt-2 text-[10px] font-medium text-slate-500">Thứ tự nhỏ hơn sẽ hiển thị trước.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vị trí hiển thị</label>
+              <div className="space-y-3">
+                {[
+                  { id: 'sidebar', label: 'Thanh menu bên', checkedWhenVisible: true },
+                  { id: 'home_grid', label: 'Lưới trang chủ', checkedWhenVisible: true },
+                  { id: 'utilities_box', label: 'Hộp tiện ích', checkedWhenVisible: false }
+                ].map(loc => (
+                  <label key={loc.id} className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={loc.checkedWhenVisible
+                          ? !(settings.hiddenLocations || []).includes(loc.id)
+                          : (settings.hiddenLocations || []).includes(loc.id)}
+                        onChange={(e) => {
+                          const hidden = settings.hiddenLocations || [];
+                          const shouldHide = loc.checkedWhenVisible ? !e.target.checked : e.target.checked;
+                          const newHidden = shouldHide
+                            ? [...hidden, loc.id].filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
+                            : hidden.filter((h: string) => h !== loc.id);
+                          updateFeatureSettings(feature.id, { ...settings, hiddenLocations: newHidden });
+                        }}
+                        className="peer sr-only"
+                      />
+                      <div className={cn(
+                        "w-10 h-6 rounded-full transition-all peer-checked:bg-emerald-500",
+                        isDarkMode ? "bg-slate-800" : "bg-slate-200"
+                      )}></div>
+                      <div className={cn(
+                        "absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4",
+                        isDarkMode ? "shadow-none" : "shadow-sm"
+                      )}></div>
+                    </div>
+                    <span className={cn("text-xs font-bold transition-colors", isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-600 group-hover:text-slate-900")}>
+                      {loc.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {feature.id === 'view_directory' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
+                
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Chỉ định thường dùng — Vai trò được xem
+                    </p>
+                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const allOptions = [
+                        ...roles,
+                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                      ];
+                      return allOptions.map(role => {
+                        const allowedRoles: string[] = settings.commonIndicationsAllowedRoles || [];
+                        const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              let newAllowed: string[];
+                              if (allowedRoles.includes(role.id)) {
+                                newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                              } else {
+                                newAllowed = [...allowedRoles, role.id];
+                              }
+                              if (newAllowed.length === allOptions.length) newAllowed = [];
+                              updateFeatureSettings(feature.id, { ...settings, commonIndicationsAllowedRoles: newAllowed });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                              isAllowed
+                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                            )}
+                          >
+                            {role.name}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Gợi ý ICD-10 — Vai trò được xem
+                    </p>
+                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const allOptions = [
+                        ...roles,
+                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                      ];
+                      return allOptions.map(role => {
+                        const allowedRoles: string[] = settings.icdSuggestionsAllowedRoles || [];
+                        const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              let newAllowed: string[];
+                              if (allowedRoles.includes(role.id)) {
+                                newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                              } else {
+                                newAllowed = [...allowedRoles, role.id];
+                              }
+                              if (newAllowed.length === allOptions.length) newAllowed = [];
+                              updateFeatureSettings(feature.id, { ...settings, icdSuggestionsAllowedRoles: newAllowed });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                              isAllowed
+                                ? "bg-blue-500/10 border-blue-500 text-blue-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                            )}
+                          >
+                            {role.name}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {feature.id === 'view_social' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình Mạng xã hội</label>
+                
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Quyền đăng bài — Vai trò được phép
+                    </p>
+                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả (trừ khách)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.map(role => {
+                      const allowedRoles: string[] = settings.postingAllowedRoles || [];
+                      const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
+                      return (
+                        <button
+                          key={role.id}
+                          onClick={() => {
+                            let newAllowed: string[];
+                            if (allowedRoles.includes(role.id)) {
+                              newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                            } else {
+                              newAllowed = [...allowedRoles, role.id];
+                            }
+                            if (newAllowed.length === roles.length) newAllowed = [];
+                            updateFeatureSettings(feature.id, { ...settings, postingAllowedRoles: newAllowed });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                            isAllowed
+                              ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                          )}
+                        >
+                          {role.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                      Quyền bình luận — Vai trò được phép
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.map(role => {
+                      const allowedRoles: string[] = settings.commentingAllowedRoles || [];
+                      const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
+                      return (
+                        <button
+                          key={role.id}
+                          onClick={() => {
+                            let newAllowed: string[];
+                            if (allowedRoles.includes(role.id)) {
+                              newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                            } else {
+                              newAllowed = [...allowedRoles, role.id];
+                            }
+                            if (newAllowed.length === roles.length) newAllowed = [];
+                            updateFeatureSettings(feature.id, { ...settings, commentingAllowedRoles: newAllowed });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                            isAllowed
+                              ? "bg-indigo-500/10 border-indigo-500 text-indigo-500"
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                          )}
+                        >
+                          {role.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      Kiểm duyệt (Moderators) — Có quyền xóa bài bất kỳ
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {roles.map(role => {
+                      const allowedRoles: string[] = settings.moderatorRoles || [];
+                      const isAllowed = allowedRoles.includes(role.id);
+                      return (
+                        <button
+                          key={role.id}
+                          onClick={() => {
+                            let newAllowed: string[];
+                            if (allowedRoles.includes(role.id)) {
+                              newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                            } else {
+                              newAllowed = [...allowedRoles, role.id];
+                            }
+                            updateFeatureSettings(feature.id, { ...settings, moderatorRoles: newAllowed });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                            isAllowed
+                              ? "bg-rose-500/10 border-rose-500 text-rose-500"
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                          )}
+                        >
+                          {role.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+            {feature.id === 'view_adr' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Phân quyền theo chức năng con</label>
+                
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                    Danh mục ADR — Vai trò được xem
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const allOptions = [
+                        ...roles,
+                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                      ];
+                      return allOptions.map(role => {
+                        const catalogAllowedRoles: string[] = settings.catalogAllowedRoles || [];
+                        const isAllowed = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(role.id);
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              let newAllowed: string[];
+                              if (catalogAllowedRoles.includes(role.id)) {
+                                newAllowed = catalogAllowedRoles.filter((r: string) => r !== role.id);
+                              } else {
+                                newAllowed = [...catalogAllowedRoles, role.id];
+                              }
+                              if (newAllowed.length === allOptions.length) newAllowed = [];
+                              updateFeatureSettings(feature.id, { ...settings, catalogAllowedRoles: newAllowed });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                              isAllowed
+                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                            )}
+                          >
+                            {role.name}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                    Báo cáo ADR — Vai trò được xem
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const allOptions = [
+                        ...roles,
+                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                      ];
+                      return allOptions.map(role => {
+                        const reportsAllowedRoles: string[] = settings.reportsAllowedRoles || [];
+                        const isAllowed = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(role.id);
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              let newAllowed: string[];
+                              if (reportsAllowedRoles.includes(role.id)) {
+                                newAllowed = reportsAllowedRoles.filter((r: string) => r !== role.id);
+                              } else {
+                                newAllowed = [...reportsAllowedRoles, role.id];
+                              }
+                              if (newAllowed.length === allOptions.length) newAllowed = [];
+                              updateFeatureSettings(feature.id, { ...settings, reportsAllowedRoles: newAllowed });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                              isAllowed
+                                ? "bg-blue-500/10 border-blue-500 text-blue-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                            )}
+                          >
+                            {role.name}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+            {feature.id === 'view_icd10' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình Gợi ý thuốc điều trị</label>
+                
+                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={cn("text-xs font-black flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Gợi ý thuốc — Vai trò được xem
+                    </p>
+                    <span className="text-[9px] font-bold text-slate-500 italic">Để trống để cho phép tất cả</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(() => {
+                      const allOptions = [
+                        ...roles,
+                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                      ];
+                      return allOptions.map(role => {
+                        const drugSuggestionsAllowedRoles: string[] = settings.drugSuggestionsAllowedRoles || [];
+                        const isAllowed = drugSuggestionsAllowedRoles.length === 0 || drugSuggestionsAllowedRoles.includes(role.id);
+                        return (
+                          <button
+                            key={role.id}
+                            onClick={() => {
+                              let newAllowed: string[];
+                              if (drugSuggestionsAllowedRoles.includes(role.id)) {
+                                newAllowed = drugSuggestionsAllowedRoles.filter((r: string) => r !== role.id);
+                              } else {
+                                newAllowed = [...drugSuggestionsAllowedRoles, role.id];
+                              }
+                              if (newAllowed.length === allOptions.length) newAllowed = [];
+                              updateFeatureSettings(feature.id, { ...settings, drugSuggestionsAllowedRoles: newAllowed });
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                              isAllowed
+                                ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                            )}
+                          >
+                            {role.name}
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Quyền truy cập theo vai trò</label>
+            <div className={cn(
+              "grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-3xl border",
+              isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
+            )}>
+              {(() => {
+                const allOptions = [
+                  ...roles,
+                  { id: 'unapproved', name: 'Chờ xác minh' },
+                  { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                ];
+                return allOptions.map(role => {
+                  const allowedRoles = settings.allowedRoles || [];
+                  const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
+                  return (
+                    <button
+                      key={role.id}
+                      onClick={() => {
+                        let newAllowed: string[];
+                        if (allowedRoles.includes(role.id)) {
+                          newAllowed = allowedRoles.filter((r: string) => r !== role.id);
+                        } else {
+                          newAllowed = [...allowedRoles, role.id];
+                        }
+                        if (newAllowed.length === allOptions.length) newAllowed = [];
+                        updateFeatureSettings(feature.id, { ...settings, allowedRoles: newAllowed });
+                      }}
+                      className={cn(
+                        "px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-center border-2",
+                        isAllowed
+                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
+                      )}
+                    >
+                      {role.name}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Cấm người dùng truy cập</label>
+              <div className="relative w-48">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Tìm người dùng..."
+                  value={userSearchTerm}
+                  onChange={(e) => setUserSearchTerm(e.target.value)}
+                  className={cn(
+                    "w-full pl-9 pr-4 py-2 rounded-xl border-none text-[10px] font-bold focus:ring-1 focus:ring-primary",
+                    isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className={cn(
+              "grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 rounded-3xl border",
+              isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
+            )}>
+              {allUsers
+                .filter(u => u.displayName.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email.toLowerCase().includes(userSearchTerm.toLowerCase()))
+                .map(user => {
+                  const isBanned = bannedUsers.includes(user.uid);
+                  return (
+                    <div 
+                      key={user.uid}
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-2xl transition-all",
+                        isBanned 
+                          ? (isDarkMode ? "bg-rose-500/10 border border-rose-500/20" : "bg-rose-50 border border-rose-100")
+                          : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
+                          isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-100 text-slate-600"
+                        )}>
+                          {user.displayName.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={cn("text-xs font-black truncate", isDarkMode ? "text-white" : "text-slate-900")}>{user.displayName}</p>
+                          <p className="text-[9px] text-slate-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const newBanned = isBanned
+                            ? bannedUsers.filter((id: string) => id !== user.uid)
+                            : [...bannedUsers, user.uid];
+                          updateFeatureSettings(feature.id, { ...settings, bannedUsers: newBanned });
+                        }}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all whitespace-nowrap",
+                          isBanned
+                            ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
+                            : "bg-slate-200 text-slate-500 hover:bg-rose-500 hover:text-white"
+                        )}
+                      >
+                        {isBanned ? 'Gỡ cấm' : 'Cấm'}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 sm:p-2 border-t flex justify-end transition-colors opacity-0 pointer-events-none h-0 p-0 overflow-hidden" />
+      </motion.div>
+    );
+  };
   const renderFeatureCard = (feature: typeof ALL_FEATURES[number]) => {
     const state = featureStates[feature.id] || 'open';
     const settings = featureSettings[feature.id] || {};
@@ -668,7 +1278,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             )}>{currentCategory.label}</h2>
           </div>
           <p className={cn(
-            "font-medium max-w-md transition-colors text-sm",
+            "font-medium transition-colors text-sm",
             isDarkMode ? "text-slate-400" : "text-slate-500"
           )}>Quản lý danh mục nhân sự và phân quyền hệ thống (Quyền quản lý & Quyền làm việc).</p>
         </div>
@@ -685,10 +1295,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               )}>
                 {[
                   { id: 'overview', label: 'Cài đặt chung' },
-                  { id: 'features', label: 'Tiện ích' },
+                  { id: 'features_main', label: 'Tính năng' },
+                  { id: 'utilities', label: 'Tiện ích' },
                   { id: 'registration', label: 'Đăng ký' },
-                  { id: 'notifications', label: 'Thông báo' },
-                  { id: 'permissions', label: 'Phân quyền' }
+                  { id: 'notifications', label: 'Thông báo' }
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -809,6 +1419,61 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </div>
                 </div>
               </div>
+              ) : (homeSubTab === 'features_main' || homeSubTab === 'utilities') ? (
+                <AnimatePresence mode="wait">
+                  {selectedFeatureForDetail ? (
+                    <div key="detail">
+                      {renderFeatureDetailContent()}
+                    </div>
+                  ) : (
+                    <motion.div
+                      key="list"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className={cn(
+                        "p-4 sm:p-8 rounded-[32px] border transition-all",
+                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                      )}
+                    >
+                      <div className="space-y-6">
+                        {featureStateGroups.map(group => {
+                          const featuresInGroup = sortedFeatures.filter(feature => {
+                            const isInCorrectTab = homeSubTab === 'features_main' 
+                              ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription'].includes(feature.id)
+                              : ['view_calendar', 'view_notes', 'view_social'].includes(feature.id);
+                            
+                            return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
+                          });
+                          return (
+                            <div key={group.id} className="space-y-3">
+                              <div className="flex items-center justify-between px-1">
+                                <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                  {group.label}
+                                </h4>
+                                <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                  {featuresInGroup.length} {homeSubTab === 'features_main' ? 'tính năng' : 'tiện ích'}
+                                </span>
+                              </div>
+                              {featuresInGroup.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                                  {featuresInGroup.map(renderFeatureCard)}
+                                </div>
+                              ) : (
+                                <div className={cn(
+                                  "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                                  isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
+                                )}>
+                                  {group.emptyText}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               ) : homeSubTab === 'registration' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className={cn(
@@ -989,7 +1654,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
                   )}>
                     <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Lịch sử thông báo</h3>
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="space-y-4">
                       {announcements.length > 0 ? (
                         announcements.map((ann) => (
                           <div key={ann.id} className={cn(
@@ -1037,120 +1702,58 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   </div>
                 </div>
-              ) : homeSubTab === 'permissions' ? (
-                renderPermissionsTable()
               ) : (
-                <div className={cn(
-                  "p-4 sm:p-8 rounded-[32px] border transition-all",
-                  isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                )}>
-                  <div className="space-y-6">
-                    {featureStateGroups.map(group => {
-                      const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
-                      return (
-                        <div key={group.id} className="space-y-3">
-                          <div className="flex items-center justify-between px-1">
-                            <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                              {group.label}
-                            </h4>
-                            <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                              {featuresInGroup.length} tiện ích
-                            </span>
-                          </div>
-                          {featuresInGroup.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                              {featuresInGroup.map(renderFeatureCard)}
+                <AnimatePresence mode="wait">
+                  {selectedFeatureForDetail ? (
+                    <div key="detail">
+                      {renderFeatureDetailContent()}
+                    </div>
+                  ) : (
+                    <motion.div
+                      key="list"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className={cn(
+                        "p-4 sm:p-8 rounded-[32px] border transition-all",
+                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                      )}
+                    >
+                      <div className="space-y-6">
+                        {featureStateGroups.map(group => {
+                          const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
+                          return (
+                            <div key={group.id} className="space-y-3">
+                              <div className="flex items-center justify-between px-1">
+                                <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                  {group.label}
+                                </h4>
+                                <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                  {featuresInGroup.length} tiện ích
+                                </span>
+                              </div>
+                              {featuresInGroup.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                                  {featuresInGroup.map(renderFeatureCard)}
+                                </div>
+                              ) : (
+                                <div className={cn(
+                                  "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                                  isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
+                                )}>
+                                  {group.emptyText}
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className={cn(
-                              "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
-                              isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
-                            )}>
-                              {group.emptyText}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               )}
               </div>
-            ) : activeCategory === 'overview' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {categories.filter(c => c.id !== 'overview' && c.id !== 'home' && c.id !== 'features').map((cat) => {
-                const items = cat.id === 'titles' ? titles : 
-                             cat.id === 'positions' ? positions : 
-                             cat.id === 'specialties' ? specialties : 
-                             cat.id === 'roles' ? roles : [];
-                
-                return (
-                  <motion.div
-                    key={cat.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    whileHover={{ y: -4 }}
-                    onClick={() => setActiveCategory(cat.id as any)}
-                    className={cn(
-                      "p-6 rounded-[32px] border-2 transition-all cursor-pointer group",
-                      isDarkMode ? "bg-slate-900/50 border-slate-800 hover:border-blue-500/50" : "bg-white border-slate-100 hover:border-blue-200 shadow-xl shadow-slate-200/30"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-6">
-                      <div className={cn("p-4 rounded-2xl", cat.bg)}>
-                        <cat.icon size={24} className={cat.color} />
-                      </div>
-                      <div className={cn(
-                        "px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest",
-                        isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500"
-                      )}>
-                        {cat.id === 'permissions' ? 'Matrix' : cat.id === 'general' ? 'Global' : `${items.length} mục`}
-                      </div>
-                    </div>
-                    
-                    <h3 className={cn("text-xl font-black tracking-tight mb-2", isDarkMode ? "text-white" : "text-slate-900")}>
-                      {cat.label}
-                    </h3>
-                    
-                    {cat.id !== 'permissions' && cat.id !== 'general' ? (
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {items.slice(0, 3).map(item => (
-                          <span key={item.id} className={cn(
-                            "px-3 py-1 rounded-lg text-[10px] font-bold",
-                            isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500"
-                          )}>
-                            {item.name}
-                          </span>
-                        ))}
-                        {items.length > 3 && (
-                          <span className={cn(
-                            "px-3 py-1 rounded-lg text-[10px] font-bold",
-                            isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500"
-                          )}>
-                            +{items.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <p className={cn("text-sm font-medium mb-6", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        {cat.id === 'permissions' 
-                          ? "Quản lý ma trận phân quyền theo vai trò và chức danh."
-                          : "Cấu hình tên ứng dụng, tiêu đề và mô tả hệ thống."}
-                      </p>
-                    )}
-
-                    <div className={cn(
-                      "flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all",
-                      isDarkMode ? "text-slate-500 group-hover:text-blue-400" : "text-slate-400 group-hover:text-blue-600"
-                    )}>
-                      Quản lý chi tiết
-                      <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ) : activeCategory === 'general' ? (
+            ) : activeCategory === 'general' ? (
             <div className={cn(
               "p-8 rounded-[32px] border transition-all space-y-8",
               isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
@@ -1161,7 +1764,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <input
                     type="text"
                     className={cn(
-                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[14px]",
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[12px]",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                     )}
                     value={editSettings.appName}
@@ -1173,7 +1776,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <input
                     type="text"
                     className={cn(
-                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[14px]",
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[12px]",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                     )}
                     value={editSettings.loginSubtitle}
@@ -1185,7 +1788,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <input
                     type="text"
                     className={cn(
-                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[14px]",
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[12px]",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                     )}
                     value={editSettings.loginTitle}
@@ -1197,7 +1800,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <AutoExpandingTextarea
                     rows={4}
                     className={cn(
-                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none resize-none text-[14px]",
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-normal outline-none resize-none text-[12px]",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                     )}
                     value={editSettings.appDescription}
@@ -1231,12 +1834,24 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <AutoExpandingTextarea
                     rows={8}
                     className={cn(
-                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none resize-none min-h-[200px] text-[14px]",
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-normal outline-none resize-none min-h-[200px] text-[12px]",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder:text-slate-700" : "bg-slate-50 border-slate-100 text-slate-900 placeholder:text-slate-300"
                     )}
                     placeholder="Nhập nội dung điều khoản sử dụng ứng dụng..."
                     value={editSettings.termsOfUse || ''}
                     onChange={(e) => setEditSettings({ ...editSettings, termsOfUse: (e.target as HTMLTextAreaElement).value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className={cn("text-xs font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>Ngày cập nhật điều khoản</label>
+                  <input
+                    type="date"
+                    className={cn(
+                      "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-normal outline-none text-[12px]",
+                      isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                    )}
+                    value={editSettings.termsUpdateDate || ''}
+                    onChange={(e) => setEditSettings({ ...editSettings, termsUpdateDate: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
@@ -1298,6 +1913,93 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   {saveSuccess ? 'Đã lưu' : 'Lưu thay đổi'}
                 </button>
               </div>
+
+              {/* Lịch sử Đăng nhập/Đăng xuất */}
+              <div className="pt-12 border-t border-slate-200 dark:border-slate-800 space-y-8">
+                <div className="flex items-center justify-between px-1">
+                  <div className="space-y-1">
+                    <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Lịch sử Đăng nhập/Đăng xuất
+                    </h3>
+                    <p className={cn("text-sm font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      Theo dõi hoạt động truy cập hệ thống (Tối đa 50 bản ghi gần nhất)
+                    </p>
+                  </div>
+                  <div className={cn(
+                    "p-4 rounded-2xl",
+                    isDarkMode ? "bg-slate-800 text-blue-400" : "bg-blue-50 text-blue-600"
+                  )}>
+                    <History size={24} />
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "rounded-3xl border overflow-hidden transition-all",
+                  isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-xl shadow-slate-200/20"
+                )}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left">
+                      <thead>
+                        <tr className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-50 text-slate-400")}>
+                          <th className="px-6 py-5 border-b border-transparent">Thời gian</th>
+                          <th className="px-6 py-5 border-b border-transparent">Người dùng</th>
+                          <th className="px-6 py-5 border-b border-transparent">Hành động</th>
+                          <th className="px-6 py-5 border-b border-transparent">Trạng thái</th>
+                        </tr>
+                      </thead>
+                      <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
+                        {authLogs.length > 0 ? authLogs.map((log) => (
+                          <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
+                            <td className="px-6 py-5 whitespace-nowrap text-[13px] font-bold text-slate-400">
+                              {new Date(log.timestamp).toLocaleString('vi-VN', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit'
+                              })}
+                            </td>
+                            <td className="px-6 py-5">
+                              <div className="flex flex-col">
+                                <span className={cn("text-sm font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                  {log.userName}
+                                </span>
+                                <span className="text-[11px] text-slate-500 font-bold tracking-tight">
+                                  {log.userEmail}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-5">
+                              <span className={cn(
+                                "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
+                                log.type === 'login' 
+                                  ? (isDarkMode ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600")
+                                  : (isDarkMode ? "bg-rose-500/10 text-rose-400" : "bg-rose-50 text-rose-600")
+                              )}>
+                                {log.type === 'login' ? <LogIn size={12} /> : <LogOut size={12} />}
+                                {log.type === 'login' ? 'Đăng nhập' : 'Đăng xuất'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-5">
+                              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-500">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Thành công
+                              </span>
+                            </td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan={4} className="px-6 py-12 text-center text-xs font-bold text-slate-400 italic">
+                              Chưa có dữ liệu lịch sử đăng nhập/đăng xuất
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : activeCategory === 'theme' ? (
             <ThemeSettings 
@@ -1309,40 +2011,92 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               saveSuccess={saveSuccess}
             />
           ) : activeCategory === 'features' ? (
-            <div className={cn(
-              "p-4 sm:p-8 rounded-[32px] border transition-all",
-              isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-            )}>
-              <div className="space-y-6">
-                {featureStateGroups.map(group => {
-                  const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
-                  return (
-                    <div key={group.id} className="space-y-3">
-                      <div className="flex items-center justify-between px-1">
-                        <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                          {group.label}
-                        </h4>
-                        <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                          {featuresInGroup.length} tiện ích
-                        </span>
-                      </div>
-                      {featuresInGroup.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                          {featuresInGroup.map(renderFeatureCard)}
-                        </div>
-                      ) : (
-                        <div className={cn(
-                          "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
-                          isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
-                        )}>
-                          {group.emptyText}
-                        </div>
-                      )}
+            <AnimatePresence mode="wait">
+              {selectedFeatureForDetail ? (
+                <div key="detail">
+                  {renderFeatureDetailContent()}
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className={cn(
+                    "flex items-center gap-2 p-1.5 rounded-2xl w-fit",
+                    isDarkMode ? "bg-slate-800" : "bg-slate-100"
+                  )}>
+                    {[
+                      { id: 'all', label: 'Tất cả' },
+                      { id: 'features_main', label: 'Tính năng' },
+                      { id: 'utilities', label: 'Tiện ích' }
+                    ].map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setFeatureCategoryFilter(cat.id as any)}
+                        className={cn(
+                          "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                          featureCategoryFilter === cat.id
+                            ? (isDarkMode ? "bg-slate-700 text-white shadow-none" : "bg-white text-blue-600 shadow-lg shadow-slate-200")
+                            : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                        )}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <motion.div
+                    key="list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className={cn(
+                      "p-4 sm:p-8 rounded-[32px] border transition-all",
+                      isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                    )}
+                  >
+                    <div className="space-y-6">
+                      {featureStateGroups.map(group => {
+                        const featuresInGroup = sortedFeatures.filter(feature => {
+                          const statusMatch = (featureStates[feature.id] || 'open') === group.id;
+                          if (!statusMatch) return false;
+
+                          if (featureCategoryFilter === 'features_main') {
+                            return ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription'].includes(feature.id);
+                          }
+                          if (featureCategoryFilter === 'utilities') {
+                            return ['view_calendar', 'view_notes', 'view_social'].includes(feature.id);
+                          }
+                          return true;
+                        });
+
+                        return (
+                          <div key={group.id} className="space-y-3">
+                            <div className="flex items-center justify-between px-1">
+                              <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                {group.label}
+                              </h4>
+                              <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                {featuresInGroup.length} mục
+                              </span>
+                            </div>
+                            {featuresInGroup.length > 0 ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                                {featuresInGroup.map(renderFeatureCard)}
+                              </div>
+                            ) : (
+                              <div className={cn(
+                                "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                                isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
+                              )}>
+                                {group.emptyText}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           ) : (
             <div className={cn(
               "p-6 rounded-[32px] border transition-all",
@@ -1356,7 +2110,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         type="text"
                         placeholder={`Thêm ${(categories.find(c => c.id === activeCategory)?.label || '').toLowerCase()} mới...`}
                         className={cn(
-                          "w-full pl-5 pr-4 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none",
+                          "w-full pl-5 pr-4 py-4 border-2 rounded-2xl focus:ring-0 focus:border-blue-500 transition-all font-bold outline-none text-[12px]",
                           isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                         )}
                         value={newItemName}
@@ -1398,7 +2152,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               <span className={cn("font-bold", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</span>
                             </div>
                             <button
-                              onClick={() => deleteItem(item.id)}
+                              onClick={() => setConfirmDelete({ isOpen: true, id: item.id, name: item.name })}
                               className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
                             >
                               <Trash2 size={18} />
@@ -1425,401 +2179,42 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             </div>
           )}
 
-          <div className={cn(
-            "p-8 rounded-[32px] border flex gap-6 items-start transition-all",
-            isDarkMode ? "bg-blue-900/10 border-blue-900/30" : "bg-blue-50 border-blue-100 shadow-sm"
-          )}>
+          {(activeCategory === 'permissions' || activeCategory === 'roles') && (
             <div className={cn(
-              "p-3 rounded-2xl",
-              isDarkMode ? "bg-blue-500/20" : "bg-white shadow-sm"
+              "p-8 rounded-[32px] border flex gap-6 items-start transition-all",
+              isDarkMode ? "bg-blue-900/10 border-blue-900/30" : "bg-blue-50 border-blue-100 shadow-sm"
             )}>
-              <Info className={isDarkMode ? "text-blue-400" : "text-blue-600"} size={24} />
+              <div className={cn(
+                "p-3 rounded-2xl",
+                isDarkMode ? "bg-blue-500/20" : "bg-white shadow-sm"
+              )}>
+                <Info className={isDarkMode ? "text-blue-400" : "text-blue-600"} size={24} />
+              </div>
+              <div>
+                <h4 className={cn("text-lg font-black tracking-tight mb-2", isDarkMode ? "text-blue-300" : "text-blue-900")}>Hướng dẫn cơ chế phân quyền</h4>
+                <p className={cn("text-sm font-medium leading-relaxed", isDarkMode ? "text-blue-400/80" : "text-blue-700/80")}>
+                  Hệ thống áp dụng mô hình phân quyền kết hợp để đảm bảo tính linh hoạt và bảo mật:
+                  <br /><span className="inline-block mt-2">• <b>Quyền quản lý (Vai trò):</b> Xác định khả năng quản trị hệ thống như quản lý người dùng, cấu hình danh mục.</span>
+                  <br /><span>• <b>Quyền làm việc (Chức danh):</b> Xác định các tính năng chuyên môn được phép sử dụng trong quy trình khám chữa bệnh.</span>
+                  <br /><span className="inline-block mt-2">Quyền hạn thực tế của một tài khoản là <b>tổng hợp (Union)</b> của cả hai loại quyền trên.</span>
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className={cn("text-lg font-black tracking-tight mb-2", isDarkMode ? "text-blue-300" : "text-blue-900")}>Hướng dẫn cơ chế phân quyền</h4>
-              <p className={cn("text-sm font-medium leading-relaxed", isDarkMode ? "text-blue-400/80" : "text-blue-700/80")}>
-                Hệ thống áp dụng mô hình phân quyền kết hợp để đảm bảo tính linh hoạt và bảo mật:
-                <br /><span className="inline-block mt-2">• <b>Quyền quản lý (Vai trò):</b> Xác định khả năng quản trị hệ thống như quản lý người dùng, cấu hình danh mục.</span>
-                <br /><span>• <b>Quyền làm việc (Chức danh):</b> Xác định các tính năng chuyên môn được phép sử dụng trong quy trình khám chữa bệnh.</span>
-                <br /><span className="inline-block mt-2">Quyền hạn thực tế của một tài khoản là <b>tổng hợp (Union)</b> của cả hai loại quyền trên.</span>
-              </p>
-            </div>
-          </div>
+          )}
         </div>
       </div>
-      {/* Feature Detail Modal */}
-      <AnimatePresence>
-        {selectedFeatureForDetail && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSelectedFeatureForDetail(null)}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={cn(
-                "relative w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
-                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-              )}
-            >
-              {(() => {
-                const feature = ALL_FEATURES.find(f => f.id === selectedFeatureForDetail);
-                if (!feature) return null;
-                const settings = featureSettings[feature.id] || {};
-                const bannedUsers = settings.bannedUsers || [];
 
-                return (
-                  <>
-                    <div className={cn(
-                      "p-8 border-b flex items-center justify-between transition-colors",
-                      isDarkMode ? "border-slate-800" : "border-slate-100"
-                    )}>
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg",
-                          isDarkMode ? "bg-slate-800" : "bg-primary shadow-primary/20"
-                        )}>
-                          <feature.icon size={24} />
-                        </div>
-                        <div>
-                          <h3 className={cn("text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                            Thiết lập: {settings.customTitle || feature.label}
-                          </h3>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">{feature.desc}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => setSelectedFeatureForDetail(null)}
-                        className={cn(
-                          "p-3 rounded-2xl transition-colors text-slate-400",
-                          isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
-                        )}
-                      >
-                        <X size={24} />
-                      </button>
-                    </div>
-
-                    <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Thứ tự hiển thị</label>
-                          <input
-                            type="number"
-                            value={settings.order || 0}
-                            onChange={(e) => {
-                              const newSettings = { ...settings, order: parseInt(e.target.value) || 0 };
-                              updateFeatureSettings(feature.id, newSettings);
-                            }}
-                            className={cn(
-                              "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all font-black text-lg",
-                              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                            )}
-                          />
-                          <p className="mt-2 text-[10px] font-medium text-slate-500">Thứ tự nhỏ hơn sẽ hiển thị trước.</p>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vị trí hiển thị</label>
-                          <div className="space-y-3">
-                            {[
-                              { id: 'sidebar', label: 'Thanh menu bên', checkedWhenVisible: true },
-                              { id: 'home_grid', label: 'Lưới trang chủ', checkedWhenVisible: true },
-                              { id: 'utilities_box', label: 'Hộp tiện ích', checkedWhenVisible: false }
-                            ].map(loc => (
-                              <label key={loc.id} className="flex items-center gap-3 cursor-pointer group">
-                                <div className="relative flex items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={loc.checkedWhenVisible
-                                      ? !(settings.hiddenLocations || []).includes(loc.id)
-                                      : (settings.hiddenLocations || []).includes(loc.id)}
-                                    onChange={(e) => {
-                                      const hidden = settings.hiddenLocations || [];
-                                      const shouldHide = loc.checkedWhenVisible ? !e.target.checked : e.target.checked;
-                                      const newHidden = shouldHide
-                                        ? [...hidden, loc.id].filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
-                                        : hidden.filter((h: string) => h !== loc.id);
-                                      updateFeatureSettings(feature.id, { ...settings, hiddenLocations: newHidden });
-                                    }}
-                                    className="peer sr-only"
-                                  />
-                                  <div className={cn(
-                                    "w-10 h-6 rounded-full transition-all peer-checked:bg-emerald-500",
-                                    isDarkMode ? "bg-slate-800" : "bg-slate-200"
-                                  )}></div>
-                                  <div className={cn(
-                                    "absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4",
-                                    isDarkMode ? "shadow-none" : "shadow-sm"
-                                  )}></div>
-                                </div>
-                                <span className={cn("text-xs font-bold transition-colors", isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-600 group-hover:text-slate-900")}>
-                                  {loc.label}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        {feature.id === 'view_directory' && (
-                          <div className="md:col-span-2 space-y-4 pt-6 border-t border-slate-100/10">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Cấu hình chi tiết nội bộ</label>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <label className="flex items-center gap-3 cursor-pointer group p-4 rounded-2xl bg-slate-800/20 border border-slate-800 hover:border-emerald-500/50 transition-all">
-                                <div className="relative flex items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={settings.showCommonIndications !== false}
-                                    onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showCommonIndications: e.target.checked })}
-                                    className="peer sr-only"
-                                  />
-                                  <div className={cn("w-10 h-6 rounded-full transition-all peer-checked:bg-emerald-500", isDarkMode ? "bg-slate-700" : "bg-slate-200")}></div>
-                                  <div className={cn("absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4", isDarkMode ? "shadow-none" : "shadow-sm")}></div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className={cn("text-[11px] font-black transition-colors", isDarkMode ? "text-slate-200 group-hover:text-white" : "text-slate-700 group-hover:text-slate-900")}>Chỉ định thường dùng</span>
-                                  <span className="text-[9px] font-medium text-slate-500">Ghim & hiển thị các chỉ định quan trọng</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 cursor-pointer group p-4 rounded-2xl bg-slate-800/20 border border-slate-800 hover:border-emerald-500/50 transition-all">
-                                <div className="relative flex items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={settings.showIcdSuggestions !== false}
-                                    onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showIcdSuggestions: e.target.checked })}
-                                    className="peer sr-only"
-                                  />
-                                  <div className={cn("w-10 h-6 rounded-full transition-all peer-checked:bg-emerald-500", isDarkMode ? "bg-slate-700" : "bg-slate-200")}></div>
-                                  <div className={cn("absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4", isDarkMode ? "shadow-none" : "shadow-sm")}></div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className={cn("text-[11px] font-black transition-colors", isDarkMode ? "text-slate-200 group-hover:text-white" : "text-slate-700 group-hover:text-slate-900")}>Gợi ý ICD-10</span>
-                                  <span className="text-[9px] font-medium text-slate-500">Hiển thị mã ICD-10 tương ứng</span>
-                                </div>
-                              </label>
-                            </div>
-                          </div>
-                        )}
-
-                        {feature.id === 'view_adr' && (
-                          <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Phân quyền theo chức năng con</label>
-                            
-                            {/* Danh mục ADR */}
-                            <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
-                              <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
-                                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                                Danh mục ADR — Vai trò được xem
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {roles.map(role => {
-                                  const catalogAllowedRoles: string[] = settings.catalogAllowedRoles || [];
-                                  const isAllowed = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(role.id);
-                                  return (
-                                    <button
-                                      key={role.id}
-                                      onClick={() => {
-                                        let newAllowed: string[];
-                                        if (catalogAllowedRoles.includes(role.id)) {
-                                          newAllowed = catalogAllowedRoles.filter((r: string) => r !== role.id);
-                                        } else {
-                                          newAllowed = [...catalogAllowedRoles, role.id];
-                                        }
-                                        if (newAllowed.length === roles.length) newAllowed = [];
-                                        updateFeatureSettings(feature.id, { ...settings, catalogAllowedRoles: newAllowed });
-                                      }}
-                                      className={cn(
-                                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                                        isAllowed
-                                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                                      )}
-                                    >
-                                      {role.name}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <p className="mt-2 text-[9px] font-medium text-slate-500 italic">Mặc định (không chọn hoặc chọn tất cả) = tất cả vai trò đều xem được.</p>
-                            </div>
-
-                            {/* Báo cáo ADR */}
-                            <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
-                              <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
-                                <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                                Báo cáo ADR — Vai trò được xem
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {roles.map(role => {
-                                  const reportsAllowedRoles: string[] = settings.reportsAllowedRoles || [];
-                                  const isAllowed = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(role.id);
-                                  return (
-                                    <button
-                                      key={role.id}
-                                      onClick={() => {
-                                        let newAllowed: string[];
-                                        if (reportsAllowedRoles.includes(role.id)) {
-                                          newAllowed = reportsAllowedRoles.filter((r: string) => r !== role.id);
-                                        } else {
-                                          newAllowed = [...reportsAllowedRoles, role.id];
-                                        }
-                                        if (newAllowed.length === roles.length) newAllowed = [];
-                                        updateFeatureSettings(feature.id, { ...settings, reportsAllowedRoles: newAllowed });
-                                      }}
-                                      className={cn(
-                                        "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                                        isAllowed
-                                          ? "bg-blue-500/10 border-blue-500 text-blue-500"
-                                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                                      )}
-                                    >
-                                      {role.name}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <p className="mt-2 text-[9px] font-medium text-slate-500 italic">Mặc định (không chọn hoặc chọn tất cả) = tất cả vai trò đều xem được.</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-4">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Quyền truy cập theo vai trò</label>
-                        <div className={cn(
-                          "grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-3xl border",
-                          isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
-                        )}>
-                          {roles.map(role => {
-                            const allowedRoles = settings.allowedRoles || [];
-                            const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
-                            return (
-                              <button
-                                key={role.id}
-                                onClick={() => {
-                                  let newAllowed: string[];
-                                  if (allowedRoles.includes(role.id)) {
-                                    newAllowed = allowedRoles.filter((r: string) => r !== role.id);
-                                  } else {
-                                    newAllowed = [...allowedRoles, role.id];
-                                  }
-                                  // If all roles are selected, effectively allowing everyone (empty array)
-                                  if (newAllowed.length === roles.length) newAllowed = [];
-                                  
-                                  updateFeatureSettings(feature.id, { ...settings, allowedRoles: newAllowed });
-                                }}
-                                className={cn(
-                                  "px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-center border-2",
-                                  isAllowed
-                                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
-                                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-white border-slate-200 text-slate-400")
-                                )}
-                              >
-                                {role.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="px-2 text-[10px] font-medium text-slate-500 italic">
-                          * Mặc định (nếu không chọn vai trò nào hoặc chọn tất cả) mọi vai trò đều có thể truy cập (nếu được cấp quyền tab).
-                          Chọn cụ thể vai trò để giới hạn quyền truy cập chỉ cho những nhóm này.
-                        </p>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Cấm người dùng truy cập</label>
-                          <div className="relative w-48">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <input
-                              type="text"
-                              placeholder="Tìm người dùng..."
-                              value={userSearchTerm}
-                              onChange={(e) => setUserSearchTerm(e.target.value)}
-                              className={cn(
-                                "w-full pl-9 pr-4 py-2 rounded-xl border-none text-[10px] font-bold focus:ring-1 focus:ring-primary",
-                                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                              )}
-                            />
-                          </div>
-                        </div>
-
-                        <div className={cn(
-                          "grid grid-cols-1 sm:grid-cols-2 gap-2 p-4 rounded-3xl border max-h-60 overflow-y-auto custom-scrollbar",
-                          isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
-                        )}>
-                          {allUsers
-                            .filter(u => u.displayName.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email.toLowerCase().includes(userSearchTerm.toLowerCase()))
-                            .map(user => {
-                              const isBanned = bannedUsers.includes(user.uid);
-                              return (
-                                <div 
-                                  key={user.uid}
-                                  className={cn(
-                                    "flex items-center justify-between p-3 rounded-2xl transition-all",
-                                    isBanned 
-                                      ? (isDarkMode ? "bg-rose-500/10 border border-rose-500/20" : "bg-rose-50 border border-rose-100")
-                                      : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
-                                  )}
-                                >
-                                  <div className="flex items-center gap-3 min-w-0">
-                                    <div className={cn(
-                                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-                                      isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-100 text-slate-600"
-                                    )}>
-                                      {user.displayName.charAt(0)}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className={cn("text-xs font-black truncate", isDarkMode ? "text-white" : "text-slate-900")}>{user.displayName}</p>
-                                      <p className="text-[9px] text-slate-500 truncate">{user.email}</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => {
-                                      const newBanned = isBanned
-                                        ? bannedUsers.filter((id: string) => id !== user.uid)
-                                        : [...bannedUsers, user.uid];
-                                      updateFeatureSettings(feature.id, { ...settings, bannedUsers: newBanned });
-                                    }}
-                                    className={cn(
-                                      "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all whitespace-nowrap",
-                                      isBanned
-                                        ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
-                                        : "bg-slate-200 text-slate-500 hover:bg-rose-500 hover:text-white"
-                                    )}
-                                  >
-                                    {isBanned ? 'Gỡ cấm' : 'Cấm'}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={cn(
-                      "p-8 border-t bg-slate-50/50 flex justify-end transition-colors",
-                      isDarkMode ? "bg-slate-800/50 border-slate-800" : "border-slate-100"
-                    )}>
-                      <button
-                        onClick={() => setSelectedFeatureForDetail(null)}
-                        className="px-8 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
-                      >
-                        Hoàn tất
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <ConfirmModal
+        isOpen={!!confirmDelete?.isOpen}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteItem(confirmDelete.id)}
+        title="Xác nhận xóa"
+        message={`Bạn có chắc chắn muốn xóa "${confirmDelete?.name}" khỏi danh sách ${categories.find(c => c.id === activeCategory)?.label.toLowerCase()} không? Hành động này không thể hoàn tác.`}
+        confirmText="Xóa mục"
+        cancelText="Hủy bỏ"
+        type="danger"
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 };

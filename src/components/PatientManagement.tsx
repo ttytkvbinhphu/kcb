@@ -431,7 +431,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
         <div className="hidden lg:block">
           <h2 className={cn("text-xl lg:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-            {canManage ? "Quản lý bệnh nhân" : "Tra cứu bệnh nhân"}
+            Tra cứu bệnh nhân
           </h2>
           <p className={cn("text-xs font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
             {canManage 

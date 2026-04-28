@@ -125,8 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, desc: 'Xem và quản lý lịch trực, hội chẩn', color: 'bg-blue-600' },
     { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, desc: 'Lưu trữ ghi chú lâm sàng cá nhân', color: 'bg-violet-600' },
     { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Báo cáo ADR', icon: AlertTriangle, desc: 'Báo cáo phản ứng có hại của thuốc', color: 'bg-rose-600' },
-    { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Quản lý bệnh nhân', icon: Users, desc: 'Quản lý hồ sơ và import dữ liệu Excel', color: 'bg-indigo-600' },
-    { id: 'view_history', label: featureSettings['view_history']?.customTitle || 'Lịch sử kê toa', icon: FileText, desc: 'Xem lại các đơn thuốc đã kê', color: 'bg-teal-600' },
+    { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Tra cứu bệnh nhân', icon: Users, desc: 'Tra cứu hồ sơ và quản lý dữ liệu bệnh nhân', color: 'bg-indigo-600' },
     { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Mạng xã hội', icon: MessageSquare, desc: 'Kết nối và trao đổi với đồng nghiệp', color: 'bg-pink-600' },
   ];
 

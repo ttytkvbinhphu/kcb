@@ -17,7 +17,7 @@ import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Se
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit } from './firebase';
+import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType } from './firebase';
 import { UserProfile, Notification, SystemSettings, Announcement } from './types';
 import { seedInitialData } from './lib/seed';
 
@@ -31,7 +31,6 @@ const ALL_TABS = [
   { id: 'view_adr', label: 'Tra cứu ADR', icon: AlertTriangle },
   { id: 'view_patients', label: 'Tra cứu bệnh nhân', icon: Users },
   { id: 'view_prescription', label: 'Kê toa thử', icon: FileText },
-  { id: 'view_history', label: 'Lịch sử kê toa', icon: History },
   { id: 'view_social', label: 'Mạng xã hội', icon: MessageSquare },
   { id: 'view_profile', label: 'Trang cá nhân', icon: Users },
   { id: 'manage_users', label: 'Quản lý người dùng', icon: Users },
@@ -40,11 +39,9 @@ const ALL_TABS = [
   { id: 'manage_icd10', label: 'Quản lý ICD-10', icon: ClipboardList },
   { id: 'manage_interaction', label: 'Quản lý tương tác thuốc', icon: ShieldAlert },
   { id: 'manage_adr', label: 'Quản lý ADR', icon: AlertTriangle },
-  { id: 'manage_patients', label: 'Quản lý bệnh nhân', icon: Users },
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
   { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutDashboard },
-  { id: 'admin_overview', label: 'Tổng quan hệ thống', icon: Activity },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
   { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award },
@@ -228,6 +225,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Error loading system settings:", error);
+      handleFirestoreError(error, OperationType.GET, 'system_settings/main');
     });
 
     if (!user) {
@@ -249,6 +247,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Error loading feature states:", error);
+      handleFirestoreError(error, OperationType.GET, 'system_config/features');
     });
 
     const unsubFeatureSettings = onSnapshot(doc(db, 'system_config', 'feature_settings'), (snapshot) => {
@@ -257,6 +256,7 @@ export default function App() {
       }
     }, (error) => {
       console.error("Error loading feature settings:", error);
+      handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
     });
     
     // Safety timeout for permissions loading
@@ -268,6 +268,7 @@ export default function App() {
       setRolePermissions(snapshot.docs.map(doc => doc.data()));
     }, (error) => {
       console.error("Error loading role permissions:", error);
+      handleFirestoreError(error, OperationType.LIST, 'role_permissions');
     });
 
     const unsubTitlePerms = onSnapshot(collection(db, 'title_permissions'), (snapshot) => {
@@ -278,6 +279,7 @@ export default function App() {
       console.error("Error loading title permissions:", error);
       setPermsLoading(false);
       clearTimeout(permsTimeout);
+      handleFirestoreError(error, OperationType.LIST, 'title_permissions');
     });
 
     // Notifications listener
@@ -291,6 +293,7 @@ export default function App() {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
     }, (error) => {
       console.error("Error loading notifications:", error);
+      handleFirestoreError(error, OperationType.LIST, 'notifications');
     });
 
     const qAnnouncements = query(
@@ -568,7 +571,24 @@ export default function App() {
     if (loginLoading) return;
     setLoginLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        // Log explicit login
+        const logId = Date.now().toString();
+        try {
+          await setDoc(doc(db, 'auth_logs', logId), {
+            id: logId,
+            userId: result.user.uid,
+            userEmail: result.user.email,
+            userName: result.user.displayName || 'Người dùng',
+            type: 'login',
+            timestamp: new Date().toISOString()
+          });
+        } catch (logError) {
+          console.warn("Failed to create auth log:", logError);
+          // Don't block login if logging fails
+        }
+      }
     } catch (error: any) {
       const errorCode = error?.code;
       const errorMessage = error?.message || '';
@@ -581,7 +601,16 @@ export default function App() {
         errorMessage.includes('auth/cancelled-popup-request');
 
       if (!isCancellation) {
-        console.error("Login error:", error);
+        console.error("Login error details:", error);
+        // If it's a Firestore error, get more details
+        if (errorCode?.includes('permission') || errorMessage.toLowerCase().includes('permission')) {
+          try {
+            handleFirestoreError(error, OperationType.WRITE, 'auth_logs');
+          } catch (detailedError) {
+             console.error("Detailed Permission Error:", detailedError.message);
+          }
+        }
+        alert("Lỗi đăng nhập: " + (errorMessage || "Lỗi không xác định"));
       }
     } finally {
       setLoginLoading(false);
@@ -589,6 +618,22 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    if (user) {
+      // Log explicit logout
+      const logId = Date.now().toString();
+      try {
+        await setDoc(doc(db, 'auth_logs', logId), {
+          id: logId,
+          userId: user.uid,
+          userEmail: user.email,
+          userName: userProfile?.displayName || user.displayName || 'Người dùng',
+          type: 'logout',
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("Logout logging failed", e);
+      }
+    }
     setIsProfileModalOpen(false);
     await auth.signOut();
   };
@@ -911,6 +956,8 @@ export default function App() {
                     <DrugDirectory 
                       canManage={false} 
                       isDarkMode={isDarkMode} 
+                      featureSettings={featureSettings['view_directory']}
+                      userRole={userProfile?.role}
                     />
                   </div>
                 )}
@@ -994,7 +1041,7 @@ export default function App() {
                 "p-6 border-t flex items-center justify-between",
                 isDarkMode ? "bg-slate-800/20 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
-                <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {new Date().toLocaleDateString('vi-VN')}</p>
+                <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {systemSettings.termsUpdateDate ? systemSettings.termsUpdateDate.split('-').reverse().join('/') : new Date().toLocaleDateString('vi-VN')}</p>
                 <button 
                   onClick={() => setGuestView('none')}
                   className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98]"
@@ -1198,12 +1245,17 @@ export default function App() {
           featureSettings={featureSettings[activeTab]}
         />;
       case 'prescription':
-        return <PrescriptionForm userProfile={userProfile} isDarkMode={isDarkMode} />;
+        return <PrescriptionForm 
+          userProfile={userProfile} 
+          isDarkMode={isDarkMode} 
+          featureSettings={featureSettings['view_icd10']}
+        />;
       case 'icd10':
         return <ICD10Management 
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
           featureSettings={featureSettings[activeTab]}
+          userRole={userProfile.role}
         />;
       case 'users':
         return <UserManagement isDarkMode={isDarkMode} />;
@@ -1227,7 +1279,8 @@ export default function App() {
           userRole={userProfile.role}
         />;
       case 'patients':
-        return <PatientManagement isDarkMode={isDarkMode} canManage={isManagementMode} />;
+        const canManagePatients = isManagementMode || ['admin', 'operator', 'operator_doctor'].includes(userProfile?.role);
+        return <PatientManagement isDarkMode={isDarkMode} canManage={canManagePatients} />;
       case 'staff':
         return <StaffManagement isDarkMode={isDarkMode} canManage={isManagementMode} />;
       case 'social':
@@ -1237,6 +1290,7 @@ export default function App() {
           isDarkMode={isDarkMode} 
           onBack={() => setActiveTab('dashboard')}
           initialTab="feed"
+          featureSettings={featureSettings['view_social']}
           onSyncProfile={async () => {
             if (auth.currentUser) {
               try {
@@ -1272,6 +1326,7 @@ export default function App() {
           isDarkMode={isDarkMode} 
           onBack={() => setActiveTab('dashboard')}
           initialTab="profile"
+          featureSettings={featureSettings['view_social']}
           onSyncProfile={async () => {
             if (auth.currentUser) {
               try {
@@ -1547,7 +1602,7 @@ export default function App() {
                         <X size={16} className="text-slate-400" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
+                    <div className="grid grid-cols-2 gap-2 p-1">
                       {(() => {
                         const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
                         return ALL_TABS.filter(t => {
@@ -1921,7 +1976,7 @@ export default function App() {
                         <X size={14} className="text-slate-400" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 max-h-[400px] overflow-y-auto custom-scrollbar p-1">
+                    <div className="grid grid-cols-3 gap-2 p-1">
                       {(() => {
                         const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
                         return ALL_TABS.filter(t => {
@@ -2183,7 +2238,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="p-3 lg:p-6">
+        <div className="p-3 lg:px-6 lg:pb-6 lg:pt-0">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -2205,7 +2260,10 @@ export default function App() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => setIsProfileModalOpen(false)}
+                onClick={() => {
+                  setIsProfileModalOpen(false);
+                  if (guestView === 'terms') setGuestView('none');
+                }}
                 className={cn(
                   "absolute inset-0 bg-slate-900/60 pointer-events-auto",
                   guestView === 'terms' ? "" : "backdrop-blur-sm"
@@ -2237,7 +2295,10 @@ export default function App() {
                     <h3 className="text-lg font-black tracking-tight">Cài đặt</h3>
                   </div>
                   <button 
-                    onClick={() => setIsProfileModalOpen(false)} 
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      if (guestView === 'terms') setGuestView('none');
+                    }} 
                     className={cn(
                       "p-2 rounded-xl transition-colors",
                       isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-200"
@@ -2528,6 +2589,8 @@ export default function App() {
                     <DrugDirectory 
                       canManage={false} 
                       isDarkMode={isDarkMode} 
+                      featureSettings={featureSettings['view_directory']}
+                      userRole={userProfile?.role}
                     />
                   </div>
                 )}
@@ -2614,7 +2677,7 @@ export default function App() {
                 "p-6 border-t flex items-center justify-between",
                 isDarkMode ? "bg-slate-800/20 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
-                <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {new Date().toLocaleDateString('vi-VN')}</p>
+                <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {systemSettings.termsUpdateDate ? systemSettings.termsUpdateDate.split('-').reverse().join('/') : new Date().toLocaleDateString('vi-VN')}</p>
                 <button 
                   onClick={() => setGuestView('none')}
                   className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98]"

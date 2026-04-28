@@ -427,6 +427,18 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "description": { "type": "string" },
+        "categoryId": { "type": "string", "description": "ID phân loại tá dược" }
+      },
+      "required": ["id", "name"]
+    },
+    "ExcipientCategory": {
+      "title": "ExcipientCategory",
+      "description": "Danh mục phân loại tá dược.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
         "description": { "type": "string" }
       },
       "required": ["id", "name"]
@@ -545,6 +557,10 @@
       "schema": "RegistrationSettings",
       "description": "Cấu hình đăng ký tài khoản."
     },
+    "/auth_logs/{logId}": {
+      "schema": "AuthLog",
+      "description": "Lịch sử đăng nhập và đăng xuất của người dùng."
+    },
     "/ingredients/{id}": {
       "schema": "Ingredient",
       "description": "Danh mục hoạt chất."
@@ -556,6 +572,10 @@
     "/excipients/{id}": {
       "schema": "Excipient",
       "description": "Danh mục tá dược."
+    },
+    "/excipient_categories/{id}": {
+      "schema": "ExcipientCategory",
+      "description": "Danh mục phân loại tá dược."
     }
   }
 }

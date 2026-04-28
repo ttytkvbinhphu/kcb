@@ -7,14 +7,24 @@ import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
 
 interface CatalogManagementProps {
-  type: 'ingredient' | 'excipient' | 'ingredient_category';
+  type: 'ingredient' | 'excipient' | 'ingredient_category' | 'excipient_category';
   isDarkMode: boolean;
   onClose: () => void;
+  inline?: boolean;
 }
 
-const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode, onClose }) => {
-  const collectionName = type === 'ingredient' ? 'ingredients' : type === 'excipient' ? 'excipients' : 'ingredient_categories';
-  const label = type === 'ingredient' ? 'Hoạt chất' : type === 'excipient' ? 'Tá dược' : 'Phân loại hoạt chất';
+const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode, onClose, inline = false }) => {
+  const collectionName = 
+    type === 'ingredient' ? 'ingredients' : 
+    type === 'excipient' ? 'excipients' : 
+    type === 'ingredient_category' ? 'ingredient_categories' :
+    'excipient_categories';
+
+  const label = 
+    type === 'ingredient' ? 'Hoạt chất' : 
+    type === 'excipient' ? 'Tá dược' : 
+    type === 'ingredient_category' ? 'Phân loại hoạt chất' :
+    'Phân loại tá dược';
   
   const [items, setItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -37,7 +47,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
       setItems(data);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, collectionName);
+      console.error(`Error fetching ${collectionName}:`, error);
+      setLoading(false);
+      // Don't throw for list errors to avoid crashing the UI
     });
 
     return () => unsubscribe();
@@ -48,6 +60,16 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
       const q = query(collection(db, 'ingredient_categories'), orderBy('name'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         setCategories(snapshot.docs.map(doc => doc.data()));
+      }, (error) => {
+        console.error("Error fetching ingredient categories:", error);
+      });
+      return () => unsubscribe();
+    } else if (type === 'excipient') {
+      const q = query(collection(db, 'excipient_categories'), orderBy('name'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setCategories(snapshot.docs.map(doc => doc.data()));
+      }, (error) => {
+        console.error("Error fetching excipient categories:", error);
       });
       return () => unsubscribe();
     }
@@ -73,13 +95,28 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
     e.preventDefault();
     if (!formData.name) return;
 
+    const id = formData.id || Math.random().toString(36).substring(2, 11);
+
     try {
-      const id = formData.id || Math.random().toString(36).substr(2, 9);
-      await setDoc(doc(db, collectionName, id), { ...formData, id });
+      // Clean up data to satisfy firestore rules
+      const saveData: any = { 
+        id, 
+        name: formData.name.trim()
+      };
+      
+      if (formData.description && formData.description.trim()) {
+        saveData.description = formData.description.trim();
+      }
+      
+      if ((type === 'ingredient' || type === 'excipient') && formData.categoryId) {
+        saveData.categoryId = formData.categoryId;
+      }
+
+      await setDoc(doc(db, collectionName, id), saveData);
       setIsModalOpen(false);
     } catch (error) {
       console.error(`Error saving ${type}:`, error);
-      alert(`Lỗi khi lưu ${label.toLowerCase()}.`);
+      handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${id}`);
     }
   };
 
@@ -92,9 +129,11 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
     if (!confirmData) return;
     try {
       await deleteDoc(doc(db, collectionName, confirmData.id));
+      setIsConfirmOpen(false);
+      setConfirmData(null);
     } catch (error) {
       console.error(`Error deleting ${type}:`, error);
-      alert(`Lỗi khi xóa ${label.toLowerCase()}.`);
+      handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${confirmData.id}`);
     }
   };
 
@@ -102,36 +141,38 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
     (item.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className={cn(
-          "w-full h-full sm:h-auto sm:max-w-2xl sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col sm:max-h-[85vh]",
-          isDarkMode ? "bg-slate-950 border border-slate-800" : "bg-slate-50"
-        )}
-      >
-        <div className={cn(
-          "p-4 sm:p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4",
-          isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"
-        )}>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-1.5 sm:p-2 bg-indigo-600 rounded-lg sm:rounded-xl text-white">
-              <Database className="w-5 h-5 sm:w-6 sm:h-6" />
-            </div>
-            <div>
-              <h3 className={cn("text-lg sm:text-xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>Quản lý {label}</h3>
-              <p className="text-[10px] sm:text-xs text-slate-500 font-medium">Tổng cộng: {items.length} mục</p>
-            </div>
+  const content = (
+    <motion.div 
+      initial={inline ? false : { opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={cn(
+        inline 
+          ? "w-full h-full min-h-[600px] flex flex-col" 
+          : "w-full h-full sm:h-auto sm:max-w-2xl sm:rounded-[32px] shadow-2xl overflow-hidden flex flex-col sm:max-h-[85vh]",
+        isDarkMode ? "bg-slate-950 border border-slate-800" : "bg-slate-50"
+      )}
+    >
+      <div className={cn(
+        "p-4 sm:p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+        isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"
+      )}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="p-1.5 sm:p-2 bg-indigo-600 rounded-lg sm:rounded-xl text-white">
+            <Database className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button 
-              onClick={() => handleOpenModal()}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
-            >
-              <Plus size={16} /> Thêm mới
-            </button>
+          <div>
+            <h3 className={cn("text-lg sm:text-xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>Quản lý {label}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-500 font-medium">Tổng cộng: {items.length} mục</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button 
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
+          >
+            <Plus size={16} /> Thêm mới
+          </button>
+          {!inline && (
             <button 
               onClick={onClose}
               className={cn(
@@ -141,87 +182,99 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
             >
               <X size={20} />
             </button>
-          </div>
-        </div>
-
-        <div className={cn(
-          "p-4 border-b",
-          isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white/50"
-        )}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-              type="text"
-              placeholder={`Tìm kiếm ${label.toLowerCase()}...`}
-              className={cn(
-                "w-full pl-10 pr-4 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
-                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
-              )}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 sm:p-6 custom-scrollbar">
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-            </div>
-          ) : filteredItems.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {filteredItems.map(item => (
-                <div key={item.id} className={cn(
-                  "p-4 rounded-2xl border transition-all group relative",
-                  isDarkMode ? "bg-slate-900 border-slate-800 hover:border-indigo-900/50" : "bg-white border-slate-100 hover:border-indigo-200 shadow-sm"
-                )}>
-                   <div className="flex justify-between items-start">
-                    <div className="flex-1 overflow-hidden pr-8">
-                       <h4 className={cn("font-bold text-sm truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</h4>
-                       {type === 'ingredient' && item.categoryId && (
-                         <div className={cn(
-                           "inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider mb-1",
-                           isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
-                         )}>
-                           {categories.find(c => c.id === item.categoryId)?.name || 'Chưa phân loại'}
-                         </div>
-                       )}
-                       {item.description && (
-                         <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
-                       )}
-                    </div>
-                    <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                       <button 
-                        onClick={() => handleOpenModal(item)}
-                        className={cn(
-                          "p-1.5 rounded-lg transition-colors",
-                          isDarkMode ? "text-slate-400 hover:text-indigo-400 hover:bg-indigo-900/30" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                        )}
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(item.id, item.name)}
-                        className={cn(
-                          "p-1.5 rounded-lg transition-colors",
-                          isDarkMode ? "text-slate-400 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                        )}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-20">
-              <Database size={48} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-500 font-bold">Không tìm thấy {label.toLowerCase()} nào</p>
-            </div>
           )}
         </div>
-      </motion.div>
+      </div>
+
+      <div className={cn(
+        "p-4 border-b",
+        isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white/50"
+      )}>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input 
+            type="text"
+            placeholder={`Tìm kiếm ${label.toLowerCase()}...`}
+            className={cn(
+              "w-full pl-10 pr-4 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
+              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+            )}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 custom-scrollbar">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          </div>
+        ) : filteredItems.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {filteredItems.map(item => (
+              <div key={item.id} className={cn(
+                "p-4 rounded-2xl border transition-all group relative",
+                isDarkMode ? "bg-slate-900 border-slate-800 hover:border-indigo-900/50" : "bg-white border-slate-100 hover:border-indigo-200 shadow-sm"
+              )}>
+                 <div className="flex justify-between items-start">
+                  <div className="flex-1 overflow-hidden pr-8">
+                     <h4 className={cn("font-bold text-sm truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</h4>
+                     {(type === 'ingredient' || type === 'excipient') && item.categoryId && (
+                       <div className={cn(
+                         "inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider mb-1",
+                         isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
+                       )}>
+                         {categories.find(c => c.id === item.categoryId)?.name || 'Chưa phân loại'}
+                       </div>
+                     )}
+                     {item.description && (
+                       <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
+                     )}
+                  </div>
+                  <div className="absolute right-3 top-3 flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button 
+                      onClick={() => handleOpenModal(item)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
+                        isDarkMode ? "text-slate-400 hover:text-indigo-400 hover:bg-indigo-900/30" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                      )}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(item.id, item.name)}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
+                        isDarkMode ? "text-slate-400 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                      )}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                 </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20">
+            <Database size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 font-bold">Không tìm thấy {label.toLowerCase()} nào</p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+
+  return (
+    <>
+      {inline ? (
+        content
+      ) : (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+          {content}
+        </div>
+      )}
 
       <AnimatePresence>
         {isModalOpen && (
@@ -265,9 +318,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                     />
                   </div>
 
-                  {type === 'ingredient' && (
+                  {(type === 'ingredient' || type === 'excipient') && (
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Phân loại hoạt chất</label>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Phân loại {type === 'ingredient' ? 'hoạt chất' : 'tá dược'}</label>
                       <select
                         className={cn(
                           "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm appearance-none",
@@ -338,7 +391,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
         confirmText="Xác nhận xóa"
         isDarkMode={isDarkMode}
       />
-    </div>
+    </>
   );
 };
 

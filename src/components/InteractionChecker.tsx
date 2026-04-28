@@ -79,6 +79,9 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
   useEffect(() => {
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       setDrugs(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Drug)));
+    }, (error) => {
+      console.error("Error fetching drugs for interaction check:", error);
+      handleFirestoreError(error, OperationType.LIST, 'drugs');
     });
 
     const unsubscribeManual = onSnapshot(query(collection(db, 'manual_interactions'), orderBy('updatedAt', 'desc')), (snapshot) => {

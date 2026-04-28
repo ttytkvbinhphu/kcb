@@ -468,15 +468,17 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                 <Plus size={18} /> <span className="hidden xl:inline">Thêm danh mục</span>
               </button>
             )}
-            <button
-              onClick={() => handleOpenModal()}
-              className={cn(
-                "flex items-center justify-center gap-2 px-4 lg:px-6 py-2 lg:py-3 bg-blue-600 text-white rounded-lg lg:rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap text-xs lg:text-sm",
-                isDarkMode ? "shadow-none" : "shadow-lg shadow-blue-100"
-              )}
-            >
-              <Plus size={18} /> <span className="hidden sm:inline">Báo cáo mới</span><span className="sm:hidden">Báo cáo</span>
-            </button>
+            {activeSubTab === 'reports' && (
+              <button
+                onClick={() => handleOpenModal()}
+                className={cn(
+                  "flex items-center justify-center gap-2 px-4 lg:px-6 py-2 lg:py-3 bg-blue-600 text-white rounded-lg lg:rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap text-xs lg:text-sm",
+                  isDarkMode ? "shadow-none" : "shadow-lg shadow-blue-100"
+                )}
+              >
+                <Plus size={18} /> <span className="hidden sm:inline">Báo cáo mới</span><span className="sm:hidden">Báo cáo</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

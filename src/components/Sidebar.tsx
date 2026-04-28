@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { Reorder } from 'motion/react';
 
@@ -64,14 +64,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
       { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
       { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Tra cứu ADR', icon: AlertTriangle, section: 'member', group: 'general' },
-      { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Tra cứu bệnh nhân', icon: Users, section: 'member', group: 'general' },
       { id: 'view_prescription', label: featureSettings['view_prescription']?.customTitle || 'Kê toa thử', icon: FileText, section: 'member', group: 'general' },
-      { id: 'view_history', label: featureSettings['view_history']?.customTitle || 'Lịch sử kê toa', icon: History, section: 'member', group: 'general' },
       { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Mạng xã hội', icon: MessageSquare, section: 'member', group: 'general' },
       
       { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutGrid, section: 'admin', group: 'admin' },
-      { id: 'admin_overview', label: 'Tổng quan hệ thống', icon: Activity, section: 'admin', group: 'admin' },
       { id: 'admin_general', label: 'Cài đặt chung', icon: Globe, section: 'admin', group: 'admin' },
+      { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
       { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award, section: 'admin', group: 'admin' },
       { id: 'admin_positions', label: 'Quản lý Chức vụ', icon: Briefcase, section: 'admin', group: 'admin' },
       { id: 'admin_specialties', label: 'Quản lý Chuyên khoa', icon: GraduationCap, section: 'admin', group: 'admin' },
@@ -84,7 +82,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'member', group: 'pharmacy' },
       { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'pharmacy' },
       { id: 'manage_adr', label: featureSettings['manage_adr']?.customTitle || 'Quản lý ADR', icon: AlertTriangle, section: 'member', group: 'pharmacy' },
-      { id: 'manage_patients', label: featureSettings['manage_patients']?.customTitle || 'Quản lý bệnh nhân', icon: Users, section: 'admin', group: 'admin' },
     ];
 
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);

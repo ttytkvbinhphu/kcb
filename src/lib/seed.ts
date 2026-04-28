@@ -1,4 +1,4 @@
-import { db, collection, getDocs, setDoc, doc, getDoc } from '../firebase';
+import { db, collection, getDocs, setDoc, doc, getDoc, updateDoc } from '../firebase';
 const MOCK_DRUGS = [
   {
     id: '1',
@@ -67,6 +67,39 @@ const MOCK_DRUGS = [
   }
 ];
 
+const MOCK_ADR_CATALOG = [
+  {
+    id: 'adr_cat_1',
+    reactionName: 'Mề đay, phát ban do thuốc',
+    description: 'Phản ứng dị ứng thường gặp nhất, xuất hiện sau khi dùng thuốc từ vài phút đến vài ngày.',
+    commonDrugs: ['Amoxicillin', 'Cefalexin', 'Ibuprofen'],
+    severityLevel: 'Nhẹ',
+    management: 'Ngừng thuốc ngay lập tức. Sử dụng thuốc kháng Histamin. Theo dõi sát các dấu hiệu chuyển nặng.',
+    category: 'Phản ứng ngoài da',
+    sortOrder: 0
+  },
+  {
+    id: 'adr_cat_2',
+    reactionName: 'Sốc phản vệ',
+    description: 'Phản ứng dị ứng nghiêm trọng, đe dọa tính mạng, diễn biến rất nhanh.',
+    commonDrugs: ['Penicillin', 'Ceftriaxone', 'Vacxin'],
+    severityLevel: 'Nghiêm trọng',
+    management: 'Cấp cứu theo phác đồ sốc phản vệ của Bộ Y tế. Tiêm Adrenaline là thuốc tiên quyết.',
+    category: 'Phản ứng phản vệ & Sốc phản vệ',
+    sortOrder: 1
+  },
+  {
+    id: 'adr_cat_3',
+    reactionName: 'Viêm gan do thuốc',
+    description: 'Tình trạng tổn thương tế bào gan do thuốc hoặc chuyển hóa của thuốc tại gan.',
+    commonDrugs: ['Paracetamol (liều cao)', 'Isoniazid', 'Rifampicin'],
+    severityLevel: 'Nặng',
+    management: 'Ngừng thuốc nghi ngờ. Sử dụng các thuốc giải độc gan (như N-acetylcysteine cho Paracetamol).',
+    category: 'Rối loạn chức năng gan',
+    sortOrder: 2
+  }
+];
+
 export const seedInitialData = async () => {
   try {
     // Seed drugs
@@ -75,6 +108,42 @@ export const seedInitialData = async () => {
     if (drugsSnap.empty) {
       for (const drug of MOCK_DRUGS) {
         await setDoc(doc(db, 'drugs', drug.id), drug);
+      }
+    }
+
+    // Seed ADR Catalog
+    const adrCatRef = collection(db, 'adr_catalog');
+    const adrCatSnap = await getDocs(adrCatRef);
+    if (adrCatSnap.empty) {
+      for (const item of MOCK_ADR_CATALOG) {
+        await setDoc(doc(db, 'adr_catalog', item.id), item);
+      }
+    }
+
+    // Seed ADR Reports and migration
+    const adrReportsRef = collection(db, 'adr_reports');
+    const adrReportsSnap = await getDocs(adrReportsRef);
+    if (adrReportsSnap.empty) {
+      const mockReports = [
+        {
+          id: 'adr_report_1',
+          patientInitials: 'NGUYỄN VĂN A',
+          patientAge: 45,
+          patientGender: 'Nam',
+          drugId: '2',
+          drugName: 'Amoxicillin',
+          reactionDescription: 'Nổi mẩn đỏ toàn thân sau khi uống thuốc 30 phút, ngứa nhiều.',
+          severity: 'Trung bình',
+          outcome: 'Hồi phục',
+          reporterName: 'Admin',
+          reporterUid: 'system',
+          reportedAt: new Date().toISOString(),
+          status: 'Đã hoàn thành',
+          notes: 'Đã xử trí bằng kháng histamin, bệnh nhân ổn định.'
+        }
+      ];
+      for (const report of mockReports) {
+        await setDoc(doc(db, 'adr_reports', report.id), report);
       }
     }
 
@@ -143,7 +212,7 @@ export const seedInitialData = async () => {
     const titlePermsSnap = await getDocs(titlePermsRef);
     if (titlePermsSnap.empty) {
       const defaultTitlePerms = [
-        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_history', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
+        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
         { titleId: 'Dược sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
         { titleId: 'Điều dưỡng', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_patients'] }
       ];
@@ -168,17 +237,10 @@ export const seedInitialData = async () => {
       }
     }
 
-    // Seed system settings if empty
+    // Seed system settings if the document does not exist or missing critical fields
     const settingsRef = doc(db, 'system_settings', 'main');
     const settingsSnap = await getDoc(settingsRef);
-    if (!settingsSnap.exists()) {
-      await setDoc(settingsRef, {
-        appName: 'KCB Bình Phú',
-        loginTitle: 'Hệ thống Quản lý KCB',
-        loginSubtitle: 'Phòng khám Đa khoa Bình Phú',
-        appDescription: 'Hệ thống hỗ trợ quyết định lâm sàng và quản lý dược lý hiện đại dành cho nhân viên y tế tại KCB Bình Phú.',
-        defaultTheme: 'light',
-        termsOfUse: `# PHẦN A: QUY ĐỊNH CHUNG
+    const defaultTerms = `# PHẦN A: QUY ĐỊNH CHUNG
 
 ## Điều 1: Phạm vi điều chỉnh
 > Ứng dụng này được thiết kế dành riêng cho nhân viên y tế tại KCB Bình Phú để hỗ trợ công tác chuyên môn.
@@ -201,8 +263,34 @@ export const seedInitialData = async () => {
 
 ## Điều 4: Quyền lợi
 * Được sử dụng toàn bộ các tính năng hỗ trợ quyết định lâm sàng (CDSS) được cấu hình cho chức danh.
-* Dữ liệu thuốc và phác đồ được cập nhật liên tục từ các nguồn tin cậy.`
-      });
+* Dữ liệu thuốc và phác đồ được cập nhật liên tục từ các nguồn tin cậy.`;
+
+    const defaultSettings = {
+      appName: 'KCB Bình Phú',
+      loginTitle: 'Hệ thống Quản lý KCB',
+      loginSubtitle: 'Phòng khám Đa khoa Bình Phú',
+      appDescription: 'Hệ thống hỗ trợ quyết định lâm sàng và quản lý dược lý hiện đại dành cho nhân viên y tế tại KCB Bình Phú.',
+      defaultTheme: 'light',
+      termsOfUse: defaultTerms
+    };
+
+    if (!settingsSnap.exists()) {
+      await setDoc(settingsRef, defaultSettings);
+    } else {
+      const data = settingsSnap.data();
+      const missingFields: Record<string, any> = {};
+      
+      // Force termsOfUse if missing or placeholder (like "New App")
+      if (!data.termsOfUse || data.termsOfUse.length < 50) {
+        missingFields.termsOfUse = defaultTerms;
+      }
+      if (!data.appName) missingFields.appName = defaultSettings.appName;
+      if (!data.loginTitle) missingFields.loginTitle = defaultSettings.loginTitle;
+      if (!data.loginSubtitle) missingFields.loginSubtitle = defaultSettings.loginSubtitle;
+      
+      if (Object.keys(missingFields).length > 0) {
+        await updateDoc(settingsRef, missingFields);
+      }
     }
 
     // One-time migration: set default utilities box visibility for key features

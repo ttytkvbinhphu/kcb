@@ -6,7 +6,7 @@ export interface Drug {
   dosageForm: string;
   excipients?: string;
   manufacturer: string;
-  indications: { content: string; icd10s?: string[]; isPrimary?: boolean }[];
+  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean }[];
   contraindications: { content: string; type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other' }[];
   sideEffects: string[] | { frequency: string; content: string }[];
   category: string;
@@ -72,6 +72,7 @@ export interface Prescription {
   patientAge: number;
   patientGender: 'Nam' | 'Nữ';
   diagnosis: string;
+  icd10Code?: string;
   items: PrescriptionItem[];
   createdAt: string;
   doctorName: string;
@@ -98,7 +99,6 @@ export interface UserProfile {
 export interface ICD10 {
   code: string;
   description: string;
-  commonDrugs?: string[]; // Suggested drugs for this diagnosis
 }
 
 export interface InteractionResult {
@@ -403,6 +403,15 @@ export interface Announcement {
   targetTitles?: string[];
 }
 
+export interface AuthLog {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  type: 'login' | 'logout';
+  timestamp: string;
+}
+
 export interface SystemSettings {
   appName: string;
   loginTitle: string;
@@ -416,4 +425,5 @@ export interface SystemSettings {
   loginPrimaryColor?: string;
   loginCardGlassMode?: boolean;
   termsOfUse?: string;
+  termsUpdateDate?: string;
 }

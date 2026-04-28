@@ -34,6 +34,9 @@ service cloud.firestore {
     // Fields: id, name, description
     //
     // Collection: excipients
+    // Fields: id, name, description, categoryId
+    //
+    // Collection: excipient_categories
     // Fields: id, name, description
     //
     // Collection: system_settings
@@ -64,16 +67,20 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (request.auth.token.email == "ttytkvbinhphu@gmail.com" ||
-         request.auth.token.get('email', '') == "ttytkvbinhphu@gmail.com" ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'));
+        (request.auth.token.email == "ttytkvbinhphu@gmail.com" || (
+          request.auth.token.email_verified == true &&
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'
+        ));
     }
 
     function isOperator() {
-      return isAuthenticated() && (isAdmin() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist']));
+      return isAuthenticated() && 
+        (isAdmin() || (
+          request.auth.token.email_verified == true &&
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist']
+        ));
     }
 
     function isMember() {
@@ -258,8 +265,16 @@ service cloud.firestore {
       return (!('appName' in data) || (data.appName is string && data.appName.size() < 100)) &&
              (!('loginTitle' in data) || (data.loginTitle is string && data.loginTitle.size() < 200)) &&
              (!('loginSubtitle' in data) || (data.loginSubtitle is string && data.loginSubtitle.size() < 200)) &&
-             (!('appDescription' in data) || (data.appDescription is string && data.appDescription.size() < 2000)) &&
-             (!('defaultTheme' in data) || (data.defaultTheme in ['light', 'dark']));
+             (!('appDescription' in data) || (data.appDescription is string && data.appDescription.size() < 5000)) &&
+             (!('defaultTheme' in data) || (data.defaultTheme in ['light', 'dark'])) &&
+             (!('loginLogoUrl' in data) || (data.loginLogoUrl is string && data.loginLogoUrl.size() < 1000)) &&
+             (!('loginBgUrl' in data) || (data.loginBgUrl is string && data.loginBgUrl.size() < 1000)) &&
+             (!('loginBgBlur' in data) || (data.loginBgBlur is number)) &&
+             (!('loginBgOpacity' in data) || (data.loginBgOpacity is number)) &&
+             (!('loginPrimaryColor' in data) || (data.loginPrimaryColor is string)) &&
+             (!('loginCardGlassMode' in data) || (data.loginCardGlassMode is bool)) &&
+             (!('termsOfUse' in data) || (data.termsOfUse is string && data.termsOfUse.size() < 10000)) &&
+             (!('termsUpdateDate' in data) || (data.termsUpdateDate is string));
     }
 
     function isValidSocialPost(data) {
@@ -307,9 +322,24 @@ service cloud.firestore {
              (!('defaultTitleId' in data) || data.defaultTitleId is string);
     }
 
+    function isValidAuthLog(data) {
+      return hasRequiredFields(['id', 'userId', 'userEmail', 'userName', 'type', 'timestamp']) &&
+             data.id is string &&
+             data.userId == request.auth.uid &&
+             // Relax email check for better reliability across different providers/auth states
+             (data.userEmail == request.auth.token.email || !('email' in request.auth.token)) &&
+             data.type in ['login', 'logout'] &&
+             isValidDateString(data.timestamp);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
+
+    match /auth_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidAuthLog(request.resource.data);
+    }
 
     // Drugs: Publicly readable, writable only by operators/admins
     match /drugs/{drugId} {
@@ -338,21 +368,23 @@ service cloud.firestore {
     }
 
     match /ingredients/{id} {
-      allow read: if isAuthenticated();
-      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
-      allow delete: if isOperator();
+      allow read: if true;
+      allow write: if isOperator();
     }
 
     match /ingredient_categories/{id} {
-      allow read: if isAuthenticated();
-      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
-      allow delete: if isOperator();
+      allow read: if true;
+      allow write: if isOperator();
     }
 
     match /excipients/{id} {
-      allow read: if isAuthenticated();
-      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
-      allow delete: if isOperator();
+      allow read: if true;
+      allow write: if isOperator();
+    }
+
+    match /excipient_categories/{id} {
+      allow read: if true;
+      allow write: if isOperator();
     }
 
     // Prescriptions: Operators can create and read their own prescriptions. Admins can read all.

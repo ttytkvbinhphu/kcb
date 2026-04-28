@@ -40,6 +40,7 @@ interface SocialWallProps {
   onBack?: () => void;
   initialTab?: 'feed' | 'profile';
   onSyncProfile?: () => Promise<void>;
+  featureSettings?: any;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -66,7 +67,7 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
-const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile }) => {
+const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {} }) => {
   const [activeSubTab, setActiveSubTab] = useState<'feed' | 'profile'>(initialTab);
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
@@ -106,6 +107,19 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   
+  const isBanned = (featureSettings.bannedUsers || []).includes(userProfile.uid);
+  const canPost = !isBanned && (
+    (featureSettings.postingAllowedRoles || []).length === 0 || 
+    (featureSettings.postingAllowedRoles || []).includes(userProfile.role) ||
+    userProfile.role === 'admin'
+  );
+  const canComment = !isBanned && (
+    (featureSettings.commentingAllowedRoles || []).length === 0 || 
+    (featureSettings.commentingAllowedRoles || []).includes(userProfile.role) ||
+    userProfile.role === 'admin'
+  );
+  const isModerator = (featureSettings.moderatorRoles || []).includes(userProfile.role) || userProfile.role === 'admin';
+
   useEffect(() => {
     if (isEditingProfile) {
       setEditName(userProfile.displayName || '');
@@ -130,6 +144,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     const q = query(collection(db, 'social_posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
+    }, (error) => {
+      console.error("Error fetching social posts:", error);
+      // We don't use handleFirestoreError here to avoid blocking the whole Social Wall if rules are still propagating
     });
 
     const likesUnsub = onSnapshot(collection(db, 'social_likes'), (snapshot) => {
@@ -141,10 +158,14 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         }
       });
       setUserLikes(likes);
+    }, (error) => {
+      console.error("Error fetching social likes:", error);
     });
 
     const usersUnsub = onSnapshot(collection(db, 'users'), (snapshot) => {
       setAllUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
+    }, (error) => {
+      console.error("Error fetching users for social wall:", error);
     });
 
     return () => {
@@ -331,7 +352,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
             </div>
           </div>
         </div>
-        {(post.authorUid === userProfile.uid || userProfile.role === 'admin') && (
+        {(post.authorUid === userProfile.uid || isModerator) && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {post.authorUid === userProfile.uid && (
               <button 
@@ -435,6 +456,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
               commentId: commentId 
             })}
             allUsers={allUsers}
+            canComment={canComment}
+            isModerator={isModerator}
           />
         )}
       </AnimatePresence>
@@ -483,74 +506,96 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 className="space-y-6"
               >
                 {/* Create Post */}
-                <div className={cn(
-                  "p-6 rounded-[32px] border shadow-sm",
-                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                )}>
-                  <div className="flex gap-4">
-                    <div className={cn(
-                      "w-12 h-12 rounded-2xl border flex items-center justify-center overflow-hidden shrink-0",
-                      isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white shadow-sm"
-                    )}>
-                      {userProfile.photoURL ? (
-                        <img src={userProfile.photoURL} alt={userProfile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <User size={24} className={isDarkMode ? "text-slate-600" : "text-slate-300"} />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-4">
-                      <AutoExpandingTextarea
-                        value={newPostContent}
-                        onChange={(e) => setNewPostContent((e.target as HTMLTextAreaElement).value)}
-                        placeholder="Bạn đang nghĩ gì? Chia sẻ kiến thức chuyên môn..."
-                        className={cn(
-                          "w-full p-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all resize-none font-medium text-sm",
-                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                {isBanned ? (
+                  <div className={cn(
+                    "p-8 rounded-[32px] border text-center space-y-3",
+                    isDarkMode ? "bg-rose-900/10 border-rose-900/30" : "bg-rose-50 border-rose-100"
+                  )}>
+                    <Shield size={32} className="mx-auto text-rose-500 mb-2" />
+                    <p className={cn("text-sm font-black", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                      Tài khoản của bạn đã bị hạn chế tham gia Mạng xã hội.
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-medium">Vui lòng liên hệ Admin để được hỗ trợ.</p>
+                  </div>
+                ) : canPost ? (
+                  <div className={cn(
+                    "p-6 rounded-[32px] border shadow-sm",
+                    isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                  )}>
+                    <div className="flex gap-4">
+                      <div className={cn(
+                        "w-12 h-12 rounded-2xl border flex items-center justify-center overflow-hidden shrink-0",
+                        isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white shadow-sm"
+                      )}>
+                        {userProfile.photoURL ? (
+                          <img src={userProfile.photoURL} alt={userProfile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <User size={24} className={isDarkMode ? "text-slate-600" : "text-slate-300"} />
                         )}
-                        rows={3}
-                      />
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <button className={cn(
-                            "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors",
-                            isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"
-                          )}>
-                            <ImageIcon size={16} className="text-emerald-500" />
-                            <span>Thêm ảnh</span>
-                          </button>
-                          <div className={cn("h-4 w-px mx-1 transition-colors", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
-                          <div className="flex items-center gap-1.5">
-                            {colors.map((color) => (
-                              <button
-                                key={color.name}
-                                type="button"
-                                onClick={() => setSelectedColor(color.name)}
-                                className={cn(
-                                  "w-6 h-6 rounded-full transition-all border-2",
-                                  color.bg,
-                                  selectedColor === color.name 
-                                    ? "border-primary scale-110 shadow-sm" 
-                                    : "border-transparent opacity-60 hover:opacity-100"
-                                )}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <button
-                          onClick={handleCreatePost}
-                          disabled={isPosting || !newPostContent.trim()}
+                      </div>
+                      <div className="flex-1 space-y-4">
+                        <AutoExpandingTextarea
+                          value={newPostContent}
+                          onChange={(e) => setNewPostContent((e.target as HTMLTextAreaElement).value)}
+                          placeholder="Bạn đang nghĩ gì? Chia sẻ kiến thức chuyên môn..."
                           className={cn(
-                            "px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50",
-                            isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-lg shadow-slate-200"
+                            "w-full p-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all resize-none font-medium text-sm",
+                            isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                           )}
-                        >
-                          {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                          Đăng bài
-                        </button>
+                          rows={3}
+                        />
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <button className={cn(
+                              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors",
+                              isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"
+                            )}>
+                              <ImageIcon size={16} className="text-emerald-500" />
+                              <span>Thêm ảnh</span>
+                            </button>
+                            <div className={cn("h-4 w-px mx-1 transition-colors", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
+                            <div className="flex items-center gap-1.5">
+                              {colors.map((color) => (
+                                <button
+                                  key={color.name}
+                                  type="button"
+                                  onClick={() => setSelectedColor(color.name)}
+                                  className={cn(
+                                    "w-6 h-6 rounded-full transition-all border-2",
+                                    color.bg,
+                                    selectedColor === color.name 
+                                      ? "border-primary scale-110 shadow-sm" 
+                                      : "border-transparent opacity-60 hover:opacity-100"
+                                  )}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleCreatePost}
+                            disabled={isPosting || !newPostContent.trim()}
+                            className={cn(
+                              "px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50",
+                              isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-lg shadow-slate-200"
+                            )}
+                          >
+                            {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                            Đăng bài
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className={cn(
+                    "p-6 rounded-[32px] border text-center",
+                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50 border-slate-100"
+                  )}>
+                    <p className={cn("text-xs font-bold", isDarkMode ? "text-slate-500" : "text-slate-400 uppercase tracking-widest")}>
+                      Vai trò của bạn không có quyền đăng bài mới
+                    </p>
+                  </div>
+                )}
 
                 {/* Posts List */}
                 <div className="space-y-6">
@@ -1030,9 +1075,11 @@ interface CommentSectionProps {
   postAuthorUid: string;
   onDeleteComment: (commentId: string) => void;
   allUsers: UserProfile[];
+  canComment: boolean;
+  isModerator: boolean;
 }
 
-const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, isDarkMode, postAuthorUid, onDeleteComment, allUsers }) => {
+const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, isDarkMode, postAuthorUid, onDeleteComment, allUsers, canComment, isModerator }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1048,6 +1095,9 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setComments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment)));
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching social comments:", error);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -1142,7 +1192,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
                       <h5 className={cn("text-xs font-black", isDarkMode ? "text-slate-200" : "text-slate-900")}>
                         {commenterName}
                       </h5>
-                      {(comment.authorUid === userProfile.uid || postAuthorUid === userProfile.uid) && (
+                      {(comment.authorUid === userProfile.uid || postAuthorUid === userProfile.uid || isModerator) && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           {comment.authorUid === userProfile.uid && (
                             <button 
@@ -1209,47 +1259,58 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-3">
-        <div className={cn(
-          "w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-sm border",
-          isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white"
-        )}>
-          {userProfile.photoURL ? (
-            <img 
-              src={getBustedPhotoURL(userProfile.photoURL, userProfile.photoSyncToken)} 
-              alt={userProfile.displayName} 
-              className="w-full h-full object-cover" 
-              referrerPolicy="no-referrer" 
+      {canComment ? (
+        <form onSubmit={handleSubmit} className="flex gap-3">
+          <div className={cn(
+            "w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-sm border",
+            isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white"
+          )}>
+            {userProfile.photoURL ? (
+              <img 
+                src={getBustedPhotoURL(userProfile.photoURL, userProfile.photoSyncToken)} 
+                alt={userProfile.displayName} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer" 
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                <User size={14} />
+              </div>
+            )}
+          </div>
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Viết bình luận..."
+              className={cn(
+                "w-full px-4 py-2 rounded-xl text-sm font-medium border-none focus:ring-2 focus:ring-primary transition-all shadow-inner",
+                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+              )}
             />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-400">
-              <User size={14} />
-            </div>
-          )}
+            <button
+              type="submit"
+              disabled={!newComment.trim() || isSubmitting}
+              className={cn(
+                "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all active:scale-90 disabled:opacity-30",
+                isDarkMode ? "text-primary hover:bg-primary/10" : "text-primary hover:bg-primary/5"
+              )}
+            >
+              {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className={cn(
+          "p-3 rounded-xl text-center border-none",
+          isDarkMode ? "bg-slate-800/50" : "bg-slate-50"
+        )}>
+          <p className={cn("text-[10px] font-bold uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+            Bạn không có quyền bình luận
+          </p>
         </div>
-        <div className="flex-1 relative">
-          <input
-            type="text"
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Viết bình luận..."
-            className={cn(
-              "w-full px-4 py-2 rounded-xl text-sm font-medium border-none focus:ring-2 focus:ring-primary transition-all shadow-inner",
-              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
-            )}
-          />
-          <button
-            type="submit"
-            disabled={!newComment.trim() || isSubmitting}
-            className={cn(
-              "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all active:scale-90 disabled:opacity-30",
-              isDarkMode ? "text-primary hover:bg-primary/10" : "text-primary hover:bg-primary/5"
-            )}
-          >
-            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
-        </div>
-      </form>
+      )}
     </motion.div>
   );
 };
