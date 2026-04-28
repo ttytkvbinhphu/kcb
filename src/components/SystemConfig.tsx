@@ -11,6 +11,7 @@ interface ConfigItem {
   id: string;
   name: string;
   order?: number;
+  powerPoints?: number;
 }
 
 interface RolePermission {
@@ -279,7 +280,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       setSpecialties(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
     const unsubRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
-      setRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (b.powerPoints ?? 0) - (a.powerPoints ?? 0)));
     });
     const unsubPerms = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
       setRolePermissions(snapshot.docs.map(doc => doc.data() as RolePermission));
@@ -337,7 +338,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     try {
       await setDoc(doc(db, collectionName, id), {
         name: newItemName.trim(),
-        order: currentList.length
+        order: currentList.length,
+        ...(activeCategory === 'roles' ? { powerPoints: 0 } : {})
       });
       
       // If adding a role, also create default permissions for it
@@ -2127,6 +2129,18 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </button>
                   </div>
 
+                  {activeCategory === 'roles' && (
+                    <div className={cn(
+                      "flex items-center gap-2 px-4 py-3 rounded-2xl mb-2 border",
+                      isDarkMode ? "bg-amber-900/10 border-amber-900/30" : "bg-amber-50 border-amber-100"
+                    )}>
+                      <span className="text-amber-500">⚡</span>
+                      <p className={cn("text-[10px] font-bold leading-tight", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                        <b>Điểm quyền lực</b> — Nhập điểm cho từng vai trò. Danh sách tự động sắp xếp từ cao đến thấp.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <AnimatePresence mode="popLayout">
                       {currentItems.length > 0 ? (
@@ -2142,21 +2156,46 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-slate-700" : "bg-white border-slate-50 hover:border-blue-100 hover:shadow-lg hover:shadow-slate-200/50"
                             )}
                           >
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
                               <div className={cn(
-                                "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs",
+                                "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs shrink-0",
                                 isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-50 text-slate-400"
                               )}>
                                 {index + 1}
                               </div>
-                              <span className={cn("font-bold", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</span>
+                              <span className={cn("font-bold truncate", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</span>
                             </div>
-                            <button
-                              onClick={() => setConfirmDelete({ isOpen: true, id: item.id, name: item.name })}
-                              className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            <div className="flex items-center gap-3 shrink-0">
+                              {activeCategory === 'roles' && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>⚡</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={item.powerPoints ?? 0}
+                                    onChange={async (e) => {
+                                      const val = parseInt(e.target.value) || 0;
+                                      try {
+                                        await setDoc(doc(db, 'config_roles', item.id), { ...item, powerPoints: val });
+                                      } catch (err) {
+                                        handleFirestoreError(err, OperationType.UPDATE, `config_roles/${item.id}`);
+                                      }
+                                    }}
+                                    title="Điểm quyền lực"
+                                    className={cn(
+                                      "w-16 px-2 py-1.5 rounded-lg border text-xs font-black text-center focus:ring-2 focus:ring-amber-500 outline-none transition-all",
+                                      isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700"
+                                    )}
+                                  />
+                                </div>
+                              )}
+                              <button
+                                onClick={() => setConfirmDelete({ isOpen: true, id: item.id, name: item.name })}
+                                className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
                           </motion.div>
                         ))
                       ) : (

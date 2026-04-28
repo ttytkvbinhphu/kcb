@@ -56,9 +56,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
   }, [drugList]);
 
   const isDrugSuggestionsAllowed = useMemo(() => {
+    if (!userRole) return false; // Guest (chưa đăng nhập): luôn ẩn
     const allowedRoles = featureSettings?.drugSuggestionsAllowedRoles || [];
-    if (allowedRoles.length === 0) return true;
-    return allowedRoles.includes(userRole || '');
+    if (allowedRoles.length === 0) return true; // Cho phép tất cả vai trò đã đăng nhập
+    return allowedRoles.includes(userRole);
   }, [featureSettings, userRole]);
 
   useEffect(() => {
