@@ -312,7 +312,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
   }, []);
 
   useEffect(() => {
-    const shouldLoadIcd = isModalOpen || searchingIcdIndex !== null || searchingContraIcdIndex !== null;
+    const shouldLoadIcd = isModalOpen || searchingIcdIndex !== null || searchingContraIcdIndex !== null || !!selectedDrug;
     if (!shouldLoadIcd || hasLoadedIcdRef.current) return;
 
     hasLoadedIcdRef.current = true;
@@ -325,7 +325,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       unsubscribeICD();
       hasLoadedIcdRef.current = false;
     };
-  }, [isModalOpen, searchingIcdIndex, searchingContraIcdIndex]);
+  }, [isModalOpen, searchingIcdIndex, searchingContraIcdIndex, selectedDrug]);
 
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
 
@@ -1944,7 +1944,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         {item.icd10s.map((fullCode, idx) => {
                                           const sepIdx = fullCode.indexOf(' - ');
                                           const code = sepIdx >= 0 ? fullCode.substring(0, sepIdx) : fullCode;
-                                          const description = sepIdx >= 0 ? fullCode.substring(sepIdx + 3) : undefined;
+                                          const description = (sepIdx >= 0 ? fullCode.substring(sepIdx + 3) : undefined)
+                                            || icdList.find(icd => icd.code === code)?.description;
                                           const isDefault = item.defaultIcd10 === fullCode;
                                           return (
                                             <div key={idx} className="flex items-center gap-1.5">
