@@ -6,7 +6,8 @@ export interface Drug {
   dosageForm: string;
   excipients?: string;
   manufacturer: string;
-  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean }[];
+  mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
+  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean; defaultIcd10?: string }[];
   contraindications: { content: string; type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other' }[];
   sideEffects: string[] | { frequency: string; content: string }[];
   category: string;

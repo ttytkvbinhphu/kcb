@@ -161,6 +161,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     dosageForm: '',
     excipients: '',
     manufacturer: '',
+    mechanismOfAction: '',
     indications: [],
     contraindications: [],
     sideEffects: [],
@@ -538,6 +539,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         dosageForm: '',
         excipients: '',
         manufacturer: '',
+        mechanismOfAction: '',
         indications: [{ content: '', icd10s: [] }],
         contraindications: [{ content: '', type: 'Other' }],
         sideEffects: [],
@@ -1876,6 +1878,28 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                               </div>
                               <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Chỉ định điều trị</h4>
                             </div>
+
+                            {selectedDrug.mechanismOfAction && (
+                              <div className={cn(
+                                "mb-6 p-5 rounded-2xl border flex items-start gap-4 transition-colors",
+                                isDarkMode ? "bg-violet-900/15 border-violet-900/30" : "bg-violet-50/60 border-violet-100 shadow-sm"
+                              )}>
+                                <div className={cn(
+                                  "shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border",
+                                  isDarkMode ? "bg-violet-900/40 border-violet-800 text-violet-400" : "bg-white border-violet-200 text-violet-600 shadow-sm"
+                                )}>
+                                  <Zap size={18} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-1.5", isDarkMode ? "text-violet-400" : "text-violet-600")}>
+                                    Cơ chế tác dụng
+                                  </p>
+                                  <p className={cn("text-sm font-semibold leading-relaxed whitespace-pre-line", isDarkMode ? "text-slate-200" : "text-slate-700")}>
+                                    {selectedDrug.mechanismOfAction}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                             
                             <div className="space-y-4">
                               {[...(selectedDrug.indications || [])].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)).map((item, i) => (
@@ -3080,8 +3104,32 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                       className="space-y-6 sm:space-y-8"
                     >
                       {activeSubTab === 'indications' && (
-                        <div className="pt-2 animate-in fade-in slide-in-from-left-4 duration-300">
-                          <div className="flex items-center justify-between mb-3 sm:mb-4">
+                        <div className="pt-2 animate-in fade-in slide-in-from-left-4 duration-300 space-y-4 sm:space-y-5">
+                          {/* Cơ chế tác dụng */}
+                          <div className={cn(
+                            "p-4 sm:p-5 rounded-2xl border transition-colors",
+                            isDarkMode ? "bg-violet-900/10 border-violet-900/30" : "bg-violet-50/50 border-violet-100"
+                          )}>
+                            <label className={cn(
+                              "block text-[10px] sm:text-xs font-black uppercase tracking-widest mb-2 flex items-center gap-2",
+                              isDarkMode ? "text-violet-400" : "text-violet-700"
+                            )}>
+                              <Zap size={14} />
+                              Cơ chế tác dụng
+                            </label>
+                            <AutoExpandingTextarea
+                              rows={2}
+                              value={formData.mechanismOfAction || ''}
+                              onChange={(e) => setFormData({ ...formData, mechanismOfAction: e.target.value })}
+                              className={cn(
+                                "w-full px-3 sm:px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all resize-none text-xs sm:text-sm font-medium",
+                                isDarkMode ? "bg-slate-900 border-slate-700 text-white placeholder-slate-600" : "bg-white border-violet-100 placeholder-slate-400"
+                              )}
+                              placeholder="Mô tả cơ chế tác dụng của thuốc, ví dụ: Ức chế enzym COX-2, giảm tổng hợp prostaglandin..."
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between">
                             <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest flex items-center gap-2 transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                               <div className="w-1 h-3 sm:h-4 bg-blue-600 rounded-full"></div>
                               Chỉ định & Mã ICD-10
