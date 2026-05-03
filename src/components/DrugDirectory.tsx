@@ -1942,8 +1942,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                     {item.icd10s && item.icd10s.length > 0 && canSeeIcdSuggestions && (
                                       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                                         {item.icd10s.map((fullCode, idx) => {
-                                          const code = fullCode.split(' - ')[0];
-                                          const description = fullCode.split(' - ')[1] || icdList.find(icd => icd.code === code)?.description;
+                                          const sepIdx = fullCode.indexOf(' - ');
+                                          const code = sepIdx >= 0 ? fullCode.substring(0, sepIdx) : fullCode;
+                                          const description = sepIdx >= 0 ? fullCode.substring(sepIdx + 3) : undefined;
                                           const isDefault = item.defaultIcd10 === fullCode;
                                           return (
                                             <div key={idx} className="flex items-center gap-1.5">
