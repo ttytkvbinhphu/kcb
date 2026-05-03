@@ -68,7 +68,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (request.auth.token.email == "ttytkvbinhphu@gmail.com" || (
-          request.auth.token.email_verified == true &&
+          request.auth.token.get('email_verified', false) == true &&
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'
         ));
@@ -77,7 +77,7 @@ service cloud.firestore {
     function isOperator() {
       return isAuthenticated() && 
         (isAdmin() || (
-          request.auth.token.email_verified == true &&
+          request.auth.token.get('email_verified', false) == true &&
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist']
         ));
@@ -112,14 +112,34 @@ service cloud.firestore {
     function isValidDrug(data) {
       return hasRequiredFields(['id', 'name', 'activeIngredients', 'category', 'isActive']) &&
              data.id is string && data.id.size() > 0 &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 1000 &&
              data.activeIngredients is list && data.activeIngredients.size() > 0 &&
-             data.indications is list &&
-             data.category is string && data.category.size() > 0 &&
+             data.category is string &&
              data.isActive is bool &&
+             (!('indications' in data) || data.indications is list) &&
+             (!('contraindications' in data) || data.contraindications is list) &&
+             (!('sideEffects' in data) || data.sideEffects is list) &&
              (!('excipients' in data) || data.excipients is string) &&
-             (!('groupId' in data) || data.groupId is string) &&
-             (!('pdfUrl' in data) || data.pdfUrl is string);
+             (!('manufacturer' in data) || data.manufacturer is string) &&
+             (!('dosageForm' in data) || data.dosageForm is string) &&
+             (!('atcCode' in data) || data.atcCode is string) &&
+             (!('groupId' in data) || data.groupId == null || data.groupId is string) &&
+             (!('groupIds' in data) || data.groupIds is list) &&
+             (!('driving' in data) || data.driving is string) &&
+             (!('pdfUrl' in data) || data.pdfUrl is string) &&
+             (!('avatarUrl' in data) || data.avatarUrl is string) &&
+             (!('bannerUrl' in data) || data.bannerUrl is string) &&
+             (!('isRx' in data) || data.isRx is bool) &&
+             (!('generalAdministration' in data) || data.generalAdministration is string) &&
+             (!('dosageAndAdministration' in data) || data.dosageAndAdministration is list) &&
+             (!('pharmacodynamics' in data) || data.pharmacodynamics is list) &&
+             (!('pharmacokinetics' in data) || data.pharmacokinetics is list) &&
+             (!('specificInteractions' in data) || data.specificInteractions is list) &&
+             (!('precautions' in data) || data.precautions is string) &&
+             (!('pregnancy' in data) || data.pregnancy is string) &&
+             (!('lactation' in data) || data.lactation is string) &&
+             (!('interactions' in data) || data.interactions is string) &&
+             (!('overdose' in data) || data.overdose is string);
     }
 
     function isValidDrugGroup(data) {
@@ -209,7 +229,8 @@ service cloud.firestore {
              data.id is string && data.id.size() > 0 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
              (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
-             (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() > 0));
+             (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() > 0)) &&
+             (!('categoryIds' in data) || (data.categoryIds is list));
     }
 
     function isValidStaff(data) {
@@ -369,7 +390,7 @@ service cloud.firestore {
 
     match /ingredients/{id} {
       allow read: if true;
-      allow write: if isOperator();
+      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
     }
 
     match /ingredient_categories/{id} {
@@ -379,7 +400,7 @@ service cloud.firestore {
 
     match /excipients/{id} {
       allow read: if true;
-      allow write: if isOperator();
+      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
     }
 
     match /excipient_categories/{id} {

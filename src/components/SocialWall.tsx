@@ -27,6 +27,8 @@ interface Post {
   likesCount: number;
   commentsCount: number;
   color?: string;
+  textStyle?: string;
+  backgroundImage?: string;
 }
 
 interface UserProfileFetch extends UserProfile {
@@ -67,6 +69,197 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
+interface PostModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  userProfile: UserProfile;
+  isDarkMode: boolean;
+  newPostContent: string;
+  setNewPostContent: (content: string) => void;
+  selectedColor: string;
+  setSelectedColor: (color: string) => void;
+  selectedTextStyle: string;
+  setSelectedTextStyle: (style: string) => void;
+  selectedBackgroundImage: string | null;
+  setSelectedBackgroundImage: (url: string | null) => void;
+  handleSavePost: () => Promise<void>;
+  isPosting: boolean;
+  colors: any[];
+  isEditMode?: boolean;
+}
+
+const PostModal: React.FC<PostModalProps> = ({
+  isOpen, onClose, userProfile, isDarkMode, 
+  newPostContent, setNewPostContent, 
+  selectedColor, setSelectedColor,
+  selectedTextStyle, setSelectedTextStyle,
+  selectedBackgroundImage, setSelectedBackgroundImage,
+  handleSavePost, isPosting, colors,
+  isEditMode = false
+}) => {
+  const textStyles = [
+    { id: 'modern', name: 'Hiện đại', class: 'font-sans' },
+    { id: 'serif', name: 'Trang trọng', class: 'font-serif' },
+    { id: 'mono', name: 'Kỹ thuật', class: 'font-mono' },
+    { id: 'bold', name: 'Mạnh mẽ', class: 'font-black uppercase tracking-wider' },
+  ];
+
+  const backgroundImages = [
+    { id: 'none', url: null, name: 'Mặc định' },
+    { id: 'medical', url: 'https://images.unsplash.com/photo-1576091160550-217359f42f8c?auto=format&fit=crop&q=80&w=800', name: 'Y tế' },
+    { id: 'abstract', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=800', name: 'Trừu tượng' },
+    { id: 'nature', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=800', name: 'Thiên nhiên' },
+    { id: 'dark-geo', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&q=80&w=800', name: 'Tối' },
+  ];
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [isOpen]);
+
+  const activeStyleClass = textStyles.find(s => s.id === selectedTextStyle)?.class;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100]"
+          />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className={cn(
+              "fixed inset-0 sm:inset-4 sm:top-12 z-[101] flex flex-col rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl",
+              isDarkMode ? "bg-slate-900" : "bg-white"
+            )}
+          >
+            {/* Header */}
+            <div className={cn(
+              "px-6 py-4 flex items-center justify-between border-b shrink-0",
+              isDarkMode ? "border-slate-800" : "border-slate-100"
+            )}>
+              <div className="flex items-center gap-3">
+                <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-500/10 transition-colors">
+                  <X size={20} />
+                </button>
+                <h3 className="text-sm font-black uppercase tracking-wider">{isEditMode ? 'Chỉnh sửa bài viết' : 'Tạo bài viết mới'}</h3>
+              </div>
+              <button
+                onClick={handleSavePost}
+                disabled={isPosting || !newPostContent.trim()}
+                className={cn(
+                  "px-6 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50",
+                  isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-lg"
+                )}
+              >
+                {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                {isEditMode ? 'Lưu' : 'Đăng bài'}
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <div 
+                className={cn(
+                  "w-full min-h-[40vh] p-4 sm:p-12 flex flex-col items-center justify-center relative transition-all duration-500",
+                  isDarkMode ? "bg-slate-950" : "bg-slate-50"
+                )}
+              >
+                <div className="flex items-center gap-3 mb-6 absolute top-4 left-4 sm:top-8 sm:left-8">
+                   <div className={cn(
+                     "w-10 h-10 rounded-xl overflow-hidden border-2 flex items-center justify-center transition-colors",
+                     isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-100 shadow-sm"
+                   )}>
+                     {userProfile.photoURL ? (
+                       <img src={getBustedPhotoURL(userProfile.photoURL, userProfile.photoSyncToken)} alt={userProfile.displayName} className="w-full h-full object-cover" />
+                     ) : (
+                       <User size={20} className="text-slate-400" />
+                     )}
+                   </div>
+                   <div className="text-left">
+                     <p className={cn("font-black text-sm", isDarkMode ? "text-white" : "text-slate-900")}>
+                       {userProfile.displayName}
+                     </p>
+                     <p className={cn("text-[10px] font-bold uppercase tracking-widest flex items-center gap-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                       <Globe size={10} /> Công khai
+                     </p>
+                   </div>
+                </div>
+
+                <textarea
+                  value={newPostContent}
+                  onChange={(e) => setNewPostContent(e.target.value)}
+                  placeholder="Nội dung bài viết..."
+                  className={cn(
+                    "w-full max-w-full bg-transparent border-none focus:ring-0 text-center resize-none placeholder:opacity-50 transition-all text-xl sm:text-3xl font-medium",
+                    activeStyleClass,
+                    isDarkMode ? "text-white" : "text-slate-900"
+                  )}
+                  rows={6}
+                />
+              </div>
+
+              {/* Toolbar */}
+              <div className="p-6 sm:p-10 space-y-8">
+                {/* Text Styles */}
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Phong cách văn bản</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {textStyles.map((style) => (
+                      <button
+                        key={style.id}
+                        onClick={() => setSelectedTextStyle(style.id)}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all border-2",
+                          selectedTextStyle === style.id
+                            ? "bg-primary border-primary text-white shadow-md scale-105"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-100 border-transparent text-slate-500 hover:bg-slate-200")
+                        )}
+                      >
+                        {style.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const HighlightText: React.FC<{ text: string; search: string; className?: string }> = ({ text, search, className }) => {
+  if (!search?.trim()) return <span className={className}>{text}</span>;
+  
+  const parts = text.split(new RegExp(`(${search})`, 'gi'));
+  return (
+    <span className={className}>
+      {parts.map((part, i) => 
+        part.toLowerCase() === search.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
+
 const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {} }) => {
   const [activeSubTab, setActiveSubTab] = useState<'feed' | 'profile'>(initialTab);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -78,7 +271,6 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [selectedProfile, setSelectedProfile] = useState<UserProfile>(userProfile);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  const [editPostContent, setEditPostContent] = useState('');
   
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; postId: string | null; commentId?: string | null }>({
     isOpen: false,
@@ -106,6 +298,10 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedTextStyle, setSelectedTextStyle] = useState('modern');
+  const [selectedBackgroundImage, setSelectedBackgroundImage] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const isBanned = (featureSettings.bannedUsers || []).includes(userProfile.uid);
   const canPost = !isBanned && (
@@ -175,29 +371,49 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     };
   }, [userProfile.uid]);
 
-  const handleCreatePost = async () => {
+  const handleSavePost = async () => {
     if (!newPostContent.trim()) return;
     setIsPosting(true);
     try {
-      const postsRef = collection(db, 'social_posts');
-      const newPostRef = doc(postsRef);
-      const postId = newPostRef.id;
+      if (editingPostId) {
+        // Update existing post
+        await updateDoc(doc(db, 'social_posts', editingPostId), {
+          content: newPostContent,
+          color: selectedColor,
+          textStyle: selectedTextStyle,
+          backgroundImage: selectedBackgroundImage,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        // Create new post
+        const postsRef = collection(db, 'social_posts');
+        const newPostRef = doc(postsRef);
+        const postId = newPostRef.id;
 
-      await setDoc(newPostRef, {
-        id: postId,
-        authorUid: userProfile.uid,
-        authorName: userProfile.displayName,
-        authorPhoto: userProfile.photoURL || '',
-        content: newPostContent,
-        createdAt: new Date().toISOString(),
-        likesCount: 0,
-        commentsCount: 0,
-        color: selectedColor
-      });
+        await setDoc(newPostRef, {
+          id: postId,
+          authorUid: userProfile.uid,
+          authorName: userProfile.displayName,
+          authorPhoto: userProfile.photoURL || '',
+          content: newPostContent,
+          createdAt: new Date().toISOString(),
+          likesCount: 0,
+          commentsCount: 0,
+          color: selectedColor,
+          textStyle: selectedTextStyle,
+          backgroundImage: selectedBackgroundImage
+        });
+      }
+      
+      // Reset state and close modal
       setNewPostContent('');
       setSelectedColor('slate');
+      setSelectedTextStyle('modern');
+      setSelectedBackgroundImage(null);
+      setEditingPostId(null);
+      setIsCreateModalOpen(false);
     } catch (error) {
-      console.error("Error creating post:", error);
+      console.error("Error saving post:", error);
     } finally {
       setIsPosting(false);
     }
@@ -250,18 +466,6 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     }
   };
 
-  const handleUpdatePost = async (postId: string) => {
-    if (!editPostContent.trim()) return;
-    try {
-      await updateDoc(doc(db, 'social_posts', postId), {
-        content: editPostContent
-      });
-      setEditingPostId(null);
-      setEditPostContent('');
-    } catch (error) {
-      console.error("Error updating post:", error);
-    }
-  };
 
   const handleSaveProfile = async () => {
     setSaveLoading(true);
@@ -300,10 +504,30 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     setActiveSubTab('profile');
   };
 
+
+
   const renderPost = (post: Post) => {
     const authorProfile = allUsers.find(u => u.uid === post.authorUid);
     const authorPhoto = getBustedPhotoURL(authorProfile?.photoURL || post.authorPhoto, authorProfile?.photoSyncToken);
     const authorName = authorProfile?.displayName || post.authorName;
+
+    const textStyles = [
+      { id: 'modern', name: 'Hiện đại', class: 'font-sans' },
+      { id: 'serif', name: 'Trang trọng', class: 'font-serif' },
+      { id: 'mono', name: 'Kỹ thuật', class: 'font-mono' },
+      { id: 'bold', name: 'Mạnh mẽ', class: 'font-black uppercase tracking-wider' },
+    ];
+
+    const backgroundImages = [
+      { id: 'none', url: null, name: 'Mặc định' },
+      { id: 'medical', url: 'https://images.unsplash.com/photo-1576091160550-217359f42f8c?auto=format&fit=crop&q=80&w=800', name: 'Y tế' },
+      { id: 'abstract', url: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=800', name: 'Trừu tượng' },
+      { id: 'nature', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=800', name: 'Thiên nhiên' },
+      { id: 'dark-geo', url: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&q=80&w=800', name: 'Tối' },
+    ];
+
+    const postColorData = post.color ? colors.find(c => c.name === post.color) : null;
+    const styleData = textStyles.find(s => s.id === post.textStyle);
 
     return (
       <motion.div
@@ -312,13 +536,20 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className={cn(
-          "p-6 rounded-[32px] border shadow-sm group transition-all",
-          post.color 
-            ? (isDarkMode 
-                ? `${colors.find(c => c.name === post.color)?.dark} border-${post.color}-500/30` 
-                : `${colors.find(c => c.name === post.color)?.light} border-${post.color}-100`)
-            : (isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100")
+          "p-4 sm:p-6 rounded-none sm:rounded-[32px] border-x-0 sm:border border-y sm:border-y shadow-sm group transition-all relative overflow-hidden",
+          post.backgroundImage 
+            ? "text-white min-h-[200px] flex flex-col justify-between" 
+            : (post.color 
+                ? (isDarkMode 
+                    ? `${postColorData?.dark} border-${post.color}-500/30` 
+                    : `${postColorData?.light} border-${post.color}-100`)
+                : (isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"))
         )}
+        style={post.backgroundImage ? {
+          backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url(${post.backgroundImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        } : {}}
       >
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -344,7 +575,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 }}
                 className={cn("font-black text-sm text-left hover:text-primary transition-colors", isDarkMode ? "text-white" : "text-slate-900")}
               >
-                {authorName}
+                <HighlightText text={authorName} search={searchTerm} />
               </button>
             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               <Clock size={10} />
@@ -358,7 +589,11 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
               <button 
                 onClick={() => {
                   setEditingPostId(post.id);
-                  setEditPostContent(post.content);
+                  setNewPostContent(post.content);
+                  setSelectedColor(post.color || 'slate');
+                  setSelectedTextStyle(post.textStyle || 'modern');
+                  setSelectedBackgroundImage(post.backgroundImage || null);
+                  setIsCreateModalOpen(true);
                 }}
                 className="p-2 rounded-lg hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-500 transition-colors"
               >
@@ -375,48 +610,18 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         )}
       </div>
 
-      {editingPostId === post.id ? (
-        <div className="mb-6 space-y-3">
-          <AutoExpandingTextarea
-            value={editPostContent}
-            onChange={(e) => setEditPostContent((e.target as HTMLTextAreaElement).value)}
-            className={cn(
-              "w-full p-4 rounded-2xl border focus:ring-2 focus:ring-primary transition-all resize-none font-medium text-sm",
-              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
-            )}
-            rows={3}
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setEditingPostId(null)}
-              className={cn(
-                "px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all text-slate-500 hover:text-rose-500"
-              )}
-            >
-              <X size={12} />
-              Hủy
-            </button>
-            <button
-              onClick={() => handleUpdatePost(post.id)}
-              className={cn(
-                "px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all",
-                isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-lg shadow-slate-200"
-              )}
-            >
-              <CheckCircle2 size={12} />
-              Lưu thay đổi
-            </button>
-          </div>
-        </div>
-      ) : (
-        <p className={cn("text-sm leading-relaxed mb-6 whitespace-pre-wrap", isDarkMode ? "text-slate-300" : "text-slate-600")}>
-          {post.content}
-        </p>
-      )}
+      {/* Post Content */}
+      <p className={cn(
+        "text-sm leading-relaxed mb-6 whitespace-pre-wrap", 
+        styleData?.class,
+        post.backgroundImage ? "text-white text-lg font-bold drop-shadow-md" : (isDarkMode ? "text-slate-300" : "text-slate-600")
+      )}>
+        <HighlightText text={post.content} search={searchTerm} />
+      </p>
 
       <div className={cn(
         "flex items-center gap-6 pt-4 border-t transition-colors",
-        isDarkMode ? "border-slate-800" : "border-slate-100"
+        post.backgroundImage ? "border-white/20" : (isDarkMode ? "border-slate-800" : "border-slate-100")
       )}>
         <button 
           onClick={() => handleLike(post.id)}
@@ -458,6 +663,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
             allUsers={allUsers}
             canComment={canComment}
             isModerator={isModerator}
+            searchTerm={searchTerm}
           />
         )}
       </AnimatePresence>
@@ -466,9 +672,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
 };
 
   return (
-    <div className="w-full p-4 lg:p-8">
+    <div className="w-full p-0 lg:p-4">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="hidden lg:flex items-center justify-between gap-8 mb-8">
         <div className="flex items-center gap-4">
           {onBack && (
             <button 
@@ -492,10 +698,66 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
             </div>
           </div>
         </div>
+
+        {/* Desktop Search Bar */}
+        <div className="flex-1 max-w-md relative group ml-auto">
+          <div className={cn(
+            "absolute inset-y-0 left-4 flex items-center pointer-events-none transition-colors",
+            isDarkMode ? "text-slate-600 group-focus-within:text-primary" : "text-slate-400 group-focus-within:text-primary"
+          )}>
+            <Globe size={18} className="animate-pulse" />
+          </div>
+          <input 
+            type="text"
+            placeholder="Tìm kiếm bài viết, bình luận..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className={cn(
+              "w-full pl-12 pr-4 py-3.5 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all font-bold text-sm shadow-sm",
+              isDarkMode ? "bg-slate-900 text-white placeholder:text-slate-600" : "bg-white text-slate-900 placeholder:text-slate-400"
+            )}
+          />
+          {searchTerm && (
+            <button 
+              onClick={() => setSearchTerm('')}
+              className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-rose-500 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 pb-8">
+          {/* Mobile Search Bar */}
+          <div className="lg:hidden mb-6 relative group">
+            <div className={cn(
+              "absolute inset-y-0 left-4 flex items-center pointer-events-none transition-colors",
+              isDarkMode ? "text-slate-600 group-focus-within:text-primary" : "text-slate-400 group-focus-within:text-primary"
+            )}>
+              <Globe size={18} className="animate-pulse" />
+            </div>
+            <input 
+              type="text"
+              placeholder="Tìm kiếm..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className={cn(
+                "w-full pl-12 pr-4 py-4 rounded-[24px] border-none focus:ring-2 focus:ring-primary transition-all font-bold text-sm shadow-sm",
+                isDarkMode ? "bg-slate-900 text-white placeholder:text-slate-600" : "bg-white text-slate-900 placeholder:text-slate-400"
+              )}
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-rose-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
           <AnimatePresence mode="wait">
             {activeSubTab === 'feed' ? (
               <motion.div
@@ -505,101 +767,14 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 exit={{ opacity: 0, y: -20 }}
                 className="space-y-6"
               >
-                {/* Create Post */}
-                {isBanned ? (
-                  <div className={cn(
-                    "p-8 rounded-[32px] border text-center space-y-3",
-                    isDarkMode ? "bg-rose-900/10 border-rose-900/30" : "bg-rose-50 border-rose-100"
-                  )}>
-                    <Shield size={32} className="mx-auto text-rose-500 mb-2" />
-                    <p className={cn("text-sm font-black", isDarkMode ? "text-rose-400" : "text-rose-700")}>
-                      Tài khoản của bạn đã bị hạn chế tham gia Mạng xã hội.
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-medium">Vui lòng liên hệ Admin để được hỗ trợ.</p>
-                  </div>
-                ) : canPost ? (
-                  <div className={cn(
-                    "p-6 rounded-[32px] border shadow-sm",
-                    isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                  )}>
-                    <div className="flex gap-4">
-                      <div className={cn(
-                        "w-12 h-12 rounded-2xl border flex items-center justify-center overflow-hidden shrink-0",
-                        isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white shadow-sm"
-                      )}>
-                        {userProfile.photoURL ? (
-                          <img src={userProfile.photoURL} alt={userProfile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <User size={24} className={isDarkMode ? "text-slate-600" : "text-slate-300"} />
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-4">
-                        <AutoExpandingTextarea
-                          value={newPostContent}
-                          onChange={(e) => setNewPostContent((e.target as HTMLTextAreaElement).value)}
-                          placeholder="Bạn đang nghĩ gì? Chia sẻ kiến thức chuyên môn..."
-                          className={cn(
-                            "w-full p-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all resize-none font-medium text-sm",
-                            isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                          )}
-                          rows={3}
-                        />
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <button className={cn(
-                              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-colors",
-                              isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"
-                            )}>
-                              <ImageIcon size={16} className="text-emerald-500" />
-                              <span>Thêm ảnh</span>
-                            </button>
-                            <div className={cn("h-4 w-px mx-1 transition-colors", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
-                            <div className="flex items-center gap-1.5">
-                              {colors.map((color) => (
-                                <button
-                                  key={color.name}
-                                  type="button"
-                                  onClick={() => setSelectedColor(color.name)}
-                                  className={cn(
-                                    "w-6 h-6 rounded-full transition-all border-2",
-                                    color.bg,
-                                    selectedColor === color.name 
-                                      ? "border-primary scale-110 shadow-sm" 
-                                      : "border-transparent opacity-60 hover:opacity-100"
-                                  )}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <button
-                            onClick={handleCreatePost}
-                            disabled={isPosting || !newPostContent.trim()}
-                            className={cn(
-                              "px-6 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50",
-                              isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-lg shadow-slate-200"
-                            )}
-                          >
-                            {isPosting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                            Đăng bài
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={cn(
-                    "p-6 rounded-[32px] border text-center",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50 border-slate-100"
-                  )}>
-                    <p className={cn("text-xs font-bold", isDarkMode ? "text-slate-500" : "text-slate-400 uppercase tracking-widest")}>
-                      Vai trò của bạn không có quyền đăng bài mới
-                    </p>
-                  </div>
-                )}
-
                 {/* Posts List */}
                 <div className="space-y-6">
-                  {posts.map(renderPost)}
+                  {posts
+                    .filter(post => 
+                      post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      post.authorName.toLowerCase().includes(searchTerm.toLowerCase())
+                    )
+                    .map(renderPost)}
                 </div>
               </motion.div>
             ) : (
@@ -846,7 +1021,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           )}
                         >
                           {saveLoading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                          Lưu thông tin
+                          Lưu
                         </button>
                       </div>
                     </div>
@@ -1051,6 +1226,32 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         </div>
       </div>
 
+      <PostModal 
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingPostId(null);
+          setNewPostContent('');
+          setSelectedColor('slate');
+          setSelectedTextStyle('modern');
+          setSelectedBackgroundImage(null);
+        }}
+        userProfile={userProfile}
+        isDarkMode={isDarkMode}
+        newPostContent={newPostContent}
+        setNewPostContent={setNewPostContent}
+        selectedColor={selectedColor}
+        setSelectedColor={setSelectedColor}
+        selectedTextStyle={selectedTextStyle}
+        setSelectedTextStyle={setSelectedTextStyle}
+        selectedBackgroundImage={selectedBackgroundImage}
+        setSelectedBackgroundImage={setSelectedBackgroundImage}
+        handleSavePost={handleSavePost}
+        isPosting={isPosting}
+        colors={colors}
+        isEditMode={!!editingPostId}
+      />
+
       <ConfirmModal
         isOpen={deleteConfirm.isOpen}
         onClose={() => setDeleteConfirm({ isOpen: false, postId: null, commentId: null })}
@@ -1077,9 +1278,10 @@ interface CommentSectionProps {
   allUsers: UserProfile[];
   canComment: boolean;
   isModerator: boolean;
+  searchTerm?: string;
 }
 
-const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, isDarkMode, postAuthorUid, onDeleteComment, allUsers, canComment, isModerator }) => {
+const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, isDarkMode, postAuthorUid, onDeleteComment, allUsers, canComment, isModerator, searchTerm = '' }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1190,7 +1392,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
                   )}>
                     <div className="flex items-center justify-between mb-1">
                       <h5 className={cn("text-xs font-black", isDarkMode ? "text-slate-200" : "text-slate-900")}>
-                        {commenterName}
+                        <HighlightText text={commenterName} search={searchTerm} />
                       </h5>
                       {(comment.authorUid === userProfile.uid || postAuthorUid === userProfile.uid || isModerator) && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1243,7 +1445,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
                       </div>
                     ) : (
                       <p className={cn("text-[13px] leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-600")}>
-                        {comment.content}
+                        <HighlightText text={comment.content} search={searchTerm} />
                       </p>
                     )}
                   </div>

@@ -24,10 +24,9 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
-  GripVertical
+  ExternalLink
 } from 'lucide-react';
-import { motion, AnimatePresence, Reorder } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { 
   db, 
@@ -160,16 +159,18 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       setDrugs(drugsData);
     });
 
-    const unsubscribeCatalog = onSnapshot(query(collection(db, 'adr_catalog'), orderBy('sortOrder', 'asc')), (snapshot) => {
+    const unsubscribeCatalog = onSnapshot(collection(db, 'adr_catalog'), (snapshot) => {
       const catalogData = snapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id
       })) as ADRCatalogItem[];
       
-      // If items don't have sortOrder, assign them based on current index
-      const sortedData = catalogData.length > 0 && catalogData[0].sortOrder === undefined
-        ? catalogData.map((item, index) => ({ ...item, sortOrder: index }))
-        : catalogData;
+      // Sort in memory instead
+      const sortedData = [...catalogData].sort((a, b) => {
+        const orderA = a.sortOrder ?? 999;
+        const orderB = b.sortOrder ?? 999;
+        return orderA - orderB;
+      });
 
       setCatalogItems(sortedData);
     });
@@ -282,30 +283,20 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   const confirmDelete = async () => {
     if (!confirmData) return;
     const { id, type } = confirmData;
+    setIsConfirmOpen(false);
+    
     try {
       if (type === 'report') {
         await deleteDoc(doc(db, 'adr_reports', id));
+        setIsModalOpen(false);
       } else {
         await deleteDoc(doc(db, 'adr_catalog', id));
+        setIsCatalogModalOpen(false);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, type === 'report' ? 'adr_reports' : 'adr_catalog');
-    }
-  };
-
-  const handleReorderCatalog = async (newOrder: ADRCatalogItem[]) => {
-    setCatalogItems(newOrder);
-    if (!isPharmacist) return;
-
-    try {
-      // Update all items with their new sortOrder
-      const updatePromises = newOrder.map((item, index) => {
-        const updatedItem = { ...item, sortOrder: index };
-        return setDoc(doc(db, 'adr_catalog', item.id), updatedItem);
-      });
-      await Promise.all(updatePromises);
-    } catch (error) {
-      console.error("Error updating catalog order:", error);
+    } finally {
+      setConfirmData(null);
     }
   };
 
@@ -330,6 +321,14 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
     
     return matchesSearch && matchesFilter;
   });
+
+  const groupedCatalog = ADR_CATEGORIES.reduce((acc, cat) => {
+    const items = filteredCatalog.filter(item => item.category === cat);
+    if (items.length > 0) {
+      acc.push({ category: cat, items });
+    }
+    return acc;
+  }, [] as { category: string, items: ADRCatalogItem[] }[]);
 
   const categories = ['Tất cả', ...ADR_CATEGORIES];
 
@@ -629,123 +628,141 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
           </AnimatePresence>
         </div>
       ) : (
-        <Reorder.Group 
-          axis="y" 
-          values={filteredCatalog} 
-          onReorder={handleReorderCatalog}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6"
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredCatalog.map((item) => (
-              <Reorder.Item
-                key={item.id}
-                value={item}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={cn(
-                  "group relative p-4 lg:p-6 rounded-2xl lg:rounded-[32px] border transition-all duration-300 hover:shadow-xl hover:-translate-y-1",
-                  isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 hover:border-emerald-100 shadow-sm"
-                )}
-              >
-                <div className="flex justify-between items-start mb-3 lg:mb-4">
-                  <div className={cn(
-                    "px-2.5 lg:px-3 py-0.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-black uppercase tracking-wider border transition-colors",
-                    isDarkMode ? "bg-emerald-900/30 text-emerald-400 border-emerald-900/50" : "bg-emerald-50 text-emerald-600 border-emerald-100"
-                  )}>
-                    {item.category}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {isPharmacist && (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1.5 text-slate-400 hover:text-slate-600">
-                        <GripVertical size={16} />
-                      </div>
-                    )}
-                    {isPharmacist && (
-                      <button 
-                        onClick={() => handleOpenCatalogModal(item)}
-                        className={cn(
-                          "p-1.5 lg:p-2 rounded-xl text-slate-400 hover:text-emerald-600 transition-colors",
-                          isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
-                        )}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-600/10 flex items-center justify-center text-emerald-600 shrink-0">
-                    <Activity size={20} />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className={cn("font-black text-base truncate", isDarkMode ? "text-white" : "text-black")}>
-                      {item.reactionName}
-                    </h3>
-                    <div className={cn(
-                      "px-2 py-0.5 rounded-lg text-[9px] font-bold border w-fit",
-                      getSeverityColor(item.severityLevel)
-                    )}>
-                      {item.severityLevel}
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-slate-500 line-clamp-3 font-medium leading-relaxed mb-4">
-                  {item.description}
-                </p>
-
-                {item.commonDrugs && item.commonDrugs.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {item.commonDrugs.slice(0, 3).map((drug, idx) => (
-                      <span key={idx} className={cn(
-                        "px-2 py-0.5 rounded-md text-[8px] lg:text-[9px] font-bold border transition-colors",
-                        isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
-                      )}>
-                        {drug}
-                      </span>
-                    ))}
-                    {item.commonDrugs.length > 3 && (
-                      <span className="text-[8px] lg:text-[9px] font-bold text-slate-400">+{item.commonDrugs.length - 3}</span>
-                    )}
-                  </div>
-                )}
-
+        <div className="space-y-12">
+          {groupedCatalog.map((group) => (
+            <div key={group.category} className="space-y-6">
+              <div className="flex items-center gap-3">
                 <div className={cn(
-                  "pt-3 lg:pt-4 border-t flex items-center justify-between transition-colors",
-                  isDarkMode ? "border-slate-800" : "border-slate-100"
+                  "h-8 w-1.5 rounded-full transition-colors",
+                  isDarkMode ? "bg-emerald-500" : "bg-emerald-600"
+                )}></div>
+                <h3 className={cn(
+                  "text-lg lg:text-xl font-black uppercase tracking-wider",
+                  isDarkMode ? "text-emerald-400" : "text-emerald-700"
                 )}>
-                  <button 
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        reactionDescription: item.description,
-                        severity: item.severityLevel as any
-                      });
-                      setActiveSubTab('reports');
-                      setIsModalOpen(true);
-                    }}
-                    className="text-[9px] lg:text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1"
-                  >
-                    Sử dụng mẫu này <ExternalLink size={10} />
-                  </button>
-                  <div className="text-[9px] lg:text-[10px] font-bold text-slate-400 flex items-center gap-1">
-                    <Info size={10} /> Chi tiết
-                  </div>
-                </div>
-              </Reorder.Item>
-            ))}
-          </AnimatePresence>
-        </Reorder.Group>
+                  {group.category}
+                </h3>
+                <span className={cn(
+                  "px-2.5 py-1 rounded-lg text-xs font-black border transition-colors",
+                  isDarkMode ? "bg-slate-900 border-slate-800 text-slate-500" : "bg-slate-50 border-slate-100 text-slate-400"
+                )}>
+                  {group.items.length}
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                <AnimatePresence mode="popLayout">
+                  {group.items.map((item) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className={cn(
+                        "group relative p-4 lg:p-6 rounded-2xl lg:rounded-[32px] border transition-all duration-300 hover:shadow-xl hover:-translate-y-1",
+                        isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 hover:border-emerald-100 shadow-sm"
+                      )}
+                    >
+                      <div className="flex justify-between items-start mb-3 lg:mb-4">
+                        <div className={cn(
+                          "px-2.5 lg:px-3 py-0.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-black uppercase tracking-wider border transition-colors",
+                          isDarkMode ? "bg-emerald-900/30 text-emerald-400 border-emerald-900/50" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                        )}>
+                          {item.reactionName}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {isPharmacist && (
+                            <button 
+                              onClick={() => handleOpenCatalogModal(item)}
+                              className={cn(
+                                "p-1.5 lg:p-2 rounded-xl text-slate-400 hover:text-emerald-600 transition-colors",
+                                isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
+                              )}
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600/10 flex items-center justify-center text-emerald-600 shrink-0">
+                          <Activity size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className={cn("font-black text-base truncate mb-1", isDarkMode ? "text-white" : "text-black")}>
+                            {item.reactionName}
+                          </h3>
+                          <div className={cn(
+                            "px-2 py-0.5 rounded-lg text-[9px] font-bold border w-fit",
+                            getSeverityColor(item.severityLevel)
+                          )}>
+                            {item.severityLevel}
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-slate-500 line-clamp-3 font-medium leading-relaxed mb-4">
+                        {item.description}
+                      </p>
+
+                      {item.commonDrugs && item.commonDrugs.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {item.commonDrugs.slice(0, 3).map((drug, idx) => (
+                            <span key={idx} className={cn(
+                              "px-2 py-0.5 rounded-md text-[8px] lg:text-[9px] font-bold border transition-colors",
+                              isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
+                            )}>
+                              {drug}
+                            </span>
+                          ))}
+                          {item.commonDrugs.length > 3 && (
+                            <span className="text-[8px] lg:text-[9px] font-bold text-slate-400">+{item.commonDrugs.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className={cn(
+                        "pt-3 lg:pt-4 border-t flex items-center justify-between transition-colors",
+                        isDarkMode ? "border-slate-800" : "border-slate-100"
+                      )}>
+                        <button 
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              reactionDescription: item.description,
+                              severity: item.severityLevel as any
+                            });
+                            setActiveSubTab('reports');
+                            setIsModalOpen(true);
+                          }}
+                          className="text-[9px] lg:text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          Sử dụng mẫu này <ExternalLink size={10} />
+                        </button>
+                        <div className="text-[9px] lg:text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                          <Info size={10} /> Chi tiết
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ADR Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setIsModalOpen(false)}
+          >
             <motion.div
+              onClick={(e) => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -992,8 +1009,12 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       {/* ADR Catalog Modal */}
       <AnimatePresence>
         {isCatalogModalOpen && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setIsCatalogModalOpen(false)}
+          >
             <motion.div
+              onClick={(e) => e.stopPropagation()}
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}

@@ -32,6 +32,7 @@ interface PrescriptionFormProps {
   userProfile: UserProfile;
   isDarkMode?: boolean;
   featureSettings?: any;
+  userPowerPoints?: number;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -58,7 +59,7 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
-const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDarkMode, featureSettings }) => {
+const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDarkMode, featureSettings, userPowerPoints = 0 }) => {
   const [viewMode, setViewMode] = useState<'form' | 'history'>('form');
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -179,10 +180,9 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
   }, [drugs]);
 
   const isDrugSuggestionsAllowed = React.useMemo(() => {
-    const allowedRoles = featureSettings?.drugSuggestionsAllowedRoles || [];
-    if (allowedRoles.length === 0) return true;
-    return allowedRoles.includes(userProfile.role);
-  }, [featureSettings, userProfile.role]);
+    if (!userProfile?.role) return false;
+    return userPowerPoints >= (featureSettings?.drugSuggestionsMinPower ?? 0);
+  }, [featureSettings, userProfile.role, userPowerPoints]);
 
   const onSubmit: SubmitHandler<PrescriptionFormData> = async (data) => {
     if (!auth.currentUser) return;
@@ -523,7 +523,7 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
                               <option value="" className={isDarkMode ? "bg-slate-900" : "bg-white"}>Chọn thuốc...</option>
                               {drugs.map(d => (
                                 <option key={d.id} value={d.id} className={isDarkMode ? "bg-slate-900" : "bg-white"}>
-                                  {d.name} ({(d.activeIngredients || []).map(ing => `${ing.name} ${ing.strength}`).join(' + ')})
+                                  {d.name} ({(d.activeIngredients || []).map(ing => `${ing.name} ${ing.amount}${ing.unit}`).join(' + ')})
                                 </option>
                               ))}
                             </select>

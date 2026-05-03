@@ -46,6 +46,7 @@ const TITLE_TABS = [
   { id: 'view_icd10', label: 'Tra cứu ICD-10' },
   { id: 'view_interaction', label: 'Tra cứu tương tác thuốc' },
   { id: 'view_adr', label: 'Tra cứu ADR' },
+  { id: 'view_patients', label: 'Tra cứu bệnh nhân' },
   { id: 'view_prescription', label: 'Kê toa thử' },
 ];
 
@@ -1840,7 +1841,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   )}
                 >
                   {isSavingSettings ? <Loader2 size={20} className="animate-spin" /> : (saveSuccess ? <CheckCircle2 size={20} /> : <Save size={20} />)}
-                  {saveSuccess ? 'Đã lưu' : 'Lưu thay đổi'}
+                  {saveSuccess ? 'Đã lưu' : 'Lưu'}
                 </button>
               </div>
 

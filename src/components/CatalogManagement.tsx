@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search, Check } from 'lucide-react';
 import { Ingredient, Excipient } from '../types';
 import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
@@ -37,6 +37,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
   
   const [formData, setFormData] = useState<any>({
     name: '',
+    aliases: [],
     description: ''
   });
 
@@ -78,12 +79,15 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
   const handleOpenModal = (item?: any) => {
     if (item) {
       setEditingItem(item);
-      setFormData({ ...item });
+      // Ensure aliases is an array even if old data only has alias string
+      const aliases = item.aliases || (item.alias ? [item.alias] : []);
+      setFormData({ ...item, aliases });
     } else {
       setEditingItem(null);
       setFormData({
         id: Math.random().toString(36).substr(2, 9),
         name: '',
+        aliases: [],
         description: '',
         categoryId: ''
       });
@@ -104,12 +108,25 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
         name: formData.name.trim()
       };
       
+      if (formData.aliases && formData.aliases.length > 0) {
+        saveData.aliases = formData.aliases.map((a: string) => a.trim()).filter(Boolean);
+        if (saveData.aliases.length > 0) {
+          saveData.alias = saveData.aliases[0]; // For backward compatibility
+        }
+      }
+
       if (formData.description && formData.description.trim()) {
         saveData.description = formData.description.trim();
       }
       
-      if ((type === 'ingredient' || type === 'excipient') && formData.categoryId) {
-        saveData.categoryId = formData.categoryId;
+      if ((type === 'ingredient' || type === 'excipient')) {
+        if (formData.categoryIds && formData.categoryIds.length > 0) {
+          saveData.categoryIds = formData.categoryIds;
+          saveData.categoryId = formData.categoryIds[0]; // For backward compatibility
+        } else if (formData.categoryId) {
+          saveData.categoryId = formData.categoryId;
+          saveData.categoryIds = [formData.categoryId];
+        }
       }
 
       await setDoc(doc(db, collectionName, id), saveData);
@@ -219,13 +236,44 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
               )}>
                  <div className="flex justify-between items-start">
                   <div className="flex-1 overflow-hidden pr-8">
-                     <h4 className={cn("font-bold text-sm truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</h4>
-                     {(type === 'ingredient' || type === 'excipient') && item.categoryId && (
-                       <div className={cn(
-                         "inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider mb-1",
-                         isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
-                       )}>
-                         {categories.find(c => c.id === item.categoryId)?.name || 'Chưa phân loại'}
+                     <h4 className={cn("font-bold text-sm truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>
+                       {item.name}
+                       {item.aliases && item.aliases.length > 0 ? (
+                         <span className="ml-2 font-medium text-xs text-slate-400 italic">
+                           ({item.aliases.join(', ')})
+                         </span>
+                       ) : item.alias ? (
+                         <span className="ml-2 font-medium text-xs text-slate-400 italic">
+                           ({item.alias})
+                         </span>
+                       ) : null}
+                     </h4>
+                     {(type === 'ingredient' || type === 'excipient') && (
+                       <div className="flex flex-wrap gap-1 mb-1">
+                         {item.categoryIds && item.categoryIds.length > 0 ? (
+                           item.categoryIds.map((catId: string) => (
+                             <span key={catId} className={cn(
+                               "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                               isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
+                             )}>
+                               {categories.find(c => c.id === catId)?.name || 'Không rõ'}
+                             </span>
+                           ))
+                         ) : item.categoryId ? (
+                           <span className={cn(
+                             "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                             isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
+                           )}>
+                             {categories.find(c => c.id === item.categoryId)?.name || 'Chưa phân loại'}
+                           </span>
+                         ) : (
+                           <span className={cn(
+                             "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider",
+                             isDarkMode ? "bg-slate-800 text-slate-500 font-bold" : "bg-slate-100 text-slate-400 font-bold"
+                           )}>
+                             Chưa có phân loại
+                           </span>
+                         )}
                        </div>
                      )}
                      {item.description && (
@@ -318,22 +366,118 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi khác (Aliases)</label>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        <AnimatePresence mode="popLayout">
+                          {(formData.aliases || []).map((alias: string, idx: number) => (
+                            <motion.div
+                              layout
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.8 }}
+                              key={`${alias}-${idx}`}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
+                                isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
+                              )}
+                            >
+                              <span>{alias}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextAliases = [...formData.aliases];
+                                  nextAliases.splice(idx, 1);
+                                  setFormData({ ...formData, aliases: nextAliases });
+                                }}
+                                className="hover:text-rose-500 transition-colors"
+                              >
+                                <X size={12} />
+                              </button>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          className={cn(
+                            "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                          )}
+                          placeholder="Nhấn Enter để thêm tên gọi khác..."
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const value = e.currentTarget.value.trim();
+                              if (value && !(formData.aliases || []).includes(value)) {
+                                setFormData({
+                                  ...formData,
+                                  aliases: [...(formData.aliases || []), value]
+                                });
+                                e.currentTarget.value = '';
+                              }
+                            }
+                          }}
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Plus size={16} className="text-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {(type === 'ingredient' || type === 'excipient') && (
                     <div>
                       <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Phân loại {type === 'ingredient' ? 'hoạt chất' : 'tá dược'}</label>
-                      <select
-                        className={cn(
-                          "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm appearance-none",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      <div className={cn(
+                        "grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-xl border max-h-40 overflow-y-auto custom-scrollbar",
+                        isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
+                      )}>
+                        {categories.map(cat => {
+                          const isSelected = (formData.categoryIds || []).includes(cat.id) || formData.categoryId === cat.id;
+                          return (
+                            <label 
+                              key={cat.id} 
+                              className={cn(
+                                "flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all border",
+                                isSelected 
+                                  ? (isDarkMode ? "bg-indigo-900/30 border-indigo-500/50 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700")
+                                  : (isDarkMode ? "hover:bg-slate-700 border-transparent text-slate-400" : "hover:bg-white border-transparent text-slate-600")
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const currentIds = Array.isArray(formData.categoryIds) ? formData.categoryIds : (formData.categoryId ? [formData.categoryId] : []);
+                                  let nextIds;
+                                  if (e.target.checked) {
+                                    nextIds = [...new Set([...currentIds, cat.id])];
+                                  } else {
+                                    nextIds = currentIds.filter(id => id !== cat.id);
+                                  }
+                                  setFormData({ ...formData, categoryIds: nextIds, categoryId: nextIds[0] || '' });
+                                }}
+                              />
+                              <div className={cn(
+                                "w-4 h-4 rounded border flex items-center justify-center transition-all",
+                                isSelected
+                                  ? (isDarkMode ? "bg-indigo-600 border-indigo-500" : "bg-indigo-600 border-indigo-600")
+                                  : (isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-300")
+                              )}>
+                                {isSelected && <Check size={10} className="text-white" strokeWidth={4} />}
+                              </div>
+                              <span className="text-[11px] font-bold truncate">{cat.name}</span>
+                            </label>
+                          );
+                        })}
+                        {categories.length === 0 && (
+                          <p className="col-span-full text-[10px] text-slate-500 text-center py-2 italic">Chưa có phân loại nào</p>
                         )}
-                        value={formData.categoryId || ''}
-                        onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                      >
-                        <option value="">-- Chọn phân loại --</option>
-                        {categories.map(cat => (
-                          <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                      </select>
+                      </div>
                     </div>
                   )}
 

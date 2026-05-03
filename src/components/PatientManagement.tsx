@@ -35,6 +35,20 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
+const HighlightText = ({ text, search, className }: { text: string; search: string; className?: string }) => {
+  if (!search?.trim()) return <span className={className}>{text}</span>;
+  const parts = text.split(new RegExp(`(${search})`, 'gi'));
+  return (
+    <span className={className}>
+      {parts.map((part, i) => 
+        part.toLowerCase() === search.toLowerCase() 
+          ? <mark key={i} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">{part}</mark> 
+          : part
+      )}
+    </span>
+  );
+};
+
 const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canManage }) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -427,13 +441,13 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
   };
 
   return (
-    <div className="p-1 lg:p-4 max-w-7xl mx-auto space-y-2 lg:space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-        <div className="hidden lg:block">
-          <h2 className={cn("text-xl lg:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+    <div className="p-0 lg:p-4 max-w-7xl mx-auto space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-4 lg:px-0">
+        <div>
+          <h2 className={cn("text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
             Tra cứu bệnh nhân
           </h2>
-          <p className={cn("text-xs font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+          <p className={cn("text-xs font-medium mt-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>
             {canManage 
               ? "Theo dõi và quản lý thông tin bệnh nhân, thuốc và vật tư y tế."
               : "Tra cứu thông tin hành chính và lịch sử điều trị của bệnh nhân."}
@@ -445,7 +459,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
               <button
                 onClick={() => setIsManualModalOpen(true)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all",
+                  "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all",
                   isDarkMode ? "shadow-none" : "shadow-md shadow-emerald-200"
                 )}
               >
@@ -455,7 +469,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
               <button
                 onClick={() => setIsImportModalOpen(true)}
                 className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all",
+                  "flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all",
                   isDarkMode ? "shadow-none" : "shadow-md shadow-blue-200"
                 )}
               >
@@ -467,101 +481,215 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
         </div>
       </div>
 
-      <div className={cn(
-        "p-3 rounded-2xl border transition-all",
-        isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-md shadow-slate-200/40"
-      )}>
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            type="text"
-            placeholder="Tìm kiếm theo tên, mã BN hoặc CCCD..."
-            className={cn(
-              "w-full pl-10 pr-3 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-sm",
-              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-            )}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left Sidebar - Quick Access & Filters */}
+        <div className="w-full lg:w-72 shrink-0 space-y-6 px-4 lg:px-0">
+          <div className={cn(
+            "p-5 rounded-[32px] border sticky top-4",
+            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm shadow-slate-200/50"
+          )}>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Tìm kiếm nhanh</label>
+                <div className="relative group">
+                  <Search className={cn("absolute left-3 top-1/2 -translate-y-1/2 transition-colors", isDarkMode ? "text-slate-600 group-focus-within:text-blue-500" : "text-slate-400 group-focus-within:text-blue-500")} size={14} />
+                  <input
+                    type="text"
+                    placeholder="Tên, mã BN, CCCD..."
+                    className={cn(
+                      "w-full pl-9 pr-3 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-[13px]",
+                      isDarkMode ? "bg-slate-800 text-white placeholder:text-slate-600" : "bg-slate-50 text-slate-900 placeholder:text-slate-400"
+                    )}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Bộ lọc danh sách</label>
+                <div className="space-y-1">
+                  {[
+                    { id: 'all', label: 'Tất cả bệnh nhân', count: patients.length, active: true },
+                    { id: 'bhyt', label: 'Có BHYT', count: patients.filter(p => !!p.MA_THE_BHYT).length, active: false },
+                    { id: 'male', label: 'Bệnh nhân Nam', count: patients.filter(p => p.GIOI_TINH === '1').length, active: false },
+                    { id: 'female', label: 'Bệnh nhân Nữ', count: patients.filter(p => p.GIOI_TINH === '2').length, active: false }
+                  ].map(filter => (
+                    <button 
+                      key={filter.id}
+                      className={cn(
+                        "w-full px-4 py-3 rounded-2xl text-left text-xs font-black transition-all flex items-center justify-between group",
+                        filter.active 
+                          ? (isDarkMode ? "bg-blue-500/10 text-blue-400 shadow-lg shadow-blue-500/5 border border-blue-500/20" : "bg-blue-50 text-blue-600 border border-blue-100")
+                          : (isDarkMode ? "text-slate-500 hover:bg-slate-800" : "text-slate-500 hover:bg-slate-50")
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <div className={cn("w-1.5 h-1.5 rounded-full transition-all", filter.active ? "bg-blue-500 animate-pulse" : "bg-slate-300 dark:bg-slate-700")} />
+                        {filter.label}
+                      </span>
+                      <span className={cn(
+                        "px-2 py-0.5 rounded-lg text-[9px] font-black",
+                        filter.active
+                          ? (isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-600")
+                          : (isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-100 text-slate-500")
+                      )}>
+                        {filter.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={cn("p-4 rounded-2xl border border-dashed text-center", isDarkMode ? "border-slate-800" : "border-slate-100")}>
+                <Activity size={16} className="text-emerald-500 mx-auto mb-2 opacity-50" />
+                <p className="text-[10px] font-bold text-slate-400 leading-relaxed italic">
+                  Tự động đồng bộ hồ sơ từ HIS kết nối thời gian thực.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-separate border-spacing-y-1">
-            <thead>
-              <tr className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">
-                <th className="px-3 py-1.5">Mã BN</th>
-                <th className="px-3 py-1.5">Họ và tên</th>
-                <th className="px-3 py-1.5">Ngày sinh</th>
-                <th className="px-3 py-1.5">Giới tính</th>
-                <th className="px-3 py-1.5">CCCD</th>
-                <th className="px-3 py-1.5">Ngày vào</th>
-                <th className="px-3 py-1.5 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-1" />
-                    <p className="text-xs text-slate-500 font-medium">Đang tải dữ liệu...</p>
-                  </td>
-                </tr>
-              ) : filteredPatients.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center">
-                    <div className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2",
-                      isDarkMode ? "bg-slate-800" : "bg-slate-100"
-                    )}>
-                      <Users size={24} className="text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-500 font-medium">Không tìm thấy bệnh nhân nào.</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredPatients.map((patient) => (
-                  <tr 
-                    key={patient.MA_LK}
-                    className={cn(
-                      "group transition-all",
-                      isDarkMode ? "hover:bg-slate-800/50" : "hover:bg-slate-50"
-                    )}
-                  >
-                    <td className="px-3 py-2 first:rounded-l-xl last:rounded-r-xl">
-                      <span className="font-mono text-[10px] font-bold text-blue-500">{patient.MA_BN}</span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <p className="font-bold text-sm">{patient.HO_TEN}</p>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{patient.NGAY_SINH}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{patient.GIOI_TINH === '1' ? 'Nam' : 'Nữ'}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{patient.SO_CCCD}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{patient.NGAY_VAO}</td>
-                    <td className="px-3 py-2 text-right first:rounded-l-xl last:rounded-r-xl">
-                      <div className="flex items-center justify-end gap-1">
-                        <button 
-                          onClick={() => handleOpenDetails(patient)}
-                          className="p-1.5 hover:bg-blue-500/10 text-blue-500 rounded-lg transition-colors"
-                          title="Xem chi tiết"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        {canManage && (
-                          <button 
-                            onClick={() => handleDeletePatient(patient.MA_LK)}
-                            className="p-1.5 hover:bg-rose-500/10 text-rose-500 rounded-lg transition-colors"
-                            title="Xóa"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
+        {/* Main Content - Patient Grid/Table */}
+        <div className="flex-1 min-w-0 px-4 lg:px-0">
+          <div className={cn(
+            "rounded-[40px] border overflow-hidden",
+            isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-100 shadow-sm"
+          )}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-separate border-spacing-0">
+                <thead>
+                  <tr className={cn(
+                    "border-b",
+                    isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-50"
+                  )}>
+                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Thông tin hồ sơ</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Ngày sinh</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Giới tính</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Lịch sử</th>
+                    <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Thao tác</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="py-24 text-center">
+                        <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500 mb-4" />
+                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Đang tải danh sách bệnh nhân...</p>
+                      </td>
+                    </tr>
+                  ) : filteredPatients.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-24 text-center">
+                        <div className={cn(
+                          "w-20 h-20 rounded-[32px] flex items-center justify-center mx-auto mb-4",
+                          isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                        )}>
+                          <Search size={32} className="text-slate-300" />
+                        </div>
+                        <h4 className="text-sm font-black uppercase tracking-widest text-slate-400">Không tìm thấy bệnh nhân</h4>
+                        <button 
+                          onClick={() => setSearchTerm('')}
+                          className="mt-2 text-xs font-bold text-blue-500 hover:underline"
+                        >
+                          Xóa bộ lọc tìm kiếm
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredPatients.map((patient) => (
+                      <tr 
+                        key={patient.MA_LK}
+                        className={cn(
+                          "group transition-all",
+                          isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-blue-50/40"
+                        )}
+                      >
+                        <td className="px-6 py-5 max-w-[240px]">
+                          <div className="flex flex-col">
+                            <HighlightText 
+                              text={patient.HO_TEN || ''} 
+                              search={searchTerm} 
+                              className={cn("text-[13px] font-black leading-tight", isDarkMode ? "text-slate-100" : "text-slate-900")}
+                            />
+                            <div className="flex items-center gap-3 mt-1.5">
+                              <HighlightText 
+                                text={patient.MA_BN || ''} 
+                                search={searchTerm} 
+                                className="font-mono text-[9px] font-black text-blue-500 tracking-tighter" 
+                              />
+                              <div className="w-1 h-1 rounded-full bg-slate-300" />
+                              <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                                CCCD: <HighlightText text={patient.SO_CCCD || '---'} search={searchTerm} />
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <p className="text-xs font-black text-slate-500 uppercase tracking-wider">{patient.NGAY_SINH}</p>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className={cn(
+                            "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all",
+                            patient.GIOI_TINH === '1'
+                              ? (isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600 shadow-sm shadow-blue-100")
+                              : (isDarkMode ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-rose-50 border-rose-100 text-rose-600 shadow-sm shadow-rose-100")
+                          )}>
+                            {patient.GIOI_TINH === '1' ? 'Nam' : 'Nữ'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                              <ClipboardList size={12} className="text-slate-400" />
+                              Vào: {patient.NGAYGIO_VAO || patient.NGAY_VAO || '---'}
+                            </div>
+                            {patient.NGAYGIO_RA && (
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-500">
+                                <Check size={12} />
+                                Ra: {patient.NGAYGIO_RA}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <div className="flex items-center justify-end gap-2 pr-2">
+                            <button 
+                              onClick={() => handleOpenDetails(patient)}
+                              className={cn(
+                                "p-2 rounded-2xl transition-all shadow-sm hover:scale-110 active:scale-95",
+                                isDarkMode ? "bg-slate-800 text-blue-400 hover:bg-slate-700" : "bg-slate-50 text-blue-600 hover:bg-white hover:shadow-md"
+                              )}
+                              title="Xem chi tiết"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            {canManage && (
+                              <button 
+                                onClick={() => {
+                                  if (confirm(`Bạn có chắc chắn muốn xóa hồ sơ của bệnh nhân ${patient.HO_TEN}?`)) {
+                                    deleteDoc(doc(db, 'patients', patient.MA_LK));
+                                  }
+                                }}
+                                className={cn(
+                                  "p-2 rounded-2xl transition-all shadow-sm hover:scale-110 active:scale-95",
+                                  isDarkMode ? "bg-slate-800 text-rose-500 hover:bg-rose-500/20" : "bg-rose-50 text-rose-500 hover:bg-rose-100 hover:shadow-md shadow-rose-100"
+                                )}
+                                title="Xóa hồ sơ"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 

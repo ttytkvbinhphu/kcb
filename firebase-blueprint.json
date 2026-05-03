@@ -13,10 +13,11 @@
             "type": "object",
             "properties": {
               "name": { "type": "string" },
-              "strength": { "type": "string" }
+              "amount": { "type": "string" },
+              "unit": { "type": "string" }
             }
           },
-          "description": "Danh sách các hoạt chất và hàm lượng" 
+          "description": "Danh sách các hoạt chất, hàm lượng và đơn vị" 
         },
         "atcCode": { "type": "string", "description": "Mã ATC" },
         "dosageForm": { "type": "string", "description": "Dạng bào chế" },
@@ -28,18 +29,45 @@
             "type": "object",
             "properties": {
               "content": { "type": "string" },
-              "icd10": { "type": "string" }
+              "icd10": { "type": "string" },
+              "icd10s": { "type": "array", "items": { "type": "string" } }
             }
           }, 
           "description": "Chỉ định kèm mã ICD-10 gợi ý" 
         },
-        "contraindications": { "type": "array", "items": { "type": "string" }, "description": "Chống chỉ định" },
-        "sideEffects": { "type": "array", "items": { "type": "string" }, "description": "Tác dụng phụ" },
+        "contraindications": { 
+          "type": "array", 
+          "items": { 
+             "type": "object",
+             "properties": {
+               "type": { "type": "string" },
+               "content": { "type": "string" }
+             }
+          }, 
+          "description": "Chống chỉ định" 
+        },
+        "sideEffects": { "type": "array", "items": { "type": "any" }, "description": "Tác dụng phụ" },
         "category": { "type": "string", "description": "Phân loại thuốc" },
-        "groupId": { "type": "string", "description": "ID nhóm thuốc" },
-        "avatarUrl": { "type": "string", "description": "URL ảnh đại diện thuốc" }
+        "groupId": { "type": "string", "description": "ID nhóm thuốc chính" },
+        "groupIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách ID các nhóm thuốc" },
+        "avatarUrl": { "type": "string", "description": "URL ảnh đại diện thuốc" },
+        "isRx": { "type": "boolean", "description": "Thuốc kê đơn" },
+        "isActive": { "type": "boolean", "description": "Trạng thái hoạt động" },
+        "pdfUrl": { "type": "string", "description": "URL file HDSD" },
+        "bannerUrl": { "type": "string" },
+        "generalAdministration": { "type": "string" },
+        "dosageAndAdministration": { "type": "array", "items": { "type": "object" } },
+        "pharmacodynamics": { "type": "array", "items": { "type": "object" } },
+        "pharmacokinetics": { "type": "array", "items": { "type": "object" } },
+        "specificInteractions": { "type": "array", "items": { "type": "object" } },
+        "precautions": { "type": "string" },
+        "pregnancy": { "type": "string" },
+        "lactation": { "type": "string" },
+        "interactions": { "type": "string" },
+        "driving": { "type": "string", "description": "Ảnh hưởng đến lái xe, vận hành máy móc" },
+        "overdose": { "type": "string" }
       },
-      "required": ["id", "name", "activeIngredients", "category"]
+      "required": ["id", "name", "activeIngredients", "category", "isActive"]
     },
     "Prescription": {
       "title": "Prescription",
@@ -405,7 +433,8 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "description": { "type": "string" },
-        "categoryId": { "type": "string", "description": "ID phân loại hoạt chất" }
+        "categoryId": { "type": "string", "description": "ID phân loại hoạt chất (Legacy)" },
+        "categoryIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách các ID phân loại hoạt chất" }
       },
       "required": ["id", "name"]
     },
@@ -427,8 +456,11 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "alias": { "type": "string", "description": "Tên gọi khác (chuỗi)" },
+        "aliases": { "type": "array", "items": { "type": "string" }, "description": "Danh sách tên gọi khác" },
         "description": { "type": "string" },
-        "categoryId": { "type": "string", "description": "ID phân loại tá dược" }
+        "categoryId": { "type": "string", "description": "ID phân loại tá dược (Legacy)" },
+        "categoryIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách các ID phân loại tá dược" }
       },
       "required": ["id", "name"]
     },

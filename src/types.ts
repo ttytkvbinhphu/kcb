@@ -1,7 +1,7 @@
 export interface Drug {
   id: string;
   name: string;
-  activeIngredients: { name: string; strength: string }[];
+  activeIngredients: { name: string; amount: string; unit: string }[];
   atcCode?: string;
   dosageForm: string;
   excipients?: string;
@@ -16,8 +16,16 @@ export interface Drug {
   bannerUrl?: string;
   pdfUrl?: string;
   isActive: boolean;
+  isRx?: boolean;
   generalAdministration?: string; // Common usage instructions (e.g., before/after food)
-  dosageAndAdministration?: { category: string; content: string }[];
+  dosageAndAdministration?: { 
+    category: string; 
+    content: string;
+    morning?: string;
+    noon?: string;
+    afternoon?: string;
+    night?: string;
+  }[];
   precautions?: string;
   pregnancy?: string;
   lactation?: string;
@@ -42,7 +50,8 @@ export interface Ingredient {
   id: string;
   name: string;
   description?: string;
-  categoryId?: string; // Reference to IngredientCategory
+  categoryId?: string; // Legacy: single category
+  categoryIds?: string[]; // Multiple categories support
 }
 
 export interface IngredientCategory {
@@ -54,7 +63,11 @@ export interface IngredientCategory {
 export interface Excipient {
   id: string;
   name: string;
+  alias?: string;
+  aliases?: string[];
   description?: string;
+  categoryId?: string; // Legacy
+  categoryIds?: string[]; // Multiple categories support
 }
 
 export interface PrescriptionItem {

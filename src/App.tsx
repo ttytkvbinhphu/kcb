@@ -63,6 +63,7 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [rolePermissions, setRolePermissions] = useState<any[]>([]);
+  const [configRoles, setConfigRoles] = useState<any[]>([]);
   const [titlePermissions, setTitlePermissions] = useState<any[]>([]);
   const [permsLoading, setPermsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -234,6 +235,7 @@ export default function App() {
       setPermsLoading(false);
       setFeatureStates({});
       setFeatureSettings({});
+      setConfigRoles([]);
       return () => {
         unsubSettings();
       };
@@ -263,6 +265,10 @@ export default function App() {
     const permsTimeout = setTimeout(() => {
       setPermsLoading(false);
     }, 3000);
+
+    const unsubConfigRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
+      setConfigRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     const unsubRolePerms = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
       setRolePermissions(snapshot.docs.map(doc => doc.data()));
@@ -329,6 +335,7 @@ export default function App() {
     });
 
     return () => {
+      unsubConfigRoles();
       unsubRolePerms();
       unsubTitlePerms();
       unsubNotifications();
@@ -450,11 +457,16 @@ export default function App() {
         setIsAuthReady(true);
       }, 5000);
 
-      if (currentUser) {
-        try {
-          // Force reload to get latest photoURL from Google
-          await currentUser.reload();
-          const refreshedUser = auth.currentUser; // Get the reloaded version
+          if (currentUser) {
+            try {
+              // Try to reload to get latest info, but don't fail if network is flaky
+              try {
+                await currentUser.reload();
+              } catch (reloadErr: any) {
+                console.warn("User reload failed (network issue?), proceeding with current data", reloadErr);
+              }
+              
+              const refreshedUser = auth.currentUser; // Get the reloaded version if available
           
           if (!refreshedUser) {
             setIsAuthReady(true);
@@ -554,8 +566,20 @@ export default function App() {
           
           // Seed initial data non-blockingly
           seedInitialData();
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
+        } catch (error: any) {
+          if (error?.code?.startsWith('auth/')) {
+            console.warn("Auth-related error during profile fetch (may be network issue):", error);
+          } else {
+            console.error("Error fetching user profile:", error);
+            // Only show handleFirestoreError if it's likely a Firestore error
+            if (error?.code?.includes('permission') || error?.code?.includes('unavailable')) {
+               try {
+                 handleFirestoreError(error, OperationType.GET, `users/${currentUser?.uid}`);
+               } catch (detailedError) {
+                 console.error("Detailed Fetch Error:", detailedError);
+               }
+            }
+          }
         }
       } else {
         setUserProfile(null);
@@ -958,6 +982,7 @@ export default function App() {
                       isDarkMode={isDarkMode} 
                       featureSettings={featureSettings['view_directory']}
                       userRole={userProfile?.role}
+                      userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
                     />
                   </div>
                 )}
@@ -968,6 +993,7 @@ export default function App() {
                       isDarkMode={isDarkMode}
                       featureSettings={featureSettings['view_icd10']}
                       userRole={userProfile?.role}
+                      userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
                     />
                   </div>
                 )}
@@ -1084,12 +1110,13 @@ export default function App() {
   // Dynamic permission check
   const rolePerm = rolePermissions.find(p => p.roleId === userProfile.role);
   const titlePerm = titlePermissions.find(p => p.titleId === userProfile.title);
+  const userPowerPoints: number = configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0;
   
   const roleAllowedTabs = rolePerm?.allowedTabs || [];
   const titleAllowedTabs = titlePerm?.allowedTabs || [];
   
   // Combine permissions: Role (Management) + Title (Work)
-  let allowedTabs = Array.from(new Set([...roleAllowedTabs, ...titleAllowedTabs, 'view_social', 'view_calendar', 'view_notes', 'view_profile']));
+  let allowedTabs = Array.from(new Set([...roleAllowedTabs, ...titleAllowedTabs, 'view_social', 'view_calendar', 'view_notes', 'view_profile', 'view_patients']));
   
   // Auto-allow admin tabs for admins
   if (userProfile.role === 'admin') {
@@ -1230,6 +1257,7 @@ export default function App() {
       case 'notes':
         return <Notes isDarkMode={isDarkMode} subHeaderPortalId="mobile-subheader-portal" />;
       case 'directory':
+      case 'view_directory':
         return <DrugDirectory 
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
@@ -1237,8 +1265,10 @@ export default function App() {
           featureSettings={featureSettings[activeTab]}
           userRole={userProfile.role}
           isApproved={userProfile.isApproved}
+          userPowerPoints={userPowerPoints}
         />;
       case 'interaction':
+      case 'view_interaction':
         return <InteractionChecker 
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
@@ -1247,17 +1277,21 @@ export default function App() {
           featureSettings={featureSettings[activeTab]}
         />;
       case 'prescription':
+      case 'view_prescription':
         return <PrescriptionForm 
           userProfile={userProfile} 
           isDarkMode={isDarkMode} 
           featureSettings={featureSettings['view_icd10']}
+          userPowerPoints={userPowerPoints}
         />;
       case 'icd10':
+      case 'view_icd10':
         return <ICD10Management 
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
-          featureSettings={featureSettings[activeTab]}
+          featureSettings={featureSettings['view_icd10']}
           userRole={userProfile.role}
+          userPowerPoints={userPowerPoints}
         />;
       case 'users':
         return <UserManagement isDarkMode={isDarkMode} />;
@@ -1272,6 +1306,7 @@ export default function App() {
           />
         );
       case 'adr':
+      case 'view_adr':
         return <ADRManagement 
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
@@ -1281,11 +1316,13 @@ export default function App() {
           userRole={userProfile.role}
         />;
       case 'patients':
+      case 'view_patients':
         const canManagePatients = isManagementMode || ['admin', 'operator', 'operator_doctor'].includes(userProfile?.role);
         return <PatientManagement isDarkMode={isDarkMode} canManage={canManagePatients} />;
       case 'staff':
         return <StaffManagement isDarkMode={isDarkMode} canManage={isManagementMode} />;
       case 'social':
+      case 'view_social':
         return <SocialWall 
           userProfile={userProfile} 
           setUserProfile={setUserProfile} 
@@ -1322,6 +1359,7 @@ export default function App() {
           }}
         />;
       case 'profile':
+      case 'view_profile':
         return <SocialWall 
           userProfile={userProfile} 
           setUserProfile={setUserProfile} 
@@ -2593,6 +2631,7 @@ export default function App() {
                       isDarkMode={isDarkMode} 
                       featureSettings={featureSettings['view_directory']}
                       userRole={userProfile?.role}
+                      userPowerPoints={userPowerPoints}
                     />
                   </div>
                 )}
@@ -2603,6 +2642,7 @@ export default function App() {
                       isDarkMode={isDarkMode}
                       featureSettings={featureSettings['view_icd10']}
                       userRole={userProfile?.role}
+                      userPowerPoints={userPowerPoints}
                     />
                   </div>
                 )}

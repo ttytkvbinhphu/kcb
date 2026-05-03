@@ -3,7 +3,7 @@ const MOCK_DRUGS = [
   {
     id: '1',
     name: 'Paracetamol',
-    activeIngredients: [{ name: 'Paracetamol', strength: '500mg' }],
+    activeIngredients: [{ name: 'Paracetamol', amount: '500', unit: 'mg' }],
     dosageForm: 'Viên nén',
     excipients: 'Tinh bột ngô, Povidon K30...',
     manufacturer: 'Hậu Giang Pharma',
@@ -16,7 +16,7 @@ const MOCK_DRUGS = [
   {
     id: '2',
     name: 'Amoxicillin',
-    activeIngredients: [{ name: 'Amoxicillin', strength: '500mg' }],
+    activeIngredients: [{ name: 'Amoxicillin', amount: '500', unit: 'mg' }],
     dosageForm: 'Viên nang',
     excipients: 'Magnesi stearat...',
     manufacturer: 'Domesco',
@@ -29,7 +29,7 @@ const MOCK_DRUGS = [
   {
     id: '3',
     name: 'Ibuprofen',
-    activeIngredients: [{ name: 'Ibuprofen', strength: '400mg' }],
+    activeIngredients: [{ name: 'Ibuprofen', amount: '400', unit: 'mg' }],
     dosageForm: 'Viên nén',
     excipients: 'Lactose, Tinh bột sắn...',
     manufacturer: 'Traphaco',
@@ -42,7 +42,7 @@ const MOCK_DRUGS = [
   {
     id: '4',
     name: 'Metformin',
-    activeIngredients: [{ name: 'Metformin hydrochloride', strength: '850mg' }],
+    activeIngredients: [{ name: 'Metformin hydrochloride', amount: '850', unit: 'mg' }],
     dosageForm: 'Viên nén bao phim',
     excipients: 'Hypromellose, Magnesi stearat...',
     manufacturer: 'Stada',
@@ -55,7 +55,7 @@ const MOCK_DRUGS = [
   {
     id: '5',
     name: 'Amlodipine',
-    activeIngredients: [{ name: 'Amlodipine besylate', strength: '5mg' }],
+    activeIngredients: [{ name: 'Amlodipine besylate', amount: '5', unit: 'mg' }],
     dosageForm: 'Viên nén',
     excipients: 'Calci phosphat dibasic, Tinh bột natri glycolat...',
     manufacturer: 'Pymepharco',

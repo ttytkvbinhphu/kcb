@@ -302,19 +302,22 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                   isDarkMode ? "bg-slate-900/50" : "bg-white"
                 )}
               >
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start gap-3 mb-3">
                   <span className={cn(
-                    "px-2.5 py-1 rounded-md font-mono font-bold text-[10px] tracking-tight border",
+                    "shrink-0 px-2.5 py-1 rounded-md font-mono font-bold text-[10px] tracking-tight border",
                     isDarkMode ? "bg-emerald-900/20 text-emerald-400 border-emerald-800/30" : "bg-emerald-50/50 text-emerald-700 border-emerald-100"
                   )}>
                     {icd.code}
                   </span>
+                  <h4 className={cn("flex-1 font-bold text-sm leading-tight mt-0.5", isDarkMode ? "text-white" : "text-black")}>
+                    {icd.description}
+                  </h4>
                   {canManage && (
-                    <div className="flex gap-1">
+                    <div className="shrink-0 flex gap-1">
                       <button 
                         onClick={() => handleOpenModal(icd)} 
                         className={cn(
-                          "p-2 rounded-lg transition-colors",
+                          "p-1.5 rounded-lg transition-colors",
                           isDarkMode ? "text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/30" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
                         )}
                       >
@@ -323,7 +326,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                       <button 
                         onClick={() => confirmDelete(icd.code)} 
                         className={cn(
-                          "p-2 rounded-lg transition-colors",
+                          "p-1.5 rounded-lg transition-colors",
                           isDarkMode ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                         )}
                       >
@@ -332,32 +335,31 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                     </div>
                   )}
                 </div>
-                <h4 className={cn("font-bold text-sm mb-3", isDarkMode ? "text-white" : "text-black")}>
-                  {icd.description}
-                </h4>
-                <div className="space-y-2">
-                  <p className={cn(
-                    "text-[10px] font-black uppercase tracking-widest transition-colors",
-                    isDarkMode ? "text-slate-500" : "text-slate-400"
-                  )}>Gợi ý thuốc</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {isDrugSuggestionsAllowed && drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
-                      drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
-                        <span key={idx} className={cn(
-                          "px-2 py-0.5 rounded-md text-[9px] font-bold border transition-colors",
-                          isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
-                        )}>
-                          {drug}
-                        </span>
-                      ))
-                    ) : (
-                      <span className={cn(
-                        "text-[10px] italic transition-colors",
-                        isDarkMode ? "text-slate-500" : "text-slate-400"
-                      )}>Chưa có gợi ý</span>
-                    )}
+                {isDrugSuggestionsAllowed && (
+                  <div className="space-y-2">
+                    <p className={cn(
+                      "text-[10px] font-black uppercase tracking-widest transition-colors",
+                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                    )}>Gợi ý thuốc</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
+                        drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
+                          <span key={idx} className={cn(
+                            "px-2 py-0.5 rounded-md text-[9px] font-bold border transition-colors",
+                            isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
+                          )}>
+                            {drug}
+                          </span>
+                        ))
+                      ) : (
+                        <span className={cn(
+                          "text-[10px] italic transition-colors",
+                          isDarkMode ? "text-slate-500" : "text-slate-400"
+                        )}>Chưa có gợi ý</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))
           ) : (
@@ -377,7 +379,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
               )}>
                 <th className={cn("w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mã ICD-10</th>
                 <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mô tả bệnh</th>
-                <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Gợi ý thuốc</th>
+                {isDrugSuggestionsAllowed && (
+                  <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Gợi ý thuốc</th>
+                )}
                 {canManage && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest text-right transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Thao tác</th>}
               </tr>
             </thead>
@@ -407,25 +411,27 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                       isDarkMode ? "text-slate-200" : "text-slate-900"
                     )}>{icd.description}</p>
                   </td>
-                  <td className="px-4 sm:px-6 lg:px-8 py-4">
-                    <div className="flex flex-wrap gap-1.5">
-                      {isDrugSuggestionsAllowed && drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
-                        drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
-                          <span key={idx} className={cn(
-                            "px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-md text-[9px] lg:text-[11px] font-bold border transition-colors",
-                            isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
-                          )}>
-                            {drug}
-                          </span>
-                        ))
-                      ) : (
-                        <span className={cn(
-                          "text-[10px] lg:text-xs italic transition-colors",
-                          isDarkMode ? "text-slate-500" : "text-slate-400"
-                        )}>Chưa có gợi ý</span>
-                      )}
-                    </div>
-                  </td>
+                  {isDrugSuggestionsAllowed && (
+                    <td className="px-4 sm:px-6 lg:px-8 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
+                          drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
+                            <span key={idx} className={cn(
+                              "px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-md text-[9px] lg:text-[11px] font-bold border transition-colors",
+                              isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
+                            )}>
+                              {drug}
+                            </span>
+                          ))
+                        ) : (
+                          <span className={cn(
+                            "text-[10px] lg:text-xs italic transition-colors",
+                            isDarkMode ? "text-slate-500" : "text-slate-400"
+                          )}>Chưa có gợi ý</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
                   {canManage && (
                     <td className="px-4 sm:px-6 lg:px-8 py-4 text-right">
                       <div className="flex justify-end gap-1 lg:gap-2">
