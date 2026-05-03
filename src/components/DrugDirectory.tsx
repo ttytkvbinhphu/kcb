@@ -1962,12 +1962,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                                 </span>
                                               )}
                                               {description && !isDefault && (
-                                                <span className="text-[11px] text-slate-400 font-medium italic truncate max-w-[200px]">
+                                                <span className="text-[11px] text-slate-400 font-medium italic">
                                                   - {description}
                                                 </span>
                                               )}
                                               {description && isDefault && (
-                                                <span className={cn("text-[11px] font-medium italic truncate max-w-[200px]", isDarkMode ? "text-amber-300/70" : "text-amber-700/70")}>
+                                                <span className={cn("text-[11px] font-medium italic", isDarkMode ? "text-amber-300/70" : "text-amber-700/70")}>
                                                   - {description}
                                                 </span>
                                               )}
