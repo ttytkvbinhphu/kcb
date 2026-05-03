@@ -1920,16 +1920,30 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         {item.icd10s.map((fullCode, idx) => {
                                           const code = fullCode.split(' - ')[0];
                                           const description = fullCode.split(' - ')[1] || icdList.find(icd => icd.code === code)?.description;
+                                          const isDefault = item.defaultIcd10 === fullCode;
                                           return (
                                             <div key={idx} className="flex items-center gap-1.5">
                                               <span className={cn(
-                                                "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider shrink-0",
-                                                isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-blue-50 text-blue-600 border-blue-100"
+                                                "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider shrink-0 flex items-center gap-1",
+                                                isDefault
+                                                  ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                                                  : isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-blue-50 text-blue-600 border-blue-100"
                                               )}>
+                                                {isDefault && <Star size={8} fill="currentColor" />}
                                                 {code}
                                               </span>
-                                              {description && (
+                                              {isDefault && (
+                                                <span className={cn("text-[9px] font-black uppercase tracking-wider", isDarkMode ? "text-amber-400" : "text-amber-600")}>
+                                                  Thường dùng
+                                                </span>
+                                              )}
+                                              {description && !isDefault && (
                                                 <span className="text-[11px] text-slate-400 font-medium italic truncate max-w-[200px]">
+                                                  - {description}
+                                                </span>
+                                              )}
+                                              {description && isDefault && (
+                                                <span className={cn("text-[11px] font-medium italic truncate max-w-[200px]", isDarkMode ? "text-amber-300/70" : "text-amber-700/70")}>
                                                   - {description}
                                                 </span>
                                               )}
@@ -3155,32 +3169,74 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                   <div className="space-y-1">
                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã ICD-10 gợi ý</label>
                                     <div className="flex flex-wrap gap-1 mb-2">
-                                      {(indication.icd10s || []).map((code, tagIdx) => (
-                                        <div 
-                                          key={tagIdx} 
-                                          className={cn(
-                                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border animate-in fade-in zoom-in duration-200",
-                                            isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-blue-50 text-blue-600 border-blue-100"
-                                          )}
-                                        >
-                                          {code.split(' - ')[0]}
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              const newList = [...formData.indications];
-                                              newList[index] = {
-                                                ...newList[index],
-                                                icd10s: (newList[index].icd10s || []).filter((_, i) => i !== tagIdx)
-                                              };
-                                              setFormData({ ...formData, indications: newList });
-                                            }}
-                                            className="hover:text-rose-500 transition-colors"
+                                      {(indication.icd10s || []).map((code, tagIdx) => {
+                                        const codeOnly = code.split(' - ')[0];
+                                        const isDefault = indication.defaultIcd10 === code;
+                                        return (
+                                          <div 
+                                            key={tagIdx} 
+                                            className={cn(
+                                              "inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border animate-in fade-in zoom-in duration-200 transition-all",
+                                              isDefault
+                                                ? "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
+                                                : isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-blue-50 text-blue-600 border-blue-100"
+                                            )}
                                           >
-                                            <X size={10} />
-                                          </button>
-                                        </div>
-                                      ))}
+                                            <button
+                                              type="button"
+                                              title={isDefault ? "Đang là ICD-10 thường dùng" : "Chọn làm ICD-10 thường dùng"}
+                                              onClick={() => {
+                                                const newList = [...formData.indications];
+                                                newList[index] = {
+                                                  ...newList[index],
+                                                  defaultIcd10: isDefault ? undefined : code
+                                                };
+                                                setFormData({ ...formData, indications: newList });
+                                              }}
+                                              className={cn(
+                                                "transition-colors shrink-0",
+                                                isDefault ? "text-white" : (isDarkMode ? "text-blue-500 hover:text-amber-400" : "text-blue-400 hover:text-amber-500")
+                                              )}
+                                            >
+                                              <Star size={9} fill={isDefault ? "currentColor" : "none"} />
+                                            </button>
+                                            {codeOnly}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const newList = [...formData.indications];
+                                                const wasDefault = newList[index].defaultIcd10 === code;
+                                                newList[index] = {
+                                                  ...newList[index],
+                                                  icd10s: (newList[index].icd10s || []).filter((_, i) => i !== tagIdx),
+                                                  ...(wasDefault ? { defaultIcd10: undefined } : {})
+                                                };
+                                                setFormData({ ...formData, indications: newList });
+                                              }}
+                                              className={cn(
+                                                "transition-colors",
+                                                isDefault ? "hover:text-amber-200" : "hover:text-rose-500"
+                                              )}
+                                            >
+                                              <X size={10} />
+                                            </button>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
+                                    {(indication.icd10s || []).length > 0 && (
+                                      <div className={cn(
+                                        "flex items-center gap-2 px-2 py-1 rounded-lg text-[9px] font-bold",
+                                        indication.defaultIcd10
+                                          ? (isDarkMode ? "text-amber-400" : "text-amber-600")
+                                          : (isDarkMode ? "text-slate-500" : "text-slate-400")
+                                      )}>
+                                        <Star size={9} fill={indication.defaultIcd10 ? "currentColor" : "none"} />
+                                        {indication.defaultIcd10
+                                          ? `ICD-10 thường dùng: ${indication.defaultIcd10.split(' - ')[0]}`
+                                          : "Nhấn ☆ trên mã ICD-10 để chọn làm mặc định khi kê toa"}
+                                      </div>
+                                    )}
                                     <div className="relative">
                                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
                                       <input
