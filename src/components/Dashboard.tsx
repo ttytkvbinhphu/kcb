@@ -39,6 +39,7 @@ interface DashboardProps {
   featureStates?: Record<string, string>;
   featureSettings?: Record<string, any>;
   uid?: string;
+  onLogout?: () => void;
 }
 
 interface SortableItemProps {
@@ -106,7 +107,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   onMarkAsRead,
   featureStates = {},
   featureSettings = {},
-  uid
+  uid,
+  onLogout
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [stats, setStats] = useState([
@@ -380,7 +382,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <button 
-                onClick={() => auth.signOut()}
+                onClick={onLogout || (() => auth.signOut())}
                 className={cn(
                   "w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border-2",
                   isDarkMode ? "border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-white" : "border-slate-100 text-slate-400 hover:bg-slate-50 hover:text-slate-600"

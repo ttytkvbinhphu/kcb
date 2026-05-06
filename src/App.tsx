@@ -6,6 +6,7 @@ import InteractionChecker from './components/InteractionChecker';
 import PrescriptionForm from './components/PrescriptionForm';
 import ICD10Management from './components/ICD10Management';
 import UserManagement from './components/UserManagement';
+import ConfirmModal from './components/ConfirmModal';
 import ADRManagement from './components/ADRManagement';
 import PatientManagement from './components/PatientManagement';
 import StaffManagement from './components/StaffManagement';
@@ -83,13 +84,28 @@ export default function App() {
     hideEmail: false,
     hideZalo: false
   });
+
+  // Sync profileEditData with userProfile for real-time consistency in Settings
+  useEffect(() => {
+    if (userProfile && !isProfileModalOpen) {
+      setProfileEditData({
+        zaloNumber: userProfile.zaloNumber || '',
+        hideEmail: userProfile.hideEmail || false,
+        hideZalo: userProfile.hideZalo || false
+      });
+    }
+  }, [userProfile, isProfileModalOpen]);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [isPrivacyConfirmOpen, setIsPrivacyConfirmOpen] = useState(false);
+  const [privacyConfirmType, setPrivacyConfirmType] = useState<'email' | 'zalo'>('email');
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isAdminMode, setIsAdminMode] = useState(() => {
     const saved = localStorage.getItem('isAdminMode');
     return saved === 'true';
   });
+  const [externalSelectedDrugId, setExternalSelectedDrugId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('isAdminMode', isAdminMode.toString());
@@ -117,6 +133,19 @@ export default function App() {
   const mobileSearchMenuRef = useRef<HTMLDivElement>(null);
   const desktopSearchMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  // Force browser layout reflow on tab change (fixes GPU compositing bug on mobile)
+  useEffect(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+    // Reset scroll position
+    el.scrollTop = 0;
+    // Force reflow: same mechanism triggered by phone rotation
+    el.style.display = 'none';
+    void el.offsetHeight; // Trigger synchronous reflow
+    el.style.display = '';
+  }, [activeTab]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -190,10 +219,13 @@ export default function App() {
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const updatedData = {
+        ...userProfile,
         ...profileEditData,
         updatedAt: new Date().toISOString()
-      });
+      };
+      await updateDoc(doc(db, 'users', user.uid), updatedData);
+      setUserProfile(updatedData);
       setIsEditingProfile(false);
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -201,12 +233,15 @@ export default function App() {
   };
 
   const handleSaveProfileField = async (changes: Partial<typeof profileEditData>) => {
-    if (!user) return;
+    if (!user || !userProfile) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const updatedData = {
+        ...userProfile,
         ...changes,
         updatedAt: new Date().toISOString()
-      });
+      };
+      await updateDoc(doc(db, 'users', user.uid), updatedData);
+      setUserProfile(updatedData);
     } catch (error) {
       console.error("Error saving profile field:", error);
     }
@@ -243,6 +278,15 @@ export default function App() {
 
     setPermsLoading(true);
     
+    // Current user profile listener for real-time sync
+    const unsubUserProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        setUserProfile(snapshot.data() as UserProfile);
+      }
+    }, (error) => {
+      console.error("Error listening to user profile:", error);
+    });
+
     const unsubFeatures = onSnapshot(doc(db, 'system_config', 'features'), (snapshot) => {
       if (snapshot.exists()) {
         setFeatureStates(snapshot.data() as any);
@@ -335,6 +379,7 @@ export default function App() {
     });
 
     return () => {
+      unsubUserProfile();
       unsubConfigRoles();
       unsubRolePerms();
       unsubTitlePerms();
@@ -344,7 +389,7 @@ export default function App() {
       unsubFeatures();
       unsubFeatureSettings();
     };
-  }, [user, userProfile]);
+  }, [user, userProfile?.role, userProfile?.title, userProfile?.uid]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -659,6 +704,26 @@ export default function App() {
       }
     }
     setIsProfileModalOpen(false);
+    setIsLogoutConfirmOpen(true);
+  };
+
+  const confirmLogout = async () => {
+    if (user) {
+      // Log explicit logout
+      const logId = Date.now().toString();
+      try {
+        await setDoc(doc(db, 'auth_logs', logId), {
+          id: logId,
+          userId: user.uid,
+          userEmail: user.email,
+          userName: userProfile?.displayName || user.displayName || 'Người dùng',
+          type: 'logout',
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("Logout logging failed", e);
+      }
+    }
     await auth.signOut();
   };
 
@@ -1266,6 +1331,9 @@ export default function App() {
           userRole={userProfile.role}
           isApproved={userProfile.isApproved}
           userPowerPoints={userPowerPoints}
+          initialSelectedDrugId={externalSelectedDrugId}
+          onClearInitialDrug={() => setExternalSelectedDrugId(null)}
+          currentUserName={userProfile.displayName}
         />;
       case 'interaction':
       case 'view_interaction':
@@ -1292,6 +1360,10 @@ export default function App() {
           featureSettings={featureSettings['view_icd10']}
           userRole={userProfile.role}
           userPowerPoints={userPowerPoints}
+          onSelectDrug={(drug) => {
+            setExternalSelectedDrugId(drug.id);
+            setActiveTab('view_directory');
+          }}
         />;
       case 'users':
         return <UserManagement isDarkMode={isDarkMode} />;
@@ -1330,6 +1402,7 @@ export default function App() {
           onBack={() => setActiveTab('dashboard')}
           initialTab="feed"
           featureSettings={featureSettings['view_social']}
+          subHeaderPortalId="mobile-subheader-portal"
           onSyncProfile={async () => {
             if (auth.currentUser) {
               try {
@@ -1367,6 +1440,7 @@ export default function App() {
           onBack={() => setActiveTab('dashboard')}
           initialTab="profile"
           featureSettings={featureSettings['view_social']}
+          subHeaderPortalId="mobile-subheader-portal"
           onSyncProfile={async () => {
             if (auth.currentUser) {
               try {
@@ -1421,6 +1495,7 @@ export default function App() {
           featureSettings={featureSettings}
           userProfile={userProfile}
           uid={user?.uid}
+          onLogout={handleLogout}
         />;
     }
   };
@@ -1438,6 +1513,8 @@ export default function App() {
         setActiveTab={(tab) => {
           setActiveTab(tab);
           setIsSidebarOpen(false);
+          // Force browser repaint after sidebar closes (fixes GPU compositing issue on mobile)
+          setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
         }} 
         userRole={userProfile.role} 
         displayName={userProfile.displayName}
@@ -1457,7 +1534,7 @@ export default function App() {
         uid={user?.uid || ''}
       />
       
-      <main className="flex-1 lg:ml-[260px] h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar">
+      <main ref={(el) => { mainScrollRef.current = el; }} className="flex-1 lg:ml-[260px] h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar">
         {/* Mobile Header */}
       <div className={cn(
         "lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b backdrop-blur-md",
@@ -2222,13 +2299,6 @@ export default function App() {
             </div>
             <button 
               onClick={() => {
-                if (userProfile) {
-                  setProfileEditData({
-                    zaloNumber: userProfile.zaloNumber || '',
-                    hideEmail: userProfile.hideEmail || false,
-                    hideZalo: userProfile.hideZalo || false
-                  });
-                }
                 setIsProfileModalOpen(true);
               }}
               className={cn(
@@ -2279,17 +2349,14 @@ export default function App() {
         )}
 
         <div className="p-3 lg:px-6 lg:pb-6 lg:pt-0">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {renderContent()}
-            </motion.div>
-          </AnimatePresence>
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            {renderContent()}
+          </motion.div>
         </div>
 
         {/* Profile Modal */}
@@ -2408,8 +2475,13 @@ export default function App() {
                           <button 
                             onClick={() => {
                               const nextHideEmail = !profileEditData.hideEmail;
-                              setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
-                              handleSaveProfileField({ hideEmail: nextHideEmail });
+                              if (!nextHideEmail) { // Turning ON public view (hideEmail becomes false)
+                                setPrivacyConfirmType('email');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
+                                handleSaveProfileField({ hideEmail: nextHideEmail });
+                              }
                             }}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors",
@@ -2441,8 +2513,13 @@ export default function App() {
                           <button 
                             onClick={() => {
                               const nextHideZalo = !profileEditData.hideZalo;
-                              setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
-                              handleSaveProfileField({ hideZalo: nextHideZalo });
+                              if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
+                                setPrivacyConfirmType('zalo');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                                handleSaveProfileField({ hideZalo: nextHideZalo });
+                              }
                             }}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors",
@@ -2468,8 +2545,8 @@ export default function App() {
                       )}>Giao diện & Chủ đề</label>
                       <div className="grid grid-cols-2 gap-4">
                         {[
-                          { id: 'light', label: 'Giao diện Sáng', icon: Sun },
-                          { id: 'dark', label: 'Giao diện Tối', icon: Moon },
+                          { id: 'light', label: 'Sáng', icon: Sun },
+                          { id: 'dark', label: 'Tối', icon: Moon },
                         ].map((t) => (
                           <button
                             key={t.id}
@@ -2733,7 +2810,41 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-</main>
+          <ConfirmModal
+            isOpen={isPrivacyConfirmOpen}
+            onClose={() => setIsPrivacyConfirmOpen(false)}
+            onConfirm={() => {
+              if (privacyConfirmType === 'email') {
+                setProfileEditData(prev => ({ ...prev, hideEmail: false }));
+                handleSaveProfileField({ hideEmail: false });
+              } else {
+                setProfileEditData(prev => ({ ...prev, hideZalo: false }));
+                handleSaveProfileField({ hideZalo: false });
+              }
+              setIsPrivacyConfirmOpen(false);
+            }}
+            title="Cảnh báo quyền riêng tư"
+            message={privacyConfirmType === 'email' 
+              ? "Bạn có chắc chắn muốn công khai Email không? Mọi người trong hệ thống sẽ có thể nhìn thấy email liên hệ của bạn."
+              : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người trong hệ thống sẽ có thể nhìn thấy số Zalo của bạn."
+            }
+            confirmText="Công khai"
+            cancelText="Hủy"
+            type="warning"
+            isDarkMode={isDarkMode}
+          />
+          <ConfirmModal
+            isOpen={isLogoutConfirmOpen}
+            onClose={() => setIsLogoutConfirmOpen(false)}
+            onConfirm={confirmLogout}
+            title="Đăng xuất"
+            message="Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không? Các thay đổi chưa lưu có thể bị mất."
+            confirmText="Đăng xuất"
+            cancelText="Ở lại"
+            type="warning"
+            isDarkMode={isDarkMode}
+          />
+      </main>
     </div>
   );
 }

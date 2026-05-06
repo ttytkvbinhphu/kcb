@@ -110,12 +110,12 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidDrug(data) {
-      return hasRequiredFields(['id', 'name', 'activeIngredients', 'category', 'isActive']) &&
+      return hasRequiredFields(['id', 'name', 'activeIngredients', 'category']) &&
              data.id is string && data.id.size() > 0 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 1000 &&
              data.activeIngredients is list && data.activeIngredients.size() > 0 &&
              data.category is string &&
-             data.isActive is bool &&
+             (!('isClosed' in data) || data.isClosed is bool) &&
              (!('indications' in data) || data.indications is list) &&
              (!('contraindications' in data) || data.contraindications is list) &&
              (!('sideEffects' in data) || data.sideEffects is list) &&

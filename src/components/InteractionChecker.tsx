@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCircle2, Info, Library, FileText, Edit2, Trash2, ChevronRight, MoreVertical } from 'lucide-react';
-import { Drug, InteractionResult, ManualInteraction } from '../types';
+import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCircle2, Info, Library, FileText, Edit2, Trash2, ChevronRight, MoreVertical, AlertOctagon } from 'lucide-react';
+import { Drug, InteractionResult, ManualInteraction, ICD10 } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
+import DrugDetailModal from './DrugDetailModal';
 import { db, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, setDoc, doc, deleteDoc, query, orderBy } from '../firebase';
 import ConfirmModal from './ConfirmModal';
 
@@ -55,9 +56,11 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'checker' | 'catalog'>('checker');
   const [drugs, setDrugs] = useState<Drug[]>([]);
+  const [icd10List, setIcd10List] = useState<ICD10[]>([]);
   const [manualInteractions, setManualInteractions] = useState<ManualInteraction[]>([]);
   const [selectedDrugs, setSelectedDrugs] = useState<Drug[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [icdSearchTerm, setIcdSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<InteractionResult | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -76,12 +79,31 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmData, setConfirmData] = useState<{ id: string, name: string } | null>(null);
 
+  // Drug Detail Modal State
+  const [detailDrug, setDetailDrug] = useState<Drug | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  const findDrugByName = (name: string) => {
+    return drugs.find(d => d.name.toLowerCase() === name.toLowerCase());
+  };
+
+  const handleShowDrugDetail = (drug: Drug) => {
+    setDetailDrug(drug);
+    setIsDetailModalOpen(true);
+  };
+
   useEffect(() => {
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       setDrugs(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Drug)));
     }, (error) => {
       console.error("Error fetching drugs for interaction check:", error);
       handleFirestoreError(error, OperationType.LIST, 'drugs');
+    });
+
+    const unsubscribeICD = onSnapshot(collection(db, 'icd10'), (snapshot) => {
+      setIcd10List(snapshot.docs.map(doc => doc.data() as ICD10));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'icd10');
     });
 
     const unsubscribeManual = onSnapshot(query(collection(db, 'manual_interactions'), orderBy('updatedAt', 'desc')), (snapshot) => {
@@ -92,6 +114,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
 
     return () => {
       unsubscribeDrugs();
+      unsubscribeICD();
       unsubscribeManual();
     };
   }, []);
@@ -127,7 +150,8 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         sourceNames: [],
         severity: 'medium',
         description: '',
-        recommendation: ''
+        recommendation: '',
+        contraindicated: false
       });
     }
     setIsModalOpen(true);
@@ -188,7 +212,8 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
           severity: matchedManual.severity,
           description: matchedManual.description,
           recommendation: matchedManual.recommendation,
-          isAI: false
+          isAI: false,
+          contraindicated: matchedManual.contraindicated
         });
         setLoading(false);
         return;
@@ -372,14 +397,22 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                             isDarkMode ? "hover:bg-blue-900/30" : "hover:bg-blue-50"
                           )}
                         >
-                          <div>
-                            <p className={cn(
-                              "font-bold transition-colors",
-                              isDarkMode ? "text-white group-hover:text-blue-400" : "text-slate-900 group-hover:text-blue-700"
-                            )}>{drug.name}</p>
+                          <div className="flex-1 text-left">
+                            <p 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShowDrugDetail(drug);
+                              }}
+                              className={cn(
+                                "font-bold transition-colors hover:underline underline-offset-4 decoration-blue-500",
+                                isDarkMode ? "text-white group-hover:text-blue-400" : "text-slate-900 group-hover:text-blue-700"
+                              )}
+                            >
+                              {drug.name}
+                            </p>
                             <p className={cn(
                               "text-xs uppercase font-medium transition-colors",
-                              isDarkMode ? "text-slate-400" : "text-slate-500"
+                              isDarkMode ? "text-slate-400" : "text-slate-50"
                             )}>{drug.activeIngredients?.[0]?.name || 'N/A'}</p>
                           </div>
                           <Plus size={18} className={cn(
@@ -419,8 +452,13 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                         <div className="bg-blue-600 p-2 rounded-lg text-white">
                           <ShieldAlert size={16} />
                         </div>
-                        <div>
-                          <p className={cn("font-bold transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>{drug.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <p 
+                            onClick={() => handleShowDrugDetail(drug)}
+                            className={cn("font-bold transition-colors cursor-pointer hover:underline decoration-blue-500", isDarkMode ? "text-white" : "text-slate-900")}
+                          >
+                            {drug.name}
+                          </p>
                           <p className={cn("text-[10px] font-bold uppercase tracking-tighter transition-colors", isDarkMode ? "text-blue-400" : "text-blue-600")}>{drug.activeIngredients?.[0]?.name || 'N/A'}</p>
                         </div>
                       </div>
@@ -485,20 +523,26 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                     isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-slate-200/20"
                   )}
                 >
-                  <div className={cn(
-                    "p-6 lg:p-8 text-white flex items-center justify-between",
-                    result.severity === 'high' ? "bg-rose-600" : 
-                    result.severity === 'medium' ? "bg-amber-500" : "bg-emerald-500"
-                  )}>
-                    <div className="flex items-center gap-4">
-                      <div className="bg-white/20 p-2 lg:p-3 rounded-xl lg:rounded-2xl backdrop-blur-md">
-                        {result.severity === 'high' ? <AlertTriangle size={24} /> : 
-                         result.severity === 'medium' ? <Info size={24} /> : <CheckCircle2 size={24} />}
-                      </div>
+                    <div className={cn(
+                      "p-6 lg:p-8 text-white flex items-center justify-between",
+                      result.contraindicated ? "bg-rose-700" : (
+                        result.severity === 'high' ? "bg-rose-600" : 
+                        result.severity === 'medium' ? "bg-amber-500" : "bg-emerald-500"
+                      )
+                    )}>
+                      <div className="flex items-center gap-4">
+                        <div className="bg-white/20 p-2 lg:p-3 rounded-xl lg:rounded-2xl backdrop-blur-md">
+                          {result.contraindicated ? <AlertOctagon size={24} /> : (
+                            result.severity === 'high' ? <AlertTriangle size={24} /> : 
+                            result.severity === 'medium' ? <Info size={24} /> : <CheckCircle2 size={24} />
+                          )}
+                        </div>
                       <div>
                         <h4 className="text-xl lg:text-2xl font-black tracking-tight">
-                          {result.severity === 'high' ? "Cảnh báo nghiêm trọng" : 
-                           result.severity === 'medium' ? "Cần lưu ý" : "An toàn"}
+                          {result.contraindicated ? "Chống chỉ định" : (
+                            result.severity === 'high' ? "Cảnh báo nghiêm trọng" : 
+                            result.severity === 'medium' ? "Cần lưu ý" : "An toàn"
+                          )}
                         </h4>
                         <p className="text-white/80 font-bold text-[10px] lg:text-xs uppercase tracking-widest">Kết quả phân tích AI</p>
                       </div>
@@ -585,89 +629,251 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="flex flex-col gap-4">
+          <div className={cn(
+            "hidden lg:grid grid-cols-12 gap-4 px-8 py-4 text-xs font-black uppercase tracking-widest transition-colors border-b",
+            isDarkMode ? "text-slate-500 border-slate-800" : "text-slate-400 border-slate-100"
+          )}>
+            <div className="col-span-1">Mức độ</div>
+            <div className="col-span-2">Phân loại</div>
+            <div className="col-span-3">Nguồn / Đối tượng</div>
+            <div className="col-span-3">Mô tả tương tác</div>
+            <div className="col-span-2">Khuyến nghị</div>
+            <div className="col-span-1 text-right">Thao tác</div>
+          </div>
+          
           <AnimatePresence mode="popLayout">
             {manualInteractions.map((item) => (
               <motion.div
                 key={item.id}
                 layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
                 className={cn(
-                  "group relative p-6 rounded-[32px] border transition-all duration-300 hover:shadow-xl hover:-translate-y-1",
-                  isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 hover:border-blue-100 shadow-sm"
+                  "group relative rounded-2xl lg:rounded-3xl border transition-all duration-300 hover:shadow-md",
+                  isDarkMode 
+                    ? "bg-slate-900/50 border-slate-800 hover:border-slate-700" 
+                    : "bg-white border-slate-100 hover:border-blue-50 shadow-sm shadow-slate-100/50"
                 )}
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border",
-                    item.severity === 'high' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" :
-                    item.severity === 'medium' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
-                    "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  )}>
-                    {item.severity === 'high' ? 'Nghiêm trọng' : item.severity === 'medium' ? 'Trung bình' : 'Nhẹ'}
-                  </div>
-                  {canManage && (
-                    <div className="flex gap-2">
-                      <button 
-                        type="button"
-                        onClick={() => handleOpenModal(item)}
-                        className={cn(
-                          "p-2 rounded-xl transition-colors",
-                          isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-blue-400" : "hover:bg-slate-100 text-slate-400 hover:text-blue-600"
-                        )}
-                      >
-                        <Edit2 size={18} />
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => handleDelete(item.id, item.sourceNames.join(' + '))}
-                        className={cn(
-                          "p-2 rounded-xl transition-colors",
-                          isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-rose-400" : "hover:bg-slate-100 text-slate-400 hover:text-rose-600"
-                        )}
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                {/* Mobile View */}
+                <div className="lg:hidden p-5 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border",
+                      item.severity === 'high' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" :
+                      item.severity === 'medium' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                      "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                    )}>
+                      {item.severity === 'high' ? 'Nghiêm trọng' : item.severity === 'medium' ? 'Trung bình' : 'Nhẹ'}
                     </div>
-                  )}
+                    {item.contraindicated && (
+                      <div className="px-3 py-1 bg-rose-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                        <AlertOctagon size={10} />
+                        Chống chỉ định
+                      </div>
+                    )}
+                    {canManage && (
+                      <div className="flex gap-2">
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenModal(item)}
+                          className={isDarkMode ? "text-slate-500 hover:text-blue-400" : "text-slate-400 hover:text-blue-600"}
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDelete(item.id, item.sourceNames.join(' + '))}
+                          className={isDarkMode ? "text-slate-500 hover:text-rose-400" : "text-slate-400 hover:text-rose-600"}
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-blue-600 shrink-0">
+                      <Library size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={cn("font-black text-sm", isDarkMode ? "text-white" : "text-slate-900")}>{item.type}</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">
+                        {item.sourceNames.map((name, idx) => {
+                          const drug = findDrugByName(name);
+                          return (
+                            <React.Fragment key={idx}>
+                              {idx > 0 && " + "}
+                              <span 
+                                onClick={() => drug && handleShowDrugDetail(drug)}
+                                className={cn(
+                                  drug ? "cursor-pointer hover:text-blue-500 hover:underline decoration-blue-500/50" : ""
+                                )}
+                              >
+                                {name}
+                              </span>
+                            </React.Fragment>
+                          );
+                        })}
+                        {item.targetName && (
+                          <>
+                            {" vs "}
+                            {(() => {
+                              const drug = item.type === 'Thuốc - Thuốc' ? findDrugByName(item.targetName) : null;
+                              return (
+                                <span 
+                                  onClick={() => drug && handleShowDrugDetail(drug)}
+                                  className={cn(
+                                    drug ? "cursor-pointer hover:text-blue-500 hover:underline decoration-blue-500/50" : ""
+                                  )}
+                                >
+                                  {item.targetName}
+                                </span>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={cn(
+                    "p-3 rounded-xl border text-xs leading-relaxed transition-colors",
+                    isDarkMode ? "bg-slate-800/50 border-slate-800 text-slate-300" : "bg-slate-50 border-slate-50 text-slate-600"
+                  )}>
+                    {item.description}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-600/10 flex items-center justify-center text-blue-600 shrink-0">
-                    <Library size={24} />
+                {/* Desktop List View */}
+                <div className="hidden lg:grid grid-cols-12 gap-4 items-center px-8 py-5">
+                  <div className="col-span-1">
+                    <div className={cn(
+                      "inline-flex px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
+                      item.severity === 'high' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" :
+                      item.severity === 'medium' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                      "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                    )}>
+                      {item.severity === 'high' ? 'Cao' : item.severity === 'medium' ? 'TB' : 'Thấp'}
+                    </div>
+                    {item.contraindicated && (
+                      <div className="ml-2 inline-flex px-2 py-1 bg-rose-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider items-center gap-1">
+                        <AlertOctagon size={8} />
+                        CCĐ
+                      </div>
+                    )}
                   </div>
-                  <div className="min-w-0">
-                    <h3 className={cn("font-black text-lg truncate", isDarkMode ? "text-white" : "text-black")}>
-                      {item.type}
-                    </h3>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-                      {item.sourceNames.join(' + ')} {item.targetName ? ` vs ${item.targetName}` : ''}
+
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-600 shrink-0">
+                        <Library size={16} />
+                      </div>
+                      <span className={cn("text-xs font-black truncate", isDarkMode ? "text-white" : "text-slate-900")}>
+                        {item.type}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="col-span-3 min-w-0">
+                    <div className={cn("text-xs font-bold leading-tight flex flex-wrap gap-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                      {item.sourceNames.map((name, idx) => {
+                        const drug = findDrugByName(name);
+                        return (
+                          <React.Fragment key={idx}>
+                            {idx > 0 && <span className="opacity-40">+</span>}
+                            <span 
+                              onClick={() => drug && handleShowDrugDetail(drug)}
+                              className={cn(
+                                "transition-colors",
+                                drug ? "cursor-pointer hover:text-blue-500 hover:underline underline-offset-2 decoration-blue-500/50" : ""
+                              )}
+                            >
+                              {name}
+                            </span>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                    {item.targetName && (
+                      <div className="text-[10px] text-blue-500 font-extrabold uppercase mt-1 flex flex-wrap gap-1">
+                        <span className="opacity-40">vs</span>
+                        {(() => {
+                          const drug = item.type === 'Thuốc - Thuốc' ? findDrugByName(item.targetName) : null;
+                          return (
+                            <span 
+                              onClick={() => drug && handleShowDrugDetail(drug)}
+                              className={cn(
+                                "transition-colors",
+                                drug ? "cursor-pointer hover:text-blue-600 hover:underline underline-offset-2 decoration-blue-600/50" : ""
+                              )}
+                            >
+                              {item.targetName}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-span-3">
+                    <p className={cn("text-[11px] font-medium leading-relaxed transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      {item.description}
                     </p>
                   </div>
-                </div>
 
-                <div className={cn(
-                  "p-4 rounded-2xl mb-4 border transition-colors",
-                  isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-50 border-slate-100"
-                )}>
-                  <p className="text-xs text-slate-500 line-clamp-2 font-medium leading-relaxed">
-                    {item.description}
-                  </p>
-                </div>
+                  <div className="col-span-2">
+                    <p className={cn("text-[10px] font-bold italic leading-snug", isDarkMode ? "text-slate-500" : "text-slate-600")}>
+                      {item.recommendation}
+                    </p>
+                  </div>
 
-                <div className={cn(
-                  "pt-4 border-t",
-                  isDarkMode ? "border-slate-800" : "border-slate-100"
-                )}>
-                  <p className={cn("text-[10px] font-bold italic", isDarkMode ? "text-slate-400" : "text-slate-600")}>
-                    "{item.recommendation}"
-                  </p>
+                  <div className="col-span-1 flex justify-end gap-1">
+                    {canManage && (
+                      <>
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenModal(item)}
+                          className={cn(
+                            "p-2 rounded-lg transition-colors",
+                            isDarkMode ? "hover:bg-slate-800 text-slate-500 hover:text-blue-400" : "hover:bg-slate-50 text-slate-400 hover:text-blue-600"
+                          )}
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDelete(item.id, item.sourceNames.join(' + '))}
+                          className={cn(
+                            "p-2 rounded-lg transition-colors",
+                            isDarkMode ? "hover:bg-slate-800 text-slate-500 hover:text-rose-400" : "hover:bg-slate-50 text-slate-400 hover:text-rose-600"
+                          )}
+                          title="Xóa"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             ))}
           </AnimatePresence>
+          
+          {manualInteractions.length === 0 && (
+            <div className={cn(
+              "py-16 text-center border-2 border-dashed rounded-[32px] transition-colors",
+              isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50 border-slate-100"
+            )}>
+              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 grayscale opacity-50">
+                <Library size={32} className="text-slate-400" />
+              </div>
+              <p className={cn("font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>Chưa có dữ liệu tương tác</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -782,16 +988,64 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                 {formData.type === 'Thuốc - ICD-10' && (
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mã ICD-10 liên quan</label>
-                    <input
-                      type="text"
-                      className={cn(
-                        "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {formData.targetId && (
+                        <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-xs font-bold flex items-center gap-2">
+                          {formData.targetId} - {formData.targetName}
+                          <button type="button" onClick={() => {
+                            setFormData({...formData, targetId: '', targetName: ''});
+                          }}><X size={12} /></button>
+                        </span>
                       )}
-                      value={formData.targetName || ''}
-                      onChange={(e) => setFormData({...formData, targetName: e.target.value})}
-                      placeholder="VD: A00.0 - Tả do Vibrio cholerae 01"
-                    />
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Tìm mã hoặc tên bệnh ICD-10..."
+                        className={cn(
+                          "w-full pl-10 pr-4 py-3 rounded-xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold",
+                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                        )}
+                        value={icdSearchTerm}
+                        onChange={(e) => setIcdSearchTerm(e.target.value)}
+                      />
+                      
+                      {icdSearchTerm && (
+                        <div className={cn(
+                          "absolute top-full left-0 right-0 mt-2 border rounded-xl shadow-2xl z-50 max-h-48 overflow-y-auto p-2 transition-colors",
+                          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                        )}>
+                          {icd10List
+                            .filter(icd => 
+                              icd.code.toLowerCase().includes(icdSearchTerm.toLowerCase()) || 
+                              icd.description.toLowerCase().includes(icdSearchTerm.toLowerCase())
+                            )
+                            .slice(0, 10)
+                            .map(icd => (
+                              <button
+                                key={icd.code}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({
+                                    ...formData, 
+                                    targetId: icd.code,
+                                    targetName: icd.description
+                                  });
+                                  setIcdSearchTerm('');
+                                }}
+                                className={cn(
+                                  "w-full text-left px-4 py-2 rounded-lg text-xs font-bold transition-colors",
+                                  isDarkMode ? "hover:bg-slate-800" : "hover:bg-amber-50"
+                                )}
+                              >
+                                <span className="text-amber-600 mr-2">{icd.code}</span>
+                                <span className={isDarkMode ? "text-slate-300" : "text-slate-700"}>{icd.description}</span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -810,6 +1064,26 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                     />
                   </div>
                 )}
+
+                <div>
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Trạng thái đặc biệt</label>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, contraindicated: !formData.contraindicated})}
+                    className={cn(
+                      "flex items-center gap-3 px-6 py-4 rounded-2xl border-2 transition-all w-full lg:w-fit font-bold",
+                      formData.contraindicated
+                        ? "bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200"
+                        : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400")
+                    )}
+                  >
+                    <AlertOctagon size={20} className={formData.contraindicated ? "text-white" : "text-slate-400"} />
+                    Chống chỉ định
+                    {formData.contraindicated && (
+                      <span className="ml-auto lg:ml-2 px-2 py-0.5 bg-white/20 rounded-md text-[10px] uppercase font-black">Bật</span>
+                    )}
+                  </button>
+                </div>
 
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mức độ</label>
@@ -903,6 +1177,12 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         message={`Bạn có chắc chắn muốn xóa tương tác thuốc này? Hành động này không thể hoàn tác.`}
         confirmText="Xác nhận xóa"
         isDarkMode={isDarkMode}
+      />
+      <DrugDetailModal 
+        isOpen={isDetailModalOpen} 
+        onClose={() => setIsDetailModalOpen(false)} 
+        drug={detailDrug} 
+        isDarkMode={isDarkMode} 
       />
     </div>
   );

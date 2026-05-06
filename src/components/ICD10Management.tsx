@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { ICD10, Drug } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import DrugDetailModal from './DrugDetailModal';
 
 interface ICD10ManagementProps {
   canManage: boolean;
@@ -12,9 +13,17 @@ interface ICD10ManagementProps {
   featureSettings?: any;
   userRole?: string;
   userPowerPoints?: number;
+  onSelectDrug?: (drug: Drug) => void;
 }
 
-const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode, featureSettings, userRole, userPowerPoints = 0 }) => {
+const ICD10Management: React.FC<ICD10ManagementProps> = ({ 
+  canManage, 
+  isDarkMode, 
+  featureSettings, 
+  userRole, 
+  userPowerPoints = 0,
+  onSelectDrug
+}) => {
   const [icdList, setIcdList] = useState<ICD10[]>([]);
   const [drugList, setDrugList] = useState<Drug[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,6 +31,15 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [editingIcd, setEditingIcd] = useState<ICD10 | null>(null);
+
+  // Drug Detail Modal State
+  const [detailDrug, setDetailDrug] = useState<Drug | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  const handleShowDrugDetail = (drug: Drug) => {
+    setDetailDrug(drug);
+    setIsDetailModalOpen(true);
+  };
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [drugSearchTerm, setDrugSearchTerm] = useState('');
@@ -343,13 +361,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                     )}>Gợi ý thuốc</p>
                     <div className="flex flex-wrap gap-1.5">
                       {drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
-                        drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
-                          <span key={idx} className={cn(
-                            "px-2 py-0.5 rounded-md text-[9px] font-bold border transition-colors",
-                            isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
-                          )}>
-                            {drug}
-                          </span>
+                        drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drugName, idx) => (
+                          <button 
+                            key={idx} 
+                            onClick={() => {
+                              const drugObj = drugList.find(d => d.name === drugName);
+                              if (drugObj) {
+                                handleShowDrugDetail(drugObj);
+                              }
+                            }}
+                            className={cn(
+                              "px-2 py-0.5 rounded-md text-[9px] font-bold border transition-all active:scale-95",
+                              isDarkMode 
+                                ? "bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700 hover:border-emerald-500/30" 
+                                : "bg-slate-100 text-emerald-700 border-slate-200 hover:bg-white hover:border-emerald-300 hover:shadow-sm"
+                            )}
+                          >
+                            {drugName}
+                          </button>
                         ))
                       ) : (
                         <span className={cn(
@@ -415,13 +444,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
                     <td className="px-4 sm:px-6 lg:px-8 py-4">
                       <div className="flex flex-wrap gap-1.5">
                         {drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
-                          drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drug, idx) => (
-                            <span key={idx} className={cn(
-                              "px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-md text-[9px] lg:text-[11px] font-bold border transition-colors",
-                              isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
-                            )}>
-                              {drug}
-                            </span>
+                          drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drugName, idx) => (
+                            <button 
+                              key={idx} 
+                              onClick={() => {
+                                const drugObj = drugList.find(d => d.name === drugName);
+                                if (drugObj) {
+                                  handleShowDrugDetail(drugObj);
+                                }
+                              }}
+                              className={cn(
+                                "px-2 lg:px-2.5 py-0.5 lg:py-1 rounded-md text-[9px] lg:text-[11px] font-bold border transition-all active:scale-95",
+                                isDarkMode 
+                                  ? "bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700 hover:border-emerald-500/30" 
+                                  : "bg-slate-100 text-emerald-700 border-slate-200 hover:bg-white hover:border-emerald-300 hover:shadow-sm"
+                              )}
+                            >
+                              {drugName}
+                            </button>
                           ))
                         ) : (
                           <span className={cn(
@@ -722,6 +762,13 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({ canManage, isDarkMode
           </div>
         )}
       </AnimatePresence>
+
+      <DrugDetailModal 
+        isOpen={isDetailModalOpen} 
+        onClose={() => setIsDetailModalOpen(false)} 
+        drug={detailDrug} 
+        isDarkMode={isDarkMode} 
+      />
     </div>
   );
 };

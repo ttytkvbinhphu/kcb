@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
@@ -43,6 +44,7 @@ interface SocialWallProps {
   initialTab?: 'feed' | 'profile';
   onSyncProfile?: () => Promise<void>;
   featureSettings?: any;
+  subHeaderPortalId?: string;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -260,7 +262,7 @@ const HighlightText: React.FC<{ text: string; search: string; className?: string
   );
 };
 
-const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {} }) => {
+const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {}, subHeaderPortalId }) => {
   const [activeSubTab, setActiveSubTab] = useState<'feed' | 'profile'>(initialTab);
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
@@ -296,12 +298,22 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [hideEmail, setHideEmail] = useState(userProfile.hideEmail || false);
   const [hideZalo, setHideZalo] = useState(userProfile.hideZalo || false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [privacyConfirm, setPrivacyConfirm] = useState<{ open: boolean; type: 'email' | 'zalo' }>({ open: false, type: 'email' });
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedTextStyle, setSelectedTextStyle] = useState('modern');
   const [selectedBackgroundImage, setSelectedBackgroundImage] = useState<string | null>(null);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (subHeaderPortalId) {
+      setPortalNode(document.getElementById(subHeaderPortalId));
+    }
+    return () => setPortalNode(null);
+  }, [subHeaderPortalId]);
   
   const isBanned = (featureSettings.bannedUsers || []).includes(userProfile.uid);
   const canPost = !isBanned && (
@@ -316,8 +328,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   );
   const isModerator = (featureSettings.moderatorRoles || []).includes(userProfile.role) || userProfile.role === 'admin';
 
+  // Sync internal states with userProfile when it changes or when editing starts
   useEffect(() => {
-    if (isEditingProfile) {
+    if (userProfile && !isEditingProfile) {
       setEditName(userProfile.displayName || '');
       setEditTitle(userProfile.title || '');
       setEditPosition(userProfile.position || '');
@@ -327,7 +340,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       setHideEmail(userProfile.hideEmail || false);
       setHideZalo(userProfile.hideZalo || false);
     }
-  }, [isEditingProfile, userProfile]);
+  }, [userProfile, isEditingProfile]);
 
   // Sync selectedProfile when userProfile changes (e.g. after sync with Google)
   useEffect(() => {
@@ -673,7 +686,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
 
   return (
     <div className="w-full p-0 lg:p-4">
-      {/* Header */}
+      {/* Desktop Header */}
       <div className="hidden lg:flex items-center justify-between gap-8 mb-8">
         <div className="flex items-center gap-4">
           {onBack && (
@@ -720,7 +733,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
           {searchTerm && (
             <button 
               onClick={() => setSearchTerm('')}
-              className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-rose-500 transition-colors"
+              className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-rose-500"
             >
               <X size={18} />
             </button>
@@ -728,35 +741,57 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         </div>
       </div>
 
+      {/* Mobile Search Portal → Sub Header */}
+      {portalNode && createPortal(
+        <div className="flex items-center gap-2 w-full justify-end">
+          <AnimatePresence>
+            {isMobileSearchOpen && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                  <input
+                    autoFocus
+                    type="text"
+                    placeholder="Tìm kiếm..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={cn(
+                      "pl-8 pr-3 py-1.5 rounded-xl border-none focus:ring-1 focus:ring-primary text-[11px] font-bold w-36 sm:w-48 outline-none",
+                      isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+                    )}
+                  />
+                  {searchTerm && (
+                    <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <button
+            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+            className={cn(
+              "p-2 rounded-xl transition-all shrink-0",
+              isMobileSearchOpen
+                ? "bg-primary text-white shadow-lg shadow-primary/20"
+                : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500 border border-slate-100")
+            )}
+          >
+            <Search size={16} className={cn("transition-transform duration-300", isMobileSearchOpen && "rotate-90")} />
+          </button>
+        </div>,
+        portalNode
+      )}
+
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-3 pb-8">
-          {/* Mobile Search Bar */}
-          <div className="lg:hidden mb-6 relative group">
-            <div className={cn(
-              "absolute inset-y-0 left-4 flex items-center pointer-events-none transition-colors",
-              isDarkMode ? "text-slate-600 group-focus-within:text-primary" : "text-slate-400 group-focus-within:text-primary"
-            )}>
-              <Globe size={18} className="animate-pulse" />
-            </div>
-            <input 
-              type="text"
-              placeholder="Tìm kiếm..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className={cn(
-                "w-full pl-12 pr-4 py-4 rounded-[24px] border-none focus:ring-2 focus:ring-primary transition-all font-bold text-sm shadow-sm",
-                isDarkMode ? "bg-slate-900 text-white placeholder:text-slate-600" : "bg-white text-slate-900 placeholder:text-slate-400"
-              )}
-            />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-rose-500 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
 
           <AnimatePresence mode="wait">
             {activeSubTab === 'feed' ? (
@@ -785,7 +820,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 lg:grid-cols-3 gap-8"
               >
-                <div className="space-y-6">
+                <div className={cn("space-y-6", isMobileSearchOpen && "hidden lg:block")}>
                   <div className={cn(
                     "p-8 rounded-[32px] border flex flex-col items-center text-center relative overflow-hidden",
                     isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
@@ -829,8 +864,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                   </div>
                 </div>
 
-                <div className="lg:col-span-2 space-y-6">
-                  {selectedProfile.uid === userProfile.uid && isEditingProfile ? (
+                  <div className="lg:col-span-2 space-y-6">
+                    {(selectedProfile.uid === userProfile.uid && isEditingProfile && !isMobileSearchOpen) ? (
                     <div className={cn(
                       "p-8 rounded-[32px] border",
                       isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
@@ -953,7 +988,14 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                              <input 
                                type="checkbox"
                                checked={hideEmail}
-                               onChange={(e) => setHideEmail(e.target.checked)}
+                               onChange={(e) => {
+                                 const newVal = e.target.checked;
+                                 if (!newVal) { // Switching to PUBLIC
+                                   setPrivacyConfirm({ open: true, type: 'email' });
+                                 } else {
+                                   setHideEmail(newVal);
+                                 }
+                               }}
                                className="sr-only"
                              />
                              <div className={cn(
@@ -989,7 +1031,14 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                              <input 
                                type="checkbox"
                                checked={hideZalo}
-                               onChange={(e) => setHideZalo(e.target.checked)}
+                               onChange={(e) => {
+                                 const newVal = e.target.checked;
+                                 if (!newVal) { // Switching to PUBLIC
+                                   setPrivacyConfirm({ open: true, type: 'zalo' });
+                                 } else {
+                                   setHideZalo(newVal);
+                                 }
+                               }}
                                className="sr-only"
                              />
                              <div className={cn(
@@ -1028,6 +1077,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                   ) : (
                     <div className={cn(
                       "p-8 rounded-[32px] border relative",
+                      isMobileSearchOpen && "hidden lg:block",
                       isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
                     )}>
                       {selectedProfile.uid === userProfile.uid && (
@@ -1136,8 +1186,11 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                   )}
 
                   {/* User's Posts Section */}
-                  <div className="mt-8 space-y-6">
-                    <div className="flex items-center gap-3 mb-4 pl-4">
+                  <div className="mt-8 space-y-6 font-sans">
+                    <div className={cn(
+                      "flex items-center gap-3 mb-4 pl-4",
+                      isMobileSearchOpen && "hidden lg:flex"
+                    )}>
                       {selectedProfile.uid === userProfile.uid ? (
                         <MessageSquare size={18} className="text-primary" />
                       ) : (
@@ -1150,17 +1203,23 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                     </div>
                     
                     <div className="space-y-6">
-                      {posts.filter(p => p.authorUid === selectedProfile.uid).length === 0 ? (
+                      {posts.filter(p => 
+                        p.authorUid === selectedProfile.uid && 
+                        p.content.toLowerCase().includes(searchTerm.toLowerCase())
+                      ).length === 0 ? (
                         <div className={cn(
                           "p-12 rounded-[32px] border border-dashed text-center",
                           isDarkMode ? "border-slate-800" : "border-slate-200"
                         )}>
                           <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-                            {selectedProfile.uid === userProfile.uid ? 'Bạn chưa có bài đăng nào' : 'Người dùng này chưa có bài đăng nào'}
+                            {searchTerm ? 'Không tìm thấy bài viết nào khớp với từ khóa' : (selectedProfile.uid === userProfile.uid ? 'Bạn chưa có bài đăng nào' : 'Người dùng này chưa có bài đăng nào')}
                           </p>
                         </div>
                       ) : (
-                        posts.filter(p => p.authorUid === selectedProfile.uid).map(renderPost)
+                        posts.filter(p => 
+                          p.authorUid === selectedProfile.uid && 
+                          p.content.toLowerCase().includes(searchTerm.toLowerCase())
+                        ).map(renderPost)
                       )}
                     </div>
                   </div>
@@ -1263,6 +1322,25 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         }
         confirmText="Xác nhận xóa"
         cancelText="Quay lại"
+        isDarkMode={isDarkMode}
+      />
+
+      <ConfirmModal
+        isOpen={privacyConfirm.open}
+        onClose={() => setPrivacyConfirm({ ...privacyConfirm, open: false })}
+        onConfirm={() => {
+          if (privacyConfirm.type === 'email') setHideEmail(false);
+          else setHideZalo(false);
+          setPrivacyConfirm({ ...privacyConfirm, open: false });
+        }}
+        title="Cảnh báo quyền riêng tư"
+        message={privacyConfirm.type === 'email'
+          ? "Bạn có chắc chắn muốn công khai Email không? Mọi người sẽ có thể nhìn thấy email liên hệ của bạn."
+          : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người sẽ có thể nhìn thấy số Zalo của bạn."
+        }
+        confirmText="Công khai"
+        cancelText="Hủy"
+        type="warning"
         isDarkMode={isDarkMode}
       />
     </div>

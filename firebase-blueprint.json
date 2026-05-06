@@ -52,7 +52,7 @@
         "groupIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách ID các nhóm thuốc" },
         "avatarUrl": { "type": "string", "description": "URL ảnh đại diện thuốc" },
         "isRx": { "type": "boolean", "description": "Thuốc kê đơn" },
-        "isActive": { "type": "boolean", "description": "Trạng thái hoạt động" },
+        "isClosed": { "type": "boolean", "description": "Trạng thái đóng/mở thuốc (ẩn với người dùng thông thường)" },
         "pdfUrl": { "type": "string", "description": "URL file HDSD" },
         "bannerUrl": { "type": "string" },
         "generalAdministration": { "type": "string" },
@@ -67,7 +67,7 @@
         "driving": { "type": "string", "description": "Ảnh hưởng đến lái xe, vận hành máy móc" },
         "overdose": { "type": "string" }
       },
-      "required": ["id", "name", "activeIngredients", "category", "isActive"]
+      "required": ["id", "name", "activeIngredients", "category"]
     },
     "Prescription": {
       "title": "Prescription",

@@ -10,8 +10,7 @@ const MOCK_DRUGS = [
     indications: [{ content: 'Giảm đau', icd10: 'R51' }, { content: 'Hạ sốt', icd10: 'R50.9' }],
     contraindications: [{ content: 'Mẫn cảm với thành phần thuốc', type: 'Other' }, { content: 'Suy gan nặng', type: 'Other' }],
     sideEffects: ['Phát ban', 'Tổn thương gan (liều cao)'],
-    category: 'Giảm đau, hạ sốt',
-    isActive: true
+    category: 'Giảm đau, hạ sốt'
   },
   {
     id: '2',
@@ -23,8 +22,7 @@ const MOCK_DRUGS = [
     indications: [{ content: 'Nhiễm khuẩn đường hô hấp', icd10: 'J01.9' }, { content: 'Nhiễm khuẩn đường tiết niệu', icd10: 'N39.0' }],
     contraindications: [{ content: 'Mẫn cảm với Penicillin', type: 'Other' }],
     sideEffects: ['Tiêu chảy', 'Buồn nôn'],
-    category: 'Kháng sinh',
-    isActive: true
+    category: 'Kháng sinh'
   },
   {
     id: '3',
@@ -36,8 +34,7 @@ const MOCK_DRUGS = [
     indications: [{ content: 'Giảm đau kháng viêm', icd10: 'M79.1' }, { content: 'Đau khớp', icd10: 'M25.5' }],
     contraindications: [{ content: 'Loét dạ dày tá tràng', type: 'Other' }, { content: 'Suy thận', type: 'Other' }],
     sideEffects: ['Đau dạ dày', 'Chóng mặt'],
-    category: 'Kháng viêm không steroid (NSAID)',
-    isActive: true
+    category: 'Kháng viêm không steroid (NSAID)'
   },
   {
     id: '4',
@@ -49,8 +46,7 @@ const MOCK_DRUGS = [
     indications: [{ content: 'Đái tháo đường tuýp 2', icd10: 'E11.9' }],
     contraindications: [{ content: 'Suy thận nặng', type: 'Other' }, { content: 'Nhiễm toan chuyển hóa', type: 'Other' }],
     sideEffects: ['Rối loạn tiêu hóa', 'Vị kim loại trong miệng'],
-    category: 'Thuốc điều trị đái tháo đường',
-    isActive: true
+    category: 'Thuốc điều trị đái tháo đường'
   },
   {
     id: '5',
@@ -62,8 +58,7 @@ const MOCK_DRUGS = [
     indications: [{ content: 'Tăng huyết áp', icd10: 'I10' }, { content: 'Đau thắt ngực', icd10: 'I20.9' }],
     contraindications: [{ content: 'Hạ huyết áp nặng', type: 'Other' }, { content: 'Sốc tim', type: 'Other' }],
     sideEffects: ['Phù chân', 'Đau đầu'],
-    category: 'Thuốc điều trị tăng huyết áp',
-    isActive: true
+    category: 'Thuốc điều trị tăng huyết áp'
   }
 ];
 

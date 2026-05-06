@@ -30,7 +30,14 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
     isPinned: false
   });
 
-  const portalNode = subHeaderPortalId ? document.getElementById(subHeaderPortalId) : null;
+  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (subHeaderPortalId) {
+      setPortalNode(document.getElementById(subHeaderPortalId));
+    }
+    return () => setPortalNode(null);
+  }, [subHeaderPortalId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

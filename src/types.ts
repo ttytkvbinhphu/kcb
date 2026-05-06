@@ -7,18 +7,30 @@ export interface Drug {
   excipients?: string;
   manufacturer: string;
   mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
-  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean; defaultIcd10?: string }[];
-  contraindications: { content: string; type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other' }[];
+  pharmacology?: string; // Thông tin dược lý chi tiết
+  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[] }[];
+  contraindications: { 
+    content: string; 
+    type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
+    icd10s?: string[];
+    ageConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'years' | 'months';
+    };
+  }[];
   sideEffects: string[] | { frequency: string; content: string }[];
+  dosage?: string; // Tóm tắt liều dùng chung
   category: string;
   groupId?: string; // Legacy: single group
   groupIds?: string[]; // Multiple groups support
   avatarUrl?: string;
   bannerUrl?: string;
   pdfUrl?: string;
-  isActive: boolean;
+  isClosed?: boolean;
   isRx?: boolean;
   generalAdministration?: string; // Common usage instructions (e.g., before/after food)
+  administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
     category: string; 
     content: string;
@@ -36,6 +48,9 @@ export interface Drug {
   pharmacodynamics?: string | { category: string; content: string }[];
   pharmacokinetics?: string | { category: string; content: string }[];
   overdose?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  createdAt?: string;
 }
 
 export interface DrugGroup {
@@ -120,6 +135,7 @@ export interface InteractionResult {
   description: string;
   recommendation: string;
   isAI?: boolean;
+  contraindicated?: boolean;
 }
 
 export interface ManualInteraction {
@@ -134,6 +150,7 @@ export interface ManualInteraction {
   recommendation: string;
   updatedAt: string;
   updatedBy: string;
+  contraindicated?: boolean;
 }
 
 export interface ADRReport {

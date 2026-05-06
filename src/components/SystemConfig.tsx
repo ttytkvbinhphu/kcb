@@ -127,6 +127,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isTermsConfirmOpen, setIsTermsConfirmOpen] = useState(false);
+  const [isRegConfirmOpen, setIsRegConfirmOpen] = useState(false);
   const [stats, setStats] = useState({
     doctors: 0,
     pharmacists: 0,
@@ -692,47 +693,71 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
                 
-                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
-                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                    Chỉ định thường dùng — Điểm quyền lực tối thiểu
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={settings.commonIndicationsMinPower ?? 0}
-                      onChange={(e) => updateFeatureSettings(feature.id, { ...settings, commonIndicationsMinPower: parseInt(e.target.value) || 0 })}
-                      className={cn(
-                        "w-28 px-4 py-2.5 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                        isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                      )}
-                    />
-                    <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                      ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
-                    </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Chỉ định thường dùng — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.commonIndicationsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, commonIndicationsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
-                  <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
-                    <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                    Gợi ý ICD-10 — Điểm quyền lực tối thiểu
-                  </p>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={settings.icdSuggestionsMinPower ?? 0}
-                      onChange={(e) => updateFeatureSettings(feature.id, { ...settings, icdSuggestionsMinPower: parseInt(e.target.value) || 0 })}
-                      className={cn(
-                        "w-28 px-4 py-2.5 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                        isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                      )}
-                    />
-                    <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                      ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
-                    </span>
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Gợi ý ICD-10 — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.icdSuggestionsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, icdSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-purple-50/50 border-purple-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-purple-400" : "text-purple-700")}>
+                      <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                      Xem thuốc đang ẩn — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showClosedDrugsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showClosedDrugsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1425,7 +1450,13 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           <p className="text-[10px] text-slate-500 font-medium tracking-tight">Người dùng có thể tự tạo tài khoản mới</p>
                         </div>
                         <button 
-                          onClick={() => updateRegSettings({...regSettings, allowNewRegistration: !regSettings.allowNewRegistration})}
+                          onClick={() => {
+                            if (!regSettings.allowNewRegistration) {
+                              setIsRegConfirmOpen(true);
+                            } else {
+                              updateRegSettings({...regSettings, allowNewRegistration: false});
+                            }
+                          }}
                           className={cn(
                             "w-12 h-6 rounded-full p-1 transition-all relative",
                             regSettings.allowNewRegistration ? "bg-indigo-600" : "bg-slate-400"
@@ -1762,6 +1793,20 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     type="warning"
                     isDarkMode={isDarkMode}
                   />
+                  <ConfirmModal 
+                    isOpen={isRegConfirmOpen}
+                    onClose={() => setIsRegConfirmOpen(false)}
+                    onConfirm={() => {
+                      updateRegSettings({...regSettings, allowNewRegistration: true});
+                      setIsRegConfirmOpen(false);
+                    }}
+                    title="Xác nhận mở đăng ký"
+                    message="Khi bật tính năng này, bất kỳ ai cũng có thể đăng ký tài khoản trên hệ thống. Bạn có chắc chắn muốn công khai việc đăng ký không?"
+                    confirmText="Bật Công khai"
+                    cancelText="Hủy"
+                    type="warning"
+                    isDarkMode={isDarkMode}
+                  />
                   <AutoExpandingTextarea
                     rows={8}
                     className={cn(
@@ -1798,7 +1843,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       )}
                     >
                       <Sun size={20} />
-                      Giao diện Sáng
+                      Sáng
                     </button>
                     <button
                       onClick={() => setEditSettings({ ...editSettings, defaultTheme: 'dark' })}
@@ -1810,7 +1855,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       )}
                     >
                       <Moon size={20} />
-                      Giao diện Tối
+                      Tối
                     </button>
                   </div>
                 </div>

@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle } from 'lucide-react';
-import { Drug, DrugGroup, Ingredient } from '../types';
+import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar } from 'lucide-react';
+import { Drug, DrugGroup, Ingredient, ManualInteraction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, storage, getDoc, writeBatch } from '../firebase';
+import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, storage, getDoc, writeBatch, getDocs } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import DrugGroupManagement from './DrugGroupManagement';
 import CatalogManagement from './CatalogManagement';
 import ImageEditorModal from './ImageEditorModal';
+import DrugDetailModal from './DrugDetailModal';
 
 import ConfirmModal from './ConfirmModal';
 
@@ -21,6 +22,9 @@ interface DrugDirectoryProps {
   userRole?: string;
   isApproved?: boolean;
   userPowerPoints?: number;
+  initialSelectedDrugId?: string | null;
+  onClearInitialDrug?: () => void;
+  currentUserName?: string;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -47,7 +51,18 @@ const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaE
   );
 };
 
-const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, subHeaderPortalId, featureSettings, userRole, isApproved = false, userPowerPoints = 0 }) => {
+const DrugDirectory: React.FC<DrugDirectoryProps> = ({ 
+  canManage, 
+  isDarkMode, 
+  subHeaderPortalId, 
+  featureSettings, 
+  userRole, 
+  isApproved = false, 
+  userPowerPoints = 0,
+  initialSelectedDrugId,
+  onClearInitialDrug,
+  currentUserName = 'Dược sĩ'
+}) => {
   const isGuestUser = !userRole;
   const isPendingUser = !!userRole && !isApproved;
 
@@ -56,6 +71,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     (userPowerPoints >= (featureSettings?.commonIndicationsMinPower ?? 0));
   const canSeeIcdSuggestions = !isGuestUser && !isPendingUser &&
     (userPowerPoints >= (featureSettings?.icdSuggestionsMinPower ?? 0));
+  const canSeeClosedDrugs = !isGuestUser && !isPendingUser &&
+    (userPowerPoints >= (featureSettings?.showClosedDrugsMinPower ?? 0));
 
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [drugGroups, setDrugGroups] = useState<DrugGroup[]>([]);
@@ -63,6 +80,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
   const [availableIngredients, setAvailableIngredients] = useState<Ingredient[]>([]);
   const [availableExcipients, setAvailableExcipients] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'hidden'>('all');
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
   const [groupFilter, setGroupFilter] = useState('Tất cả');
   const [loading, setLoading] = useState(true);
@@ -167,9 +185,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     sideEffects: [],
     category: '',
     groupId: '',
+    groupIds: [],
     avatarUrl: '',
     pdfUrl: '',
-    isActive: true,
+    administrationRoute: '',
+    generalAdministration: '',
+    isClosed: false,
     isRx: false,
     dosageAndAdministration: [],
     precautions: '',
@@ -180,7 +201,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     specificInteractions: [],
     pharmacodynamics: [],
     pharmacokinetics: [],
-    overdose: ''
+    overdose: '',
+    updatedAt: '',
+    updatedBy: '',
+    createdAt: ''
   });
 
   // Local string states for comma-separated fields
@@ -243,6 +267,15 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
   const [imageToEdit, setImageToEdit] = useState<string>('');
   const [editingImageType, setEditingImageType] = useState<'avatar'>('avatar');
 
+  // Drug Detail Modal State
+  const [detailDrug, setDetailDrug] = useState<Drug | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  const handleShowDrugDetail = (drug: Drug) => {
+    setDetailDrug(drug);
+    setIsDetailModalOpen(true);
+  };
+
   const handleImageCropConfirm = (croppedImage: string) => {
     if (editingImageType === 'avatar') {
       setFormData({ ...formData, avatarUrl: croppedImage });
@@ -267,7 +300,30 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       const node = document.getElementById(subHeaderPortalId);
       setPortalNode(node);
     }
+    return () => {
+      // Dọn portal khi component unmount để tránh inject sau khi navigate đi
+      setPortalNode(null);
+    };
   }, [subHeaderPortalId]);
+
+  useEffect(() => {
+    if (initialSelectedDrugId && drugs.length > 0) {
+      const drug = drugs.find(d => d.id === initialSelectedDrugId);
+      if (drug) {
+        // Enforce visibility rules for direct links
+        const canSeeThisDrug = !drug.isClosed || (canManage && canSeeClosedDrugs);
+        
+        if (canSeeThisDrug) {
+          setSelectedDrug(drug);
+          setViewMode('drugs');
+        }
+        
+        if (onClearInitialDrug) {
+          onClearInitialDrug();
+        }
+      }
+    }
+  }, [initialSelectedDrugId, drugs, onClearInitialDrug, canManage, canSeeClosedDrugs]);
 
   useEffect(() => {
     const q = query(collection(db, 'drugs'), orderBy('name'));
@@ -327,6 +383,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     };
   }, [isModalOpen, searchingIcdIndex, searchingContraIcdIndex, selectedDrug]);
 
+  const [isIcdLookupOpen, setIsIcdLookupOpen] = useState(false);
+  const [icdLookupTarget, setIcdLookupTarget] = useState<{ type: 'indication' | 'contraindication'; index: number } | null>(null);
+
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
 
   // Initialize expanded groups with level 0 groups
@@ -351,30 +410,44 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
   };
 
   const sortedDrugGroups = useMemo(() => {
-    const buildTree = (parentId: string | null = null): DrugGroup[] => {
+    const buildTree = (parentId: string | null = null, seen = new Set<string>()): DrugGroup[] => {
       return drugGroups
         .filter(g => g.parentId === parentId)
         .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .flatMap(g => [g, ...buildTree(g.id)]);
+        .flatMap(g => {
+          if (seen.has(g.id)) return []; // Prevent infinite recursion
+          const newSeen = new Set(seen);
+          newSeen.add(g.id);
+          return [g, ...buildTree(g.id, newSeen)];
+        });
     };
-    return buildTree(null);
+    try {
+      return buildTree(null);
+    } catch (e) {
+      console.error("Circular dependency in drug groups:", e);
+      return [];
+    }
   }, [drugGroups]);
 
   // Calculate recursive drug counts for each group
   const groupDrugCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     
-    const calculateCount = (groupId: string): number => {
+    const calculateCount = (groupId: string, seen = new Set<string>()): number => {
       // Return cached count if already calculated
       if (counts[groupId] !== undefined) return counts[groupId];
+      if (seen.has(groupId)) return 0;
+      
+      const newSeen = new Set(seen);
+      newSeen.add(groupId);
       
       // Count direct drugs in this group (both legacy and new array-based)
-      let total = drugs.filter(d => (d.groupIds || []).includes(groupId) || d.groupId === groupId).length;
+      let total = drugs.filter(d => (Array.isArray(d.groupIds) && d.groupIds.includes(groupId)) || d.groupId === groupId).length;
       
       // Add counts from all sub-groups
       const children = drugGroups.filter(g => g.parentId === groupId);
       children.forEach(child => {
-        total += calculateCount(child.id);
+        total += calculateCount(child.id, newSeen);
       });
       
       counts[groupId] = total;
@@ -426,6 +499,16 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     const selectedIngredientNormalized = (selectedIngredient || '').toLowerCase();
 
     return drugs.filter(drug => {
+      // Visibility logic
+      // Only show closed drugs if in management mode AND have enough power points
+      if (drug.isClosed && (!canManage || !canSeeClosedDrugs)) return false;
+
+      // Status filter (only applicable in management mode, as general search hides hidden drugs anyway)
+      if (canManage) {
+        if (statusFilter === 'active' && drug.isClosed) return false;
+        if (statusFilter === 'hidden' && !drug.isClosed) return false;
+      }
+
       let matchesSearch = false;
       if (searchMode === 'all') {
         matchesSearch = (drug.name || '').toLowerCase().includes(term) ||
@@ -453,7 +536,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
 
       return matchesSearch && matchesGroup && matchesIngredient;
     });
-  }, [drugs, searchTerm, searchMode, groupFilter, groupDescendantsMap, selectedIngredient]);
+  }, [drugs, searchTerm, searchMode, groupFilter, groupDescendantsMap, selectedIngredient, canSeeClosedDrugs, canManage, statusFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -488,6 +571,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         groupId: drug.groupId || '',
         avatarUrl: drug.avatarUrl || '',
         pdfUrl: drug.pdfUrl || '',
+        administrationRoute: drug.administrationRoute || '',
         isRx: !!drug.isRx,
         activeIngredients: (drug.activeIngredients || []).map((ing: any) => {
           if ('strength' in ing && !ing.amount && !ing.unit) {
@@ -509,7 +593,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         excipients: drug.excipients || '',
         indications: (drug.indications || []).map((i: any) => ({
           ...i,
-          icd10s: i.icd10s || (i.icd10 ? [i.icd10] : [])
+          icd10s: i.icd10s || (i.icd10 ? [i.icd10] : []),
+          defaultIcd10s: i.defaultIcd10s || (i.defaultIcd10 ? [i.defaultIcd10] : [])
         })),
         contraindications: (drug.contraindications || []).map((c: any) => 
           typeof c === 'string' ? { content: c, type: 'Other' } : c
@@ -540,7 +625,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         excipients: '',
         manufacturer: '',
         mechanismOfAction: '',
-        indications: [{ content: '', icd10s: [] }],
+        indications: [{ content: '', icd10s: [], defaultIcd10s: [] }],
         contraindications: [{ content: '', type: 'Other' }],
         sideEffects: [],
         category: '',
@@ -548,7 +633,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         groupIds: [],
         avatarUrl: '',
         pdfUrl: '',
-        isActive: true,
+        administrationRoute: '',
+        isClosed: false,
         isRx: false,
         generalAdministration: '',
         dosageAndAdministration: [],
@@ -640,6 +726,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       const drugData = { 
         ...formData, 
         pdfUrl: finalPdfUrl,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUserName || 'Hệ thống',
+        createdAt: editingDrug ? (formData.createdAt || new Date().toISOString()) : new Date().toISOString(),
         indications: formData.indications.filter(i => i && typeof i.content === 'string' && i.content.trim() !== ''),
         contraindications: formData.contraindications.filter(c => c && typeof c.content === 'string' && c.content.trim() !== ''),
         sideEffects: Array.isArray(formData.sideEffects) 
@@ -662,6 +751,102 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       try {
         const drugRef = doc(db, 'drugs', formData.id);
         await setDoc(drugRef, drugData);
+
+        // SYNC INTERACTIONS TO MANUAL_INTERACTIONS LIST
+        try {
+          const batch = writeBatch(db);
+          const syncItems: any[] = [];
+          
+          (drugData.specificInteractions || []).forEach((si: any) => {
+            if (!si.target || !si.content) return;
+            const targetDrug = drugs.find(d => (d.name || '').toLowerCase().trim() === (si.target || '').toLowerCase().trim());
+            if (targetDrug) {
+              syncItems.push({
+                type: 'Thuốc - Thuốc',
+                sourceIds: [formData.id, targetDrug.id].sort(),
+                sourceNames: [formData.name, targetDrug.name].sort(),
+                description: si.content,
+                severity: 'medium'
+              });
+            }
+          });
+          
+          (drugData.contraindications || []).forEach((c: any) => {
+            if (c.type === 'Drug' && c.content) {
+              const targetDrug = drugs.find(d => 
+                (c.content || '').toLowerCase().trim() === (d.name || '').toLowerCase().trim() ||
+                (c.content || '').toLowerCase().trim().includes((d.name || '').toLowerCase().trim())
+              );
+              if (targetDrug) {
+                syncItems.push({
+                  type: 'Thuốc - Thuốc',
+                  sourceIds: [formData.id, targetDrug.id].sort(),
+                  sourceNames: [formData.name, targetDrug.name].sort(),
+                  description: `Chống chỉ định: ${c.content}`,
+                  severity: 'high'
+                });
+              }
+            } else if (c.type === 'ICD-10' && c.content) {
+              syncItems.push({
+                type: 'Thuốc - ICD-10',
+                sourceIds: [formData.id],
+                sourceNames: [formData.name],
+                targetName: c.content,
+                description: `Chống chỉ định cho bệnh lý: ${c.content}`,
+                severity: 'high'
+              });
+            }
+          });
+
+          const syncIdsToKeep = new Set<string>();
+          syncItems.forEach(item => {
+            let syncId = '';
+            if (item.type === 'Thuốc - Thuốc') {
+              syncId = `INT-AUTO-${item.sourceIds[0]}-${item.sourceIds[1]}`;
+            } else {
+              const safeContent = item.targetName.toLowerCase()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]/g, '-')
+                .substring(0, 50);
+              syncId = `INT-AUTO-${formData.id}-${safeContent}`;
+            }
+            syncIdsToKeep.add(syncId);
+            
+            const interactionData: ManualInteraction = {
+              id: syncId,
+              type: item.type,
+              sourceIds: item.sourceIds,
+              sourceNames: item.sourceNames,
+              targetName: item.targetName || '',
+              severity: item.severity,
+              description: item.description,
+              recommendation: 'Tham khảo hướng dẫn chuyên môn và theo dõi sát bệnh nhân.',
+              updatedAt: new Date().toISOString(),
+              updatedBy: currentUserName
+            };
+            batch.set(doc(db, 'manual_interactions', syncId), interactionData);
+          });
+
+          // Cleanup stale interactions starting with 'INT-AUTO-' that involve this drug but aren't in current list
+          try {
+            const q = query(collection(db, 'manual_interactions'));
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach(docSnap => {
+              const data = docSnap.data() as ManualInteraction;
+              if (docSnap.id.startsWith('INT-AUTO-') && (data.sourceIds || []).includes(formData.id)) {
+                if (!syncIdsToKeep.has(docSnap.id)) {
+                  batch.delete(docSnap.ref);
+                }
+              }
+            });
+          } catch (cleanupError) {
+            console.warn("Error during interaction cleanup:", cleanupError);
+          }
+
+          await batch.commit();
+        } catch (syncError) {
+          console.error("Error syncing interactions:", syncError);
+        }
 
         setIsModalOpen(false);
         setSelectedFile(null); // Clear selected file after successful save
@@ -882,6 +1067,15 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
     }
   };
 
+  const handleToggleClosed = async (drug: Drug) => {
+    try {
+      const drugRef = doc(db, 'drugs', drug.id);
+      await setDoc(drugRef, { ...drug, isClosed: !drug.isClosed }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `drugs/${drug.id}`);
+    }
+  };
+
   const handleDelete = (id: string, name: string, pdfUrl?: string) => {
     setConfirmData({ id, name, pdfUrl });
     setIsConfirmOpen(true);
@@ -903,6 +1097,23 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
       
       try {
         await deleteDoc(doc(db, 'drugs', id));
+
+        // SYNC DELETE: Remove all manual interactions linked to this drug
+        try {
+          const batch = writeBatch(db);
+          const q = query(collection(db, 'manual_interactions'));
+          const snapshot = await getDocs(q);
+          snapshot.docs.forEach(docSnap => {
+            const data = docSnap.data() as ManualInteraction;
+            if (docSnap.id.startsWith('INT-AUTO-') && (data.sourceIds || []).includes(id)) {
+              batch.delete(docSnap.ref);
+            }
+          });
+          await batch.commit();
+        } catch (syncError) {
+          console.warn("Could not cleanup interactions after drug deletion:", syncError);
+        }
+
         if (selectedDrug?.id === id) setSelectedDrug(null);
       } catch (firestoreError) {
         handleFirestoreError(firestoreError, OperationType.DELETE, `drugs/${id}`);
@@ -977,18 +1188,18 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
 
   return (
     <div className={cn(
-      "p-2 lg:px-8 lg:pb-8 lg:pt-8 max-w-full mx-auto min-h-screen transition-colors text-slate-900 dark:text-slate-200",
+      "p-1.5 lg:px-8 lg:pb-8 lg:pt-8 max-w-full mx-auto min-h-screen transition-colors text-slate-900 dark:text-slate-200",
       isDarkMode ? "bg-slate-950/30" : "bg-slate-50/50"
     )}>
       {/* Mobile Subheader Portal */}
-      {subHeaderPortalId && document.getElementById(subHeaderPortalId) && createPortal(
+      {portalNode && createPortal(
         <div className="flex items-center justify-end w-full">
           {viewModeToggle}
         </div>,
-        document.getElementById(subHeaderPortalId)!
+        portalNode
       )}
 
-      <div className="mb-2 lg:mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="mb-2 lg:mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-6">
         <div className="hidden lg:block space-y-2">
           <div className={cn(
             "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
@@ -1011,11 +1222,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           </p>
         </div>
         
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="hidden lg:block">
             {viewModeToggle}
           </div>
-
         </div>
       </div>
 
@@ -1023,28 +1233,28 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
         <div 
           ref={mainSearchRef}
           className={cn(
-            "mb-4 p-2 lg:p-3 rounded-[24px] lg:rounded-[32px] border transition-all shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center gap-3",
+            "mb-3 p-1.5 lg:p-3 rounded-2xl lg:rounded-[32px] border transition-all shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center gap-2 lg:gap-3",
             isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
           )}
         >
           <div className="relative flex-1 flex items-center group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+            <Search className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
             <input
               type="text"
               placeholder={searchMode === 'all' ? "Tìm tên thuốc, hoạt chất, mã ATC..." : searchMode === 'name' ? "Tìm theo tên thuốc..." : "Tìm theo hoạt chất..."}
               className={cn(
-                "w-full pl-12 pr-32 py-3 lg:py-4 border-none rounded-2xl focus:ring-0 transition-all text-sm font-bold",
+                "w-full pl-10 pr-28 lg:pl-12 lg:pr-32 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl focus:ring-0 transition-all text-xs lg:text-sm font-bold",
                 isDarkMode ? "bg-slate-800/50 text-white placeholder:text-slate-600" : "bg-slate-50 text-slate-900 placeholder:text-slate-400"
               )}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+            <div className="absolute right-1.5 lg:right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
               <select
                 value={searchMode}
                 onChange={(e) => setSearchMode(e.target.value as any)}
                 className={cn(
-                  "text-[10px] font-black uppercase tracking-widest py-1.5 px-3 rounded-xl border-none focus:ring-0 cursor-pointer transition-all",
+                  "text-[9px] lg:text-[10px] font-black uppercase tracking-widest py-1 lg:py-1.5 px-2 lg:px-3 rounded-lg lg:rounded-xl border-none focus:ring-0 cursor-pointer transition-all",
                   isDarkMode ? "bg-slate-700 text-slate-300 hover:bg-slate-600" : "bg-white text-slate-600 hover:bg-slate-100 shadow-sm"
                 )}
               >
@@ -1056,31 +1266,52 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           </div>
           
           <div className={cn(
-            "h-8 w-px hidden lg:block transition-colors",
+            "h-6 lg:h-8 w-px hidden lg:block transition-colors",
             isDarkMode ? "bg-slate-800" : "bg-slate-100"
           )}></div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="flex items-center gap-2">
             {viewMode === 'drugs' && (
-              <div className="relative flex-1 sm:w-64 group">
-                <Folder className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
-                <select
-                  className={cn(
-                    "w-full pl-11 pr-10 py-3 lg:py-4 border-none rounded-2xl appearance-none focus:ring-0 cursor-pointer text-sm font-bold transition-all",
-                    isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
-                  )}
-                  value={groupFilter}
-                  onChange={(e) => setGroupFilter(e.target.value)}
-                >
-                  <option value="Tất cả">Tất cả nhóm thuốc</option>
-                  {sortedDrugGroups.map(group => (
-                    <option key={group.id} value={group.id}>
-                      {'\u00A0'.repeat(group.level * 3)}{group.level > 0 ? '└─ ' : ''}{group.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={16} />
-              </div>
+              <>
+                {canManage && (
+                  <div className="relative group">
+                    <Filter className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
+                    <select
+                      className={cn(
+                        "w-full sm:w-40 pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
+                        isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
+                      )}
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                    >
+                      <option value="all">Tất cả trạng thái</option>
+                      <option value="active">Đang hoạt động</option>
+                      <option value="hidden">Đang ẩn</option>
+                    </select>
+                    <ChevronRight className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={14} />
+                  </div>
+                )}
+                
+                <div className="relative flex-1 sm:w-64 group">
+                  <Folder className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
+                  <select
+                    className={cn(
+                      "w-full pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
+                      isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
+                    )}
+                    value={groupFilter}
+                    onChange={(e) => setGroupFilter(e.target.value)}
+                  >
+                    <option value="Tất cả">Tất cả nhóm thuốc</option>
+                    {sortedDrugGroups.map(group => (
+                      <option key={group.id} value={group.id}>
+                        {'\u00A0'.repeat(group.level * 3)}{group.level > 0 ? '└─ ' : ''}{group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronRight className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={14} />
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -1375,10 +1606,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="w-full">
         <div className={cn(
-          "lg:col-span-4 flex flex-col gap-4 lg:sticky lg:top-[52px] transition-all duration-500",
-          "h-fit max-h-[80vh] lg:max-h-[calc(100vh-140px)]"
+          "flex flex-col gap-6 transition-all duration-500",
+          "min-h-screen"
         )}>
           {/* Quick Search in Sticky Column - Only visible when main search bar is scrolled out */}
           <AnimatePresence>
@@ -1418,11 +1649,22 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           </AnimatePresence>
 
           <div className={cn(
-            "overflow-y-auto custom-scrollbar p-1",
-            selectedDrug 
-              ? "flex flex-col gap-4 lg:gap-3" 
-              : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-5 lg:gap-4"
+            "p-1",
+            "flex flex-col gap-3"
           )}>
+
+          {/* List Header - Hidden on mobile */}
+          {paginatedDrugs.length > 0 && (
+            <div className={cn(
+              "hidden md:grid grid-cols-12 gap-4 px-8 py-2 text-[10px] font-black uppercase tracking-widest transition-colors",
+              isDarkMode ? "text-slate-500" : "text-slate-400"
+            )}>
+              <div className="col-span-5 pl-12 text-blue-500">Tên thuốc & Hoạt chất</div>
+              <div className="col-span-4 pl-4 text-indigo-500">Nhóm dược lý</div>
+              <div className="col-span-2 pl-4 text-emerald-500">Dạng bào chế</div>
+              <div className="col-span-1 text-right pr-2">Thao tác</div>
+            </div>
+          )}
 
           {selectedIngredient && (
             <div className={cn(
@@ -1443,132 +1685,227 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
               <motion.div
                 layout
                 key={drug.id}
-                onClick={() => setSelectedDrug(drug)}
+                onClick={() => handleShowDrugDetail(drug)}
                 className={cn(
-                  "p-5 lg:p-4 rounded-[24px] lg:rounded-2xl border cursor-pointer transition-all duration-300 relative group hover:z-30 hover:scale-[1.02] hover:-translate-y-1 h-auto min-h-[120px]",
+                  "p-3 lg:p-4 rounded-xl lg:rounded-2xl border cursor-pointer transition-all duration-300 relative group flex items-start lg:items-center gap-3 lg:gap-4",
+                  drug.isClosed && (isDarkMode ? "opacity-60 bg-slate-900/50" : "opacity-75 bg-slate-50/50"),
                   selectedDrug?.id === drug.id 
                     ? cn(
-                        "border-primary ring-4 ring-primary/10 z-20 shadow-2xl shadow-primary/20",
+                        "border-primary ring-4 ring-primary/10 z-20 shadow-lg shadow-primary/10",
                         isDarkMode ? "bg-slate-900" : "bg-white"
                       )
                     : cn(
-                        "hover:border-primary/30 shadow-sm hover:shadow-xl",
-                        isDarkMode ? "bg-slate-900 border-slate-800 hover:bg-slate-800/50" : "bg-white border-slate-100 hover:shadow-slate-200/50"
+                        "hover:border-primary/30 shadow-sm hover:shadow-md",
+                        isDarkMode ? "bg-slate-900 border-slate-800 hover:bg-slate-800/50" : "bg-white border-slate-100 hover:shadow-slate-100"
                       )
                 )}
               >
                 {selectedDrug?.id === drug.id && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary shadow-[4px_0_12px_rgba(59,130,246,0.5)] rounded-l-2xl"></div>
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary shadow-[2px_0_8px_rgba(59,130,246,0.5)] rounded-l-xl lg:rounded-l-2xl"></div>
                 )}
                 
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4 min-w-0">
-                    <div className={cn(
-                      "w-14 h-14 lg:w-10 lg:h-10 rounded-2xl lg:rounded-lg flex items-center justify-center shrink-0 transition-all duration-700 overflow-hidden border shadow-sm relative",
-                      selectedDrug?.id === drug.id 
-                        ? "bg-primary border-primary/50 text-white shadow-primary/20" 
-                        : cn(
-                            "text-slate-400 group-hover:text-primary",
-                            isDarkMode 
-                              ? "bg-slate-800 border-slate-700 group-hover:bg-primary/10 group-hover:border-primary/30" 
-                              : "bg-slate-50 border-slate-100 group-hover:bg-primary/5 group-hover:border-primary/10"
-                          )
-                    )}>
-                      {drug.avatarUrl ? (
-                        <img src={drug.avatarUrl} alt={drug.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Pill size={28} className="lg:size-5 transition-transform duration-500 group-hover:rotate-12" />
+                <div className={cn(
+                  "w-10 h-10 lg:w-12 lg:h-12 rounded-lg lg:rounded-xl flex items-center justify-center shrink-0 border shadow-sm relative overflow-hidden",
+                  selectedDrug?.id === drug.id 
+                    ? "bg-primary border-primary/50 text-white shadow-primary/20" 
+                    : cn(
+                        "text-slate-400 group-hover:text-primary",
+                        isDarkMode 
+                          ? "bg-slate-800 border-slate-700 group-hover:bg-primary/10 group-hover:border-primary/30" 
+                          : "bg-slate-50 border-slate-100 group-hover:bg-primary/5 group-hover:border-primary/10",
+                        drug.isClosed && (isDarkMode ? "bg-slate-900 border-slate-800 text-slate-600" : "bg-slate-200 border-slate-300 text-slate-400")
+                      )
+                )}>
+                  {drug.avatarUrl ? (
+                    <img 
+                      src={drug.avatarUrl} 
+                      alt={drug.name} 
+                      loading="lazy" 
+                      className={cn(
+                        "w-full h-full object-cover transition-transform duration-700 group-hover:scale-110",
+                        drug.isClosed && "grayscale opacity-50"
+                      )} 
+                      referrerPolicy="no-referrer" 
+                    />
+                  ) : (
+                    <Pill size={20} className={cn("lg:size-6 transition-transform duration-500 group-hover:rotate-12", drug.isClosed && "opacity-40")} />
+                  )}
+                  {drug.isClosed && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 backdrop-blur-[1px]">
+                      <EyeOff size={14} className="text-white" />
+                    </div>
+                  )}
+                </div>
+                
+                <div className={cn("flex-1 min-w-0 grid grid-cols-1 md:grid-cols-12 gap-2 lg:gap-4 items-start lg:items-center", canManage && "pr-16 md:pr-0")}>
+                  <div className="md:col-span-5 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 lg:mb-1.5">
+                      <h3 className={cn(
+                        "font-black text-xs lg:text-sm truncate",
+                        isDarkMode ? "text-white group-hover:text-primary" : "text-slate-900 group-hover:text-primary"
+                      )}>{drug.name}</h3>
+                      {drug.isRx && (
+                        <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded-md font-black border border-rose-500/20">Rx</span>
                       )}
-                      {!drug.isActive && (
-                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[1px] flex items-center justify-center">
-                          <X size={16} className="text-white" />
-                        </div>
+                      {drug.isClosed && (
+                        <span className={cn(
+                          "shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 rounded-md font-black border flex items-center gap-1",
+                          isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                        )}>
+                          <EyeOff size={8} /> ĐANG ẨN
+                        </span>
                       )}
                     </div>
-                    
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className={cn(
-                          "font-black text-base lg:text-sm transition-colors",
-                          isDarkMode ? "text-white group-hover:text-primary" : "text-slate-900 group-hover:text-primary"
-                        )}>{drug.name}</h3>
-                        {drug.isRx && (
-                          <span className="shrink-0 text-[8px] px-1 py-0.5 bg-rose-500/10 text-rose-500 rounded-md font-black border border-rose-500/20">Rx</span>
-                        )}
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {(drug.activeIngredients || []).map((ing, idx) => (
-                          <span key={idx} className={cn(
-                            "text-[9px] font-bold px-2 py-0.5 rounded-md border transition-colors",
-                            isDarkMode ? "bg-slate-800/50 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 text-slate-500"
-                          )}>
-                            {ing.name} {ing.amount}{ing.unit}
-                          </span>
-                        ))}
-                        <span className={cn(
-                          "flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md",
-                          isDarkMode ? "bg-blue-900/20 text-blue-400" : "bg-blue-50 text-blue-600"
+                    <div className="flex flex-wrap gap-1">
+                      {(drug.activeIngredients || []).slice(0, 3).map((ing, idx) => (
+                        <span key={idx} className={cn(
+                          "text-[8px] lg:text-[9px] font-bold px-1.5 py-0.5 rounded-md border transition-colors",
+                          isDarkMode ? "bg-slate-800/30 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 text-slate-500"
                         )}>
-                          <Activity size={8} />
-                          {drug.dosageForm || 'N/A'}
+                          {ing.name} {ing.amount}{ing.unit}
                         </span>
-                        {drug.category || (drug.groupIds && drug.groupIds.length > 0 && drugGroups.filter(g => drug.groupIds?.includes(g.id)).map(g => g.name).join(', ')) ? (
+                      ))}
+                      {(drug.activeIngredients || []).length > 3 && (
+                        <span className="text-[8px] text-slate-400 font-bold">...</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-4 md:pl-4">
+                    {(drug.category || (drug.groupIds && drug.groupIds.length > 0) || drug.atcCode) ? (
+                      <div className="flex flex-row flex-wrap md:flex-col gap-1 items-start">
+                        {drug.category && (
                           <span className={cn(
-                            "flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-md border max-w-full",
+                            "flex items-center gap-1 text-[8px] lg:text-[9px] font-bold px-1.5 lg:px-2 py-0.5 rounded-md border truncate max-w-[150px] lg:max-w-full",
                             isDarkMode ? "bg-slate-800/30 border-slate-700 text-slate-500" : "bg-slate-50 border-slate-100 text-slate-400"
                           )}>
                             <Folder size={8} className="shrink-0" />
-                            <span className="truncate">
-                              {drug.category || drugGroups.filter(g => drug.groupIds?.includes(g.id)).map(g => g.name).join(', ')}
-                            </span>
+                            <span className="truncate">{drug.category}</span>
                           </span>
-                        ) : null}
+                        )}
+                        {drug.groupIds && drug.groupIds.length > 0 && drugGroups.filter(g => drug.groupIds?.includes(g.id)).slice(0, 1).map((g, idx) => (
+                          <span key={idx} className={cn(
+                            "flex items-center gap-1 text-[8px] lg:text-[9px] font-bold px-1.5 lg:px-2 py-0.5 rounded-md border truncate max-w-[150px] lg:max-w-full",
+                            isDarkMode ? "bg-indigo-900/10 border-indigo-900/20 text-indigo-400" : "bg-indigo-50 border-indigo-100 text-indigo-600"
+                          )}>
+                            <span className="w-1 h-1 rounded-full bg-current opacity-60"></span>
+                            <span className="truncate">{g.name}</span>
+                          </span>
+                        ))}
+                        {drug.atcCode && (
+                          <span className={cn(
+                            "flex items-center gap-1 text-[8px] lg:text-[9px] font-bold px-1.5 lg:px-2 py-0.5 rounded-md border truncate max-w-[100px] lg:max-w-full",
+                            isDarkMode ? "bg-slate-800/50 border-slate-700 text-slate-400" : "bg-slate-100 border-slate-200 text-slate-500"
+                          )}>
+                             <Activity size={8} className="shrink-0" />
+                             ATC: {drug.atcCode}
+                          </span>
+                        )}
                       </div>
-                    </div>
+                    ) : (
+                      <span className="text-[9px] lg:text-[10px] text-slate-400 italic">Chưa phân nhóm</span>
+                    )}
                   </div>
-                  
-                  <div className="flex flex-col items-end justify-between self-stretch py-0.5">
-                    <div className="flex items-center gap-1">
-                      {canManage && (
-                        <div className={cn(
-                          "flex flex-col gap-1 transition-all",
-                          "lg:opacity-0 lg:group-hover:opacity-100"
-                        )}>
-                          <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); }}
-                            className={cn(
-                              "p-2 lg:p-1.5 rounded-xl transition-all hover:scale-110",
-                              isDarkMode ? "text-slate-500 hover:text-primary hover:bg-primary/10" : "text-slate-400 hover:text-primary hover:bg-primary/5"
-                            )}
-                          >
-                            <Edit2 size={16} className="lg:size-3" />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); }}
-                            className={cn(
-                              "p-2 lg:p-1.5 rounded-xl transition-all hover:scale-110",
-                              isDarkMode ? "text-slate-500 hover:text-rose-500 hover:bg-rose-500/10" : "text-slate-400 hover:text-rose-500 hover:bg-rose-50"
-                            )}
-                          >
-                            <Trash2 size={16} className="lg:size-3" />
-                          </button>
-                        </div>
+
+                  <div className="md:col-span-2 md:pl-4">
+                    <div className="flex flex-row md:flex-col gap-2 md:gap-1 items-center md:items-start flex-wrap">
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[8px] lg:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md",
+                        isDarkMode ? "bg-blue-900/20 text-blue-400" : "bg-blue-50 text-blue-600"
+                      )}>
+                        <Activity size={8} />
+                        {drug.dosageForm || 'N/A'}
+                      </span>
+                      {(drug.administrationRoute || drug.generalAdministration) && (
+                        <span className="text-[8px] font-bold text-slate-400 line-clamp-1 italic px-0.5" title={`${drug.administrationRoute || ''}${drug.generalAdministration ? ': ' + drug.generalAdministration : ''}`}>
+                          {drug.administrationRoute && <span className={isDarkMode ? "text-emerald-400/80" : "text-emerald-600/80"}>{drug.administrationRoute}</span>}
+                          {drug.generalAdministration && (
+                            <span className="hidden lg:inline ml-1">{drug.generalAdministration}</span>
+                          )}
+                        </span>
                       )}
                     </div>
-                    
-                    {drug.atcCode && (
-                      <span className={cn(
-                        "hidden lg:inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md border",
-                        isDarkMode ? "bg-slate-800/80 border-slate-700 text-slate-500" : "bg-slate-50 border-slate-100 text-slate-400"
-                      )}>
-                        {drug.atcCode}
-                      </span>
+                  </div>
+
+                  <div className="hidden md:flex md:col-span-1 justify-end gap-1">
+                    {canManage && (
+                      <div className="flex items-center gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); }}
+                          title={drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                          className={cn(
+                            "p-2 rounded-xl transition-all hover:scale-110",
+                            isDarkMode 
+                              ? (drug.isClosed ? "text-amber-500 hover:bg-amber-500/10" : "text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10") 
+                              : (drug.isClosed ? "text-amber-600 hover:bg-amber-50/50" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50/50")
+                          )}
+                        >
+                          {drug.isClosed ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); }}
+                          className={cn(
+                            "p-2 rounded-xl transition-all hover:scale-110",
+                            isDarkMode ? "text-slate-500 hover:text-primary hover:bg-primary/10" : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                          )}
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); }}
+                          className={cn(
+                            "p-2 rounded-xl transition-all hover:scale-110",
+                            isDarkMode ? "text-slate-500 hover:text-rose-500 hover:bg-rose-500/10" : "text-slate-400 hover:text-rose-500 hover:bg-rose-500/5"
+                          )}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
+
+                {/* Nút Sửa/Xóa - absolute trên mobile */}
+                {canManage && (
+                  <div className="absolute top-2 right-2 flex md:hidden items-center gap-0.5">
+                    <button 
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); }}
+                      title={drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-all hover:scale-110",
+                        isDarkMode 
+                          ? (drug.isClosed ? "text-amber-500 hover:bg-amber-500/10" : "text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10") 
+                          : (drug.isClosed ? "text-amber-600 hover:bg-amber-50/50" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50/50")
+                      )}
+                    >
+                      {drug.isClosed ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); }}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-all hover:scale-110",
+                        isDarkMode ? "text-slate-500 hover:text-primary hover:bg-primary/10" : "text-slate-400 hover:text-primary hover:bg-primary/5"
+                      )}
+                    >
+                      <Edit2 size={13} />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); }}
+                      className={cn(
+                        "p-1.5 rounded-lg transition-all hover:scale-110",
+                        isDarkMode ? "text-slate-500 hover:text-rose-500 hover:bg-rose-500/10" : "text-slate-400 hover:text-rose-500 hover:bg-rose-500/5"
+                      )}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
               </motion.div>
             ))
           ) : (
@@ -1596,7 +1933,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           {/* Pagination Controls */}
           {totalPages > 1 && (
             <div className={cn(
-              "mt-6 flex flex-wrap items-center justify-center gap-2 p-4 rounded-3xl border shadow-sm",
+              "mt-4 flex flex-wrap items-center justify-center gap-1.5 p-3 lg:p-4 rounded-2xl lg:rounded-3xl border shadow-sm",
               isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
             )}>
               <button
@@ -1608,14 +1945,14 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                   if (scrollElement) scrollElement.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
                 className={cn(
-                  "p-2 rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
+                  "p-1.5 lg:p-2 rounded-lg lg:rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
                   isDarkMode ? "border-slate-800 hover:bg-slate-800 text-slate-400" : "border-slate-100 hover:bg-slate-50 text-slate-500"
                 )}
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={16} />
               </button>
               
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
                   // Show current page, first, last, and window around current
                   const shouldShow = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
@@ -1632,7 +1969,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                           if (scrollElement) scrollElement.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         className={cn(
-                          "w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-xs sm:text-sm font-black transition-all active:scale-90 flex items-center justify-center border",
+                          "w-8 h-8 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl text-[10px] lg:text-sm font-black transition-all active:scale-90 flex items-center justify-center border",
                           currentPage === page
                             ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20"
                             : isDarkMode 
@@ -1669,761 +2006,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           )}
         </div>
       </div>
-      
-      <div className={cn(
-        "lg:col-span-8",
-          selectedDrug ? "fixed inset-0 z-[60] lg:relative lg:inset-auto lg:z-0" : "hidden lg:block"
-        )}>
-          <AnimatePresence>
-            {selectedDrug && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                onClick={() => setSelectedDrug(null)}
-                className="lg:hidden fixed inset-0 bg-slate-900/60 z-[55]"
-              />
-            )}
-          </AnimatePresence>
-          <AnimatePresence mode="popLayout">
-            {selectedDrug ? (
-              <motion.div
-                key={selectedDrug.id}
-                initial={{ opacity: 0, scale: 0.99, y: 5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.99, y: 5 }}
-                transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-                className={cn(
-                  "h-full lg:h-auto overflow-y-auto lg:overflow-visible custom-scrollbar relative z-[60]",
-                  isDarkMode ? "bg-slate-950 lg:bg-transparent" : "bg-white lg:bg-transparent"
-                )}
-              >
-                {/* Mobile Close Button */}
-                <button 
-                  type="button"
-                  onClick={() => setSelectedDrug(null)}
-                  className="lg:hidden fixed top-4 right-4 z-[70] p-2.5 bg-slate-900/80 border border-white/10 rounded-xl text-white shadow-2xl active:scale-95 transition-transform"
-                >
-                  <X size={20} />
-                </button>
-
-                <div className={cn(
-                  "min-h-full lg:min-h-0 rounded-none lg:rounded-[32px] border-0 lg:border shadow-none lg:shadow-2xl lg:sticky lg:top-[52px] transition-all duration-500",
-                  "lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto custom-scrollbar",
-                  isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-slate-200/50"
-                )}>
-                <div className="sticky top-0 z-30">
-                  <div className={cn(
-                    "p-4 md:p-6 lg:p-8 relative overflow-hidden transition-colors duration-500 rounded-t-[32px]",
-                    isDarkMode 
-                      ? "bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 text-white" 
-                      : "bg-white text-slate-900"
-                  )}>
-                    <div className="absolute inset-x-0 bottom-0 h-px bg-slate-100 dark:bg-slate-800" />
-                    {(() => {
-                      const group = drugGroups.find(g => g.id === selectedDrug.groupId);
-                      const bannerUrl = group?.bannerUrl;
-                      if (!bannerUrl) return null;
-                      return (
-                        <div className="absolute inset-0 z-0">
-                          <img src={bannerUrl} alt="Banner" className="w-full h-full object-cover opacity-30" referrerPolicy="no-referrer" />
-                          <div className={cn(
-                            "absolute inset-0 bg-gradient-to-t",
-                            isDarkMode ? "from-slate-900 via-slate-900/80 to-transparent" : "from-white via-white/80 to-transparent"
-                          )} />
-                        </div>
-                      );
-                    })()}
-                    <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/20 blur-[100px] rounded-full -mr-32 -mt-32"></div>
-                    <div className="absolute left-0 bottom-0 w-64 h-64 bg-indigo-500/10 blur-[80px] rounded-full -ml-32 -mb-32"></div>
-                    
-                    <div className="relative z-10">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 lg:gap-8">
-                        <div className="flex items-center gap-4 lg:gap-6">
-                          <div className="relative group/avatar">
-                            <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-[20px] lg:rounded-[28px] blur opacity-25 group-hover/avatar:opacity-50 transition duration-1000 group-hover/avatar:duration-200"></div>
-                            <div className={cn(
-                              "relative backdrop-blur-2xl p-1 rounded-[18px] lg:rounded-[26px] shadow-2xl border overflow-hidden w-16 h-16 lg:w-20 lg:h-20 flex items-center justify-center transition-transform duration-500 hover:scale-105",
-                              isDarkMode ? "bg-white/10 border-white/20 ring-1 ring-white/10" : "bg-slate-50 border-slate-200 shadow-slate-200/50"
-                            )}>
-                              <div className={cn(
-                                "w-full h-full rounded-[14px] lg:rounded-[18px] overflow-hidden flex items-center justify-center",
-                                isDarkMode ? "bg-slate-900/20" : "bg-slate-100"
-                              )}>
-                                {selectedDrug.avatarUrl ? (
-                                  <img src={selectedDrug.avatarUrl} alt={selectedDrug.name} className="w-full h-full object-cover transition-transform duration-700 hover:scale-110" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <Pill size={24} className="text-blue-400" />
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 lg:gap-3 mb-1">
-                              <h2 className="text-xl lg:text-3xl font-black tracking-tight leading-tight">{selectedDrug.name}</h2>
-                              {selectedDrug.isRx && (
-                                <span className="shrink-0 px-1.5 lg:px-2 py-0.5 bg-rose-500/20 text-rose-400 rounded-lg text-[8px] lg:text-[10px] font-black border border-rose-500/30">Rx</span>
-                              )}
-                            </div>
-                            <p className={cn(
-                              "font-bold uppercase tracking-[0.1em] lg:tracking-[0.15em] text-[9px] lg:text-[11px] mb-2 lg:mb-3",
-                              isDarkMode ? "text-blue-300" : "text-blue-600"
-                            )}>
-                              {(selectedDrug.activeIngredients || []).map(ing => `${ing.name} ${ing.amount}${ing.unit}`).join(' + ')}
-                            </p>
-                            
-                            <div className="flex flex-wrap gap-1.5 lg:gap-2">
-                              {selectedDrug.atcCode && (
-                                <span className={cn(
-                                  "px-2 lg:px-3 py-1 lg:py-1.5 backdrop-blur-md rounded-lg lg:rounded-xl text-[9px] lg:text-[10px] font-bold border flex items-center gap-1.5 lg:gap-2",
-                                  isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600"
-                                )}>
-                                  <ShieldAlert size={10} />
-                                  ATC: {selectedDrug.atcCode}
-                                </span>
-                              )}
-                              <span className={cn(
-                                "px-2 lg:px-3 py-1 lg:py-1.5 backdrop-blur-md rounded-lg lg:rounded-xl text-[9px] lg:text-[10px] font-bold border flex items-center gap-1.5 lg:gap-2",
-                                isDarkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"
-                              )}>
-                                <div className="w-1 lg:w-1 h-1 lg:h-1 rounded-full bg-blue-400"></div>
-                                {(() => {
-                                  if (selectedDrug.category) return selectedDrug.category;
-                                  const names = drugGroups.filter(g => (selectedDrug.groupIds || []).includes(g.id)).map(g => g.name);
-                                  return names.length > 0 ? names.join(', ') : 'Chưa phân nhóm';
-                                })()}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {selectedDrug.pdfUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setPdfViewerUrl(selectedDrug.pdfUrl!)}
-                            className="flex items-center justify-center gap-2 lg:gap-3 px-4 lg:px-5 py-2 lg:py-3 bg-blue-600 hover:bg-blue-500 rounded-xl lg:rounded-2xl text-xs font-black transition-all shadow-xl shadow-blue-900/40 group active:scale-95"
-                          >
-                            <FileText size={16} className="group-hover:scale-110 transition-transform" /> 
-                            Xem PDF
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={cn(
-                    "px-4 lg:px-10 py-1 border-b backdrop-blur-md transition-colors",
-                    isDarkMode ? "bg-slate-900/90 border-slate-800" : "bg-white/90 border-slate-100 shadow-sm"
-                  )}>
-                    {/* Detail Tabs Navigation */}
-                    <div className={cn(
-                      "flex overflow-x-auto gap-0.5 p-0.5 custom-scrollbar"
-                    )}>
-                      {detailTabs.map((tab) => (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          onClick={() => setActiveDetailTab(tab.id as any)}
-                          className={cn(
-                            "flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 rounded-xl text-[10px] font-black transition-all whitespace-nowrap",
-                            activeDetailTab === tab.id
-                              ? isDarkMode 
-                                  ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40" 
-                                  : "bg-blue-600 text-white shadow-md shadow-blue-200"
-                              : isDarkMode
-                                  ? "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                                  : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                          )}
-                        >
-                          <span className="shrink-0 lg:hidden">{tab.icon}</span>
-                          <span className={cn(
-                            "sm:inline",
-                            activeDetailTab === tab.id ? "inline" : "hidden"
-                          )}>{tab.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className={cn(
-                  "p-4 md:p-10 pt-4 md:pt-6 mt-2 space-y-6 transition-colors min-h-[500px]",
-                  isDarkMode ? "bg-slate-900" : "bg-slate-50/50"
-                )}>
-                  <motion.div 
-                    className="min-h-[400px]"
-                    drag={typeof window !== 'undefined' && window.innerWidth < 1024 ? "x" : false}
-                    dragConstraints={{ left: 0, right: 0 }}
-                    dragElastic={0.2}
-                    onDragEnd={(_, info) => {
-                      if (info.offset.x > 80) handleSwipe(-1);
-                      else if (info.offset.x < -80) handleSwipe(1);
-                    }}
-                  >
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      {activeDetailTab === 'indications' && (
-                        <motion.div
-                          key="indications"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="grid grid-cols-1 gap-6"
-                        >
-                          <div className="p-0 transition-all border-none bg-transparent">
-                            <div className="hidden sm:flex items-center gap-3 mb-8">
-                              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-sm">
-                                <Info size={24} />
-                              </div>
-                              <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Chỉ định điều trị</h4>
-                            </div>
-
-                            {selectedDrug.mechanismOfAction && (
-                              <div className={cn(
-                                "mb-6 p-5 rounded-2xl border flex items-start gap-4 transition-colors",
-                                isDarkMode ? "bg-violet-900/15 border-violet-900/30" : "bg-violet-50/60 border-violet-100 shadow-sm"
-                              )}>
-                                <div className={cn(
-                                  "shrink-0 w-9 h-9 rounded-xl flex items-center justify-center border",
-                                  isDarkMode ? "bg-violet-900/40 border-violet-800 text-violet-400" : "bg-white border-violet-200 text-violet-600 shadow-sm"
-                                )}>
-                                  <Zap size={18} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className={cn("text-[10px] font-black uppercase tracking-widest mb-1.5", isDarkMode ? "text-violet-400" : "text-violet-600")}>
-                                    Cơ chế tác dụng
-                                  </p>
-                                  <p className={cn("text-sm font-semibold leading-relaxed whitespace-pre-line", isDarkMode ? "text-slate-200" : "text-slate-700")}>
-                                    {selectedDrug.mechanismOfAction}
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                            
-                            <div className="space-y-4">
-                              {[...(selectedDrug.indications || [])].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0)).map((item, i) => (
-                                <div key={i} className={cn(
-                                  "flex items-start p-4 rounded-2xl border transition-all shadow-sm group",
-                                  isDarkMode ? "bg-slate-800 border-slate-700 hover:border-blue-900" : "bg-white border-slate-100 hover:border-blue-200"
-                                )}>
-                                  <div className="flex-1">
-                                    <div className={cn("text-sm font-bold leading-relaxed flex items-start gap-1.5", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                      <div className="shrink-0 mt-1.5">
-                                        <div className={cn(
-                                          "w-2.5 h-2.5 rounded-full shadow-sm transition-all",
-                                          (item.isPrimary && canSeeCommonIndications)
-                                            ? "bg-amber-500 shadow-amber-200 scale-125" 
-                                            : "bg-blue-500 shadow-blue-200"
-                                        )}></div>
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        {(item.title || (item.isPrimary && canSeeCommonIndications)) ? (
-                                          <>
-                                            <div className="flex items-center flex-wrap gap-2 mb-1">
-                                              {item.isPrimary && canSeeCommonIndications && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-500 text-white uppercase tracking-wider shadow-sm">
-                                                  <Star size={8} fill="currentColor" /> Chỉ định thường dùng
-                                                </span>
-                                              )}
-                                              {item.title && (
-                                                <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-blue-400" : "text-blue-600")}>
-                                                  {item.title}
-                                                </span>
-                                              )}
-                                            </div>
-                                            <div className="whitespace-pre-line">{item.content}</div>
-                                          </>
-                                        ) : (
-                                          <div className="whitespace-pre-line">{item.content}</div>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {item.icd10s && item.icd10s.length > 0 && canSeeIcdSuggestions && (
-                                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                                        {item.icd10s.map((fullCode, idx) => {
-                                          const sepIdx = fullCode.indexOf(' - ');
-                                          const code = sepIdx >= 0 ? fullCode.substring(0, sepIdx) : fullCode;
-                                          const description = (sepIdx >= 0 ? fullCode.substring(sepIdx + 3) : undefined)
-                                            || icdList.find(icd => icd.code === code)?.description;
-                                          const isDefault = item.defaultIcd10 === fullCode;
-                                          return (
-                                            <div key={idx} className="flex items-center gap-1.5">
-                                              <span className={cn(
-                                                "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider shrink-0 flex items-center gap-1",
-                                                isDefault
-                                                  ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                                                  : isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-blue-50 text-blue-600 border-blue-100"
-                                              )}>
-                                                {isDefault && <Star size={8} fill="currentColor" />}
-                                                {code}
-                                              </span>
-                                              {isDefault && (
-                                                <span className={cn("text-[9px] font-black uppercase tracking-wider", isDarkMode ? "text-amber-400" : "text-amber-600")}>
-                                                  Thường dùng
-                                                </span>
-                                              )}
-                                              {description && !isDefault && (
-                                                <span className="text-[11px] text-slate-400 font-medium italic">
-                                                  - {description}
-                                                </span>
-                                              )}
-                                              {description && isDefault && (
-                                                <span className={cn("text-[11px] font-medium italic", isDarkMode ? "text-amber-300/70" : "text-amber-700/70")}>
-                                                  - {description}
-                                                </span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                              {(!selectedDrug.indications || selectedDrug.indications.length === 0) && (
-                                <div className="text-center py-20 bg-slate-50/50 rounded-[32px] border border-dashed border-slate-200">
-                                  <p className="text-slate-400 font-bold">Chưa có thông tin chỉ định.</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'contraindications' && (
-                        <motion.div
-                          key="contraindications"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="p-0 transition-all border-none bg-transparent"
-                        >
-                          <div className="hidden sm:flex items-center gap-3 mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shadow-sm">
-                              <ShieldAlert size={24} />
-                            </div>
-                            <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Chống chỉ định</h4>
-                          </div>
-
-                          <div className="space-y-4">
-                            {selectedDrug.contraindications.map((item, i) => (
-                              <div key={i} className={cn(
-                                "flex items-start gap-5 p-6 rounded-3xl border shadow-sm transition-all",
-                                isDarkMode ? "bg-slate-800 border-rose-900/30 text-rose-200" : "bg-white border-rose-100/50 text-rose-900"
-                              )}>
-                                <div className="p-2 rounded-xl bg-rose-50 text-rose-500 shrink-0">
-                                  <X size={18} strokeWidth={3} />
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    {item.type && (
-                                      <span className={cn(
-                                        "px-2 py-0.5 rounded-md text-[10px] font-black border uppercase tracking-wider",
-                                        isDarkMode ? "bg-rose-900/30 text-rose-400 border-rose-800" : "bg-rose-100 text-rose-600 border-rose-200"
-                                      )}>
-                                        {item.type === 'Drug' ? 'Dùng chung thuốc' :
-                                          item.type === 'ICD-10' ? 'ICD-10' :
-                                          item.type === 'Weight' ? 'Cân nặng' :
-                                          item.type === 'Age' ? 'Tuổi tác' : 'Khác'}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm font-bold leading-relaxed">{item.content}</p>
-                                </div>
-                              </div>
-                            ))}
-                            {selectedDrug.contraindications.length === 0 && (
-                              <div className="text-center py-20 bg-rose-50/20 rounded-[32px] border border-dashed border-rose-100">
-                                <p className="text-rose-400 font-bold">Không có thông tin chống chỉ định đặc biệt.</p>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'dosage' && (
-                        <motion.div
-                          key="dosage"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className={cn(
-                            "p-0 border-none transition-colors bg-transparent",
-                            isDarkMode ? "" : ""
-                          )}
-                        >
-                          <div className="hidden sm:flex items-center gap-3 mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
-                              <Clock size={24} />
-                            </div>
-                            <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Liều lượng & Cách dùng</h4>
-                          </div>
-
-                          <div className="space-y-8">
-                            {selectedDrug.excipients && (
-                              <div className={cn(
-                                "p-6 rounded-3xl border transition-colors",
-                                isDarkMode ? "bg-slate-900/50 border-slate-700/50" : "bg-slate-50 border-slate-100"
-                              )}>
-                                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tá dược:</h5>
-                                <p className={cn(
-                                  "text-sm font-bold italic transition-colors",
-                                  isDarkMode ? "text-slate-400" : "text-slate-600"
-                                )}>{selectedDrug.excipients}</p>
-                              </div>
-                            )}
-                            
-                            <div className="grid grid-cols-1 gap-6">
-                              {selectedDrug.generalAdministration && (
-                                <div className={cn(
-                                  "p-8 rounded-3xl border transition-colors relative overflow-hidden group",
-                                  isDarkMode ? "bg-amber-900/10 border-amber-900/30" : "bg-amber-50/20 border-amber-100 shadow-sm"
-                                )}>
-                                  <div className="absolute top-0 right-0 p-6 opacity-5">
-                                    <Clock size={60} className="text-amber-500" />
-                                  </div>
-                                  <h5 className={cn("text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-600")}>
-                                    <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                                    Hướng dẫn sử dụng chung:
-                                  </h5>
-                                  <p className={cn(
-                                    "text-sm font-bold leading-relaxed transition-colors",
-                                    isDarkMode ? "text-slate-200" : "text-slate-800"
-                                  )}>{selectedDrug.generalAdministration}</p>
-                                </div>
-                              )}
-
-                              {(selectedDrug.dosageAndAdministration || []).map((item, idx) => (
-                                <div key={idx} className={cn(
-                                  "p-8 rounded-3xl border shadow-sm hover:shadow-md transition-all group",
-                                  isDarkMode ? "bg-slate-900/50 border-slate-700" : "bg-white border-slate-100"
-                                )}>
-                                  <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-1.5 h-6 bg-emerald-500 rounded-full group-hover:h-8 transition-all"></div>
-                                    <h5 className={cn("font-black text-base uppercase tracking-tight transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>{item.category}</h5>
-                                  </div>
-                                  
-                                  {(item.morning || item.noon || item.afternoon || item.night) && (
-                                    <div className="flex gap-2 sm:gap-3 mb-4 overflow-x-auto no-scrollbar pb-1">
-                                      {[
-                                        { label: 'Sáng', value: item.morning, icon: <Zap size={10} className="text-amber-500" /> },
-                                        { label: 'Trưa', value: item.noon, icon: <Star size={10} className="text-orange-500" /> },
-                                        { label: 'Chiều', value: item.afternoon, icon: <Star size={10} className="text-blue-400" /> },
-                                        { label: 'Tối', value: item.night, icon: <Clock size={10} className="text-indigo-500" /> }
-                                      ].map((time, tIdx) => time.value ? (
-                                        <div key={tIdx} className={cn(
-                                          "flex-1 min-w-[70px] p-2 rounded-2xl border flex flex-col items-center justify-center gap-1 shadow-sm transition-all hover:scale-105",
-                                          isDarkMode ? "bg-slate-800 border-slate-700" : "bg-blue-50/50 border-blue-100"
-                                        )}>
-                                          <div className="flex items-center gap-1">
-                                            {time.icon}
-                                            <span className="text-[9px] font-black uppercase text-slate-500">{time.label}</span>
-                                          </div>
-                                          <span className={cn("text-xs font-black", isDarkMode ? "text-white" : "text-blue-600")}>{time.value}</span>
-                                        </div>
-                                      ) : null)}
-                                    </div>
-                                  )}
-
-                                  <p className={cn("text-[13px] leading-relaxed font-bold transition-colors", isDarkMode ? "text-slate-300" : "text-slate-700")}>{item.content}</p>
-                                </div>
-                              ))}
-                              {(selectedDrug.dosageAndAdministration || []).length === 0 && !selectedDrug.generalAdministration && (
-                                <div className="col-span-full py-20 text-center bg-slate-50/50 rounded-[32px] border border-dashed border-slate-200">
-                                  <p className="text-slate-400 font-bold italic">Thông tin liều dùng đang được cập nhật...</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'interactions' && (
-                        <motion.div
-                          key="interactions"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="space-y-6"
-                        >
-                          {selectedDrug.specificInteractions && selectedDrug.specificInteractions.length > 0 ? (
-                            <div className={cn(
-                              "p-0 border-none transition-colors bg-transparent",
-                              isDarkMode ? "" : ""
-                            )}>
-                              <div className="hidden sm:flex items-center gap-3 mb-8">
-                                <div className={cn(
-                                  "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-sm border",
-                                  isDarkMode ? "bg-indigo-900/50 text-indigo-400 border-indigo-800" : "bg-indigo-50 text-indigo-600 border-indigo-100"
-                                )}>
-                                  <RefreshCw size={24} />
-                                </div>
-                                <h4 className={cn("font-black uppercase tracking-widest text-sm transition-colors text-slate-400")}>Tương tác thuốc</h4>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-6">
-                                {selectedDrug.specificInteractions.map((item, idx) => (
-                                  <div key={idx} className={cn(
-                                    "p-8 rounded-3xl border shadow-sm hover:shadow-md transition-all",
-                                    isDarkMode ? "bg-slate-800 border-indigo-900/30" : "bg-white border-indigo-100"
-                                  )}>
-                                    <h5 className={cn("font-black text-sm uppercase tracking-tight mb-3 transition-colors", isDarkMode ? "text-indigo-400" : "text-indigo-900")}>{item.target}</h5>
-                                    <p className={cn("text-[13px] leading-relaxed font-bold transition-colors", isDarkMode ? "text-slate-300" : "text-slate-700")}>{item.content}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-center py-20 bg-indigo-50/10 rounded-[40px] border border-dashed border-indigo-100">
-                              <RefreshCw size={48} className="mx-auto text-indigo-200 mb-4" />
-                              <p className="text-slate-400 font-bold">Không có tương tác thuốc đặc biệt được ghi nhận.</p>
-                            </div>
-                          )}
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'warnings' && (
-                        <motion.div
-                          key="warnings"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className={cn(
-                            "p-0 sm:p-8 sm:rounded-[40px] sm:border transition-all border-none bg-transparent",
-                            isDarkMode ? "sm:bg-white/5 sm:border-white/10" : "sm:bg-white sm:border-slate-100 sm:shadow-sm"
-                          )}
-                        >
-                          <div className="hidden sm:flex items-center gap-3 mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shadow-sm">
-                              <AlertTriangle size={24} />
-                            </div>
-                            <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Thận trọng & Cảnh báo</h4>
-                          </div>
-
-                          <div className="space-y-6">
-                            {[
-                              { label: 'Thận trọng', value: selectedDrug.precautions, icon: <ShieldAlert size={18} />, color: isDarkMode ? 'text-orange-400' : 'text-orange-600', bgColor: isDarkMode ? 'bg-orange-900/20' : 'bg-orange-50' },
-                              { label: 'Tương tác chung', value: selectedDrug.interactions, icon: <RefreshCw size={18} />, color: isDarkMode ? 'text-indigo-400' : 'text-indigo-600', bgColor: isDarkMode ? 'bg-indigo-900/20' : 'bg-indigo-50' },
-                            ].map((item, idx) => (item.value && (Array.isArray(item.value) ? item.value.length > 0 : true)) && (
-                              <div key={idx} className={cn(
-                                "p-6 rounded-3xl border transition-all hover:scale-[1.01] shadow-sm",
-                                item.bgColor,
-                                item.bgColor.replace('bg-', 'border-')
-                              )}>
-                                <div className={cn("flex items-center gap-2 mb-4", item.color)}>
-                                  <div className={cn("p-1.5 rounded-lg bg-white/50 backdrop-blur-sm shadow-sm border", item.bgColor.replace('bg-', 'border-'))}>
-                                    {item.icon}
-                                  </div>
-                                  <h4 className="font-black uppercase tracking-widest text-[10px]">{item.label}</h4>
-                                </div>
-                                <p className={cn("text-sm font-black leading-relaxed whitespace-pre-line", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                  {typeof item.value === 'string' ? item.value : ''}
-                                </p>
-                              </div>
-                            ))}
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                              {[
-                                { label: 'Phụ nữ có thai', value: selectedDrug.pregnancy, icon: <Heart size={18} />, color: isDarkMode ? 'text-rose-400' : 'text-rose-600', bgColor: isDarkMode ? 'bg-rose-900/20' : 'bg-rose-50' },
-                                { label: 'Phụ nữ cho con bú', value: selectedDrug.lactation, icon: <Baby size={18} />, color: isDarkMode ? 'text-pink-400' : 'text-pink-600', bgColor: isDarkMode ? 'bg-pink-900/20' : 'bg-pink-50' },
-                                { label: 'Vận hành xe & máy móc', value: selectedDrug.driving, icon: <Car size={18} />, color: isDarkMode ? 'text-slate-400' : 'text-slate-600', bgColor: isDarkMode ? 'bg-slate-800' : 'bg-slate-100' },
-                              ].map((item, idx) => (item.value && (Array.isArray(item.value) ? item.value.length > 0 : true)) && (
-                                <div key={idx} className={cn(
-                                  "p-6 rounded-3xl border transition-all hover:scale-[1.02] shadow-sm",
-                                  item.bgColor,
-                                  item.bgColor.replace('bg-', 'border-')
-                                )}>
-                                  <div className={cn("flex items-center gap-2 mb-4", item.color)}>
-                                    <div className={cn("p-1.5 rounded-lg bg-white/50 backdrop-blur-sm shadow-sm border", item.bgColor.replace('bg-', 'border-'))}>
-                                      {item.icon}
-                                    </div>
-                                    <h4 className="font-black uppercase tracking-widest text-[10px]">{item.label}</h4>
-                                  </div>
-                                  <p className={cn("text-sm font-black leading-relaxed whitespace-pre-line", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                    {typeof item.value === 'string' ? item.value : ''}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-
-                            {[
-                              { label: 'Quá liều - Xử trí', value: selectedDrug.overdose, icon: <AlertTriangle size={18} />, color: isDarkMode ? 'text-red-400' : 'text-red-600', bgColor: isDarkMode ? 'bg-red-900/20' : 'bg-red-50' },
-                            ].map((item, idx) => (item.value && (Array.isArray(item.value) ? item.value.length > 0 : true)) && (
-                              <div key={idx} className={cn(
-                                "p-6 rounded-3xl border transition-all hover:scale-[1.01] shadow-sm",
-                                item.bgColor,
-                                item.bgColor.replace('bg-', 'border-')
-                              )}>
-                                <div className={cn("flex items-center gap-2 mb-4", item.color)}>
-                                  <div className={cn("p-1.5 rounded-lg bg-white/50 backdrop-blur-sm shadow-sm border", item.bgColor.replace('bg-', 'border-'))}>
-                                    {item.icon}
-                                  </div>
-                                  <h4 className="font-black uppercase tracking-widest text-[10px]">{item.label}</h4>
-                                </div>
-                                <p className={cn("text-sm font-black leading-relaxed whitespace-pre-line", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                  {typeof item.value === 'string' ? item.value : ''}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'side_effects' && (
-                        <motion.div
-                          key="side_effects"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="p-0 transition-all border-none bg-transparent"
-                        >
-                          <div className="hidden sm:flex items-center gap-3 mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shadow-sm">
-                              <AlertCircle size={24} />
-                            </div>
-                            <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Tác dụng phụ</h4>
-                          </div>
-
-                          <div className="space-y-4">
-                            {Array.isArray(selectedDrug.sideEffects) && selectedDrug.sideEffects.length > 0 ? (
-                              <div className="grid grid-cols-1 gap-4">
-                                {selectedDrug.sideEffects.map((se: any, i: number) => (
-                                  <div key={i} className={cn(
-                                    "p-6 rounded-3xl border transition-all shadow-sm group",
-                                    isDarkMode ? "bg-slate-800 border-amber-900/30 text-slate-200" : "bg-white border-amber-100/50 hover:border-amber-200 shadow shadow-amber-100/50"
-                                  )}>
-                                    {typeof se === 'object' ? (
-                                      <>
-                                        <div className={cn("text-[10px] font-black uppercase tracking-widest mb-2 inline-block px-3 py-1 rounded-lg", isDarkMode ? "bg-amber-900/40 text-amber-500" : "bg-amber-100 text-amber-700")}>
-                                          {se.frequency || 'Chưa xác định'}
-                                        </div>
-                                        <p className={cn("text-sm font-bold leading-relaxed whitespace-pre-line group-hover:text-amber-600 transition-colors", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                          {se.content}
-                                        </p>
-                                      </>
-                                    ) : (
-                                      <p className={cn("text-sm font-bold leading-relaxed group-hover:text-amber-600 transition-colors", isDarkMode ? "text-slate-200" : "text-slate-800")}>
-                                        {se}
-                                      </p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="text-center py-20 bg-amber-50/20 rounded-[32px] border border-dashed border-amber-100">
-                                <p className="text-amber-400 font-bold">Không có thông tin tác dụng phụ được ghi nhận.</p>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-
-                      {activeDetailTab === 'pharmacology' && (
-                        <motion.div
-                          key="pharmacology"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.3, ease: "easeOut" }}
-                          className="p-0 transition-all border-none bg-transparent"
-                        >
-                          <div className="hidden sm:flex items-center gap-3 mb-8">
-                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 shadow-sm">
-                              <Activity size={24} />
-                            </div>
-                            <h4 className="font-black uppercase tracking-widest text-sm text-slate-400">Dược lý học</h4>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                            {selectedDrug.pharmacodynamics && (
-                              <section>
-                                <div className={cn("flex items-center gap-3 mb-6 transition-colors", isDarkMode ? "text-emerald-400" : "text-emerald-600")}>
-                                  <Activity size={24} />
-                                  <h4 className="font-black uppercase tracking-widest text-xs">Dược lực học</h4>
-                                </div>
-                                <div className={cn(
-                                  "p-8 rounded-[40px] border text-sm font-bold leading-relaxed transition-colors shadow-sm",
-                                  isDarkMode ? "bg-emerald-900/10 border-emerald-900/30 text-slate-200" : "bg-emerald-50/30 border-emerald-100/50 text-slate-800"
-                                )}>
-                                  {typeof selectedDrug.pharmacodynamics === 'string' ? (
-                                    selectedDrug.pharmacodynamics
-                                  ) : (
-                                    <div className="space-y-6">
-                                      {selectedDrug.pharmacodynamics?.map((item, idx) => (
-                                        <div key={idx} className="space-y-2">
-                                          {item.category && <p className="text-[10px] font-black uppercase tracking-wider text-emerald-500">{item.category}</p>}
-                                          <p>{item.content}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </section>
-                            )}
-                            {selectedDrug.pharmacokinetics && (
-                              <section>
-                                <div className={cn("flex items-center gap-3 mb-6 transition-colors", isDarkMode ? "text-cyan-400" : "text-cyan-600")}>
-                                  <Zap size={24} />
-                                  <h4 className="font-black uppercase tracking-widest text-xs">Dược động học</h4>
-                                </div>
-                                <div className={cn(
-                                  "p-8 rounded-[40px] border text-sm font-bold leading-relaxed transition-colors shadow-sm",
-                                  isDarkMode ? "bg-cyan-900/10 border-cyan-900/30 text-slate-200" : "bg-cyan-50/30 border-cyan-100/50 text-slate-800"
-                                )}>
-                                  {typeof selectedDrug.pharmacokinetics === 'string' ? (
-                                    selectedDrug.pharmacokinetics
-                                  ) : (
-                                    <div className="space-y-6">
-                                      {selectedDrug.pharmacokinetics?.map((item, idx) => (
-                                        <div key={idx} className="space-y-2">
-                                          {item.category && <p className="text-[10px] font-black uppercase tracking-wider text-cyan-500">{item.category}</p>}
-                                          <p>{item.content}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </section>
-                            )}
-                            {!selectedDrug.pharmacodynamics && !selectedDrug.pharmacokinetics && (
-                              <div className="col-span-full py-20 text-center bg-slate-50/50 rounded-[40px] border border-dashed border-slate-200">
-                                <Activity size={48} className="mx-auto text-slate-200 mb-4" />
-                                <p className="text-slate-400 font-bold">Thông tin dược lý đang được cập nhật...</p>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </div>
-              </div>
-            </motion.div>
-          ) : (
-              <div className={cn(
-                "h-full flex flex-col items-center justify-center text-center p-20 rounded-[40px] border-2 border-dashed min-h-[600px] shadow-inner transition-colors",
-                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
-              )}>
-                <div className={cn(
-                  "w-32 h-32 rounded-full flex items-center justify-center mb-8 shadow-sm transition-colors",
-                  isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                )}>
-                  <Pill size={64} className={isDarkMode ? "text-slate-700" : "text-slate-200"} />
-                </div>
-                <h3 className={cn("text-2xl font-black mb-3 transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>Tra cứu thông tin thuốc</h3>
-                <p className={cn("max-w-sm font-medium transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Chọn một loại thuốc từ danh sách bên trái để xem chi tiết hướng dẫn sử dụng, liều dùng và các cảnh báo y khoa.</p>
-              </div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-      )}
+    </div>
+  )}
 
       {/* Management Modal */}
       <AnimatePresence>
@@ -2463,12 +2047,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                   )}>
                     <input
                       type="checkbox"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600 rounded focus:ring-blue-500"
+                      checked={!formData.isClosed}
+                      onChange={(e) => setFormData({ ...formData, isClosed: !e.target.checked })}
+                      className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-600 rounded focus:ring-emerald-500"
                     />
-                    <span className={cn("text-[10px] sm:text-xs font-bold uppercase", formData.isActive ? "text-emerald-600" : (isDarkMode ? "text-slate-500" : "text-slate-400"))}>
-                      {formData.isActive ? 'Hoạt động' : 'Tạm ngưng'}
+                    <span className={cn("text-[10px] sm:text-xs font-bold uppercase", !formData.isClosed ? "text-emerald-600" : (isDarkMode ? "text-slate-500" : "text-slate-400"))}>
+                      {!formData.isClosed ? 'Hoạt động' : 'Ẩn'}
                     </span>
                   </label>
 
@@ -2723,11 +2307,13 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            const nextIds = formData.groupIds?.filter(gid => gid !== id) || [];
-                                            setFormData({
-                                              ...formData,
-                                              groupIds: nextIds,
-                                              groupId: nextIds[0] || ''
+                                            setFormData(prev => {
+                                              const nextIds = (prev.groupIds || []).filter(gid => gid !== id);
+                                              return {
+                                                ...prev,
+                                                groupIds: nextIds,
+                                                groupId: nextIds[0] || ''
+                                              };
                                             });
                                           }}
                                           className={cn(
@@ -2774,10 +2360,15 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                 {sortedDrugGroups
                                   .filter(group => 
                                     !formGroupSearch || 
-                                    group.name.toLowerCase().includes(formGroupSearch.toLowerCase())
+                                    (group.name || '').toLowerCase().includes((formGroupSearch || '').toLowerCase())
                                   )
                                   .map(group => {
-                                  const isSelected = (formData.groupIds || []).includes(group.id);
+                                  let isSelected = false;
+                                  if (Array.isArray(formData.groupIds)) {
+                                    isSelected = formData.groupIds.includes(group.id);
+                                  } else if (formData.groupId === group.id) {
+                                    isSelected = true;
+                                  }
                                   return (
                                     <label 
                                       key={group.id} 
@@ -2787,26 +2378,32 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                           ? (isDarkMode ? "bg-blue-600/20 border-blue-500/50 text-white" : "bg-blue-50 border-blue-200 text-blue-700 font-bold")
                                           : (isDarkMode ? "bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800" : "bg-white border-slate-100 text-slate-600 hover:bg-slate-100")
                                       )}
-                                      style={{ marginLeft: `${group.level * 20}px` }}
+                                      style={{ marginLeft: `${(group.level || 0) * 20}px` }}
                                     >
                                       <input
                                         type="checkbox"
                                         className="sr-only"
                                         checked={isSelected}
                                         onChange={(e) => {
-                                          let nextIds = [...(formData.groupIds || [])];
-                                          if (e.target.checked) {
-                                            if (!nextIds.includes(group.id)) nextIds.push(group.id);
+                                        const checked = e.target.checked;
+                                        const targetGroupId = group.id;
+                                        setFormData(prev => {
+                                          let currentIds = Array.isArray(prev.groupIds)
+                                            ? prev.groupIds
+                                            : (prev.groupId ? [prev.groupId] : []);
+                                          let nextIds = [...currentIds];
+                                          if (checked) {
+                                            if (!nextIds.includes(targetGroupId)) nextIds.push(targetGroupId);
                                           } else {
-                                            nextIds = nextIds.filter(id => id !== group.id);
+                                            nextIds = nextIds.filter(id => id !== targetGroupId);
                                           }
-                                          setFormData({ 
-                                            ...formData, 
+                                          return {
+                                            ...prev,
                                             groupIds: nextIds,
-                                            groupId: nextIds[0] || '', // Fallback for legacy
-                                            category: nextIds.length > 0 ? '' : '' // will be handled during display
-                                          });
-                                        }}
+                                            groupId: nextIds[0] || ''
+                                          };
+                                        });
+                                      }}
                                       />
                                       <div className={cn(
                                         "w-5 h-5 rounded-md border flex items-center justify-center transition-all",
@@ -2819,6 +2416,36 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                   );
                                 })}
                               </div>
+                            </div>
+                            <div>
+                              <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest mb-1.5 transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>Đường dùng</label>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {['Uống', 'Tiêm bắp (IM)', 'Tiêm tĩnh mạch (IV)', 'Truyền tĩnh mạch', 'Đặt dưới lưỡi', 'Dùng ngoài', 'Đặt âm đạo', 'Đặt trực tràng', 'Hít', 'Xịt mũi'].map(route => (
+                                  <button
+                                    key={route}
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, administrationRoute: route })}
+                                    className={cn(
+                                      "text-[10px] font-bold px-3 py-1.5 rounded-lg border transition-all",
+                                      formData.administrationRoute === route
+                                        ? "bg-blue-600 border-blue-600 text-white shadow-md"
+                                        : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50")
+                                    )}
+                                  >
+                                    {route}
+                                  </button>
+                                ))}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Ví dụ: Uống, Tiêm tĩnh mạch..."
+                                value={formData.administrationRoute || ''}
+                                onChange={(e) => setFormData({ ...formData, administrationRoute: e.target.value })}
+                                className={cn(
+                                  "w-full px-3 sm:px-4 py-3 sm:py-4 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm font-bold",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200"
+                                )}
+                              />
                             </div>
                             <div>
                               <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest mb-1.5 transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>URL Ảnh đại diện</label>
@@ -3164,10 +2791,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const newList = (formData.indications || []).map((ind, i) => ({
-                                        ...ind,
-                                        isPrimary: i === index ? !ind.isPrimary : false
-                                      }));
+                                      const newList = [...formData.indications];
+                                      newList[index] = { ...newList[index], isPrimary: !newList[index].isPrimary };
                                       setFormData({ ...formData, indications: newList });
                                     }}
                                     className={cn(
@@ -3217,11 +2842,29 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã ICD-10 gợi ý</label>
+                                    <div className="flex items-center justify-between ml-1">
+                                      <label className={cn("text-[9px] font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                        Mã ICD-10 gợi ý
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIcdLookupTarget({ type: 'indication', index });
+                                          setIsIcdLookupOpen(true);
+                                        }}
+                                        className={cn(
+                                          "text-[9px] font-black uppercase tracking-widest flex items-center gap-1 transition-colors",
+                                          isDarkMode ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"
+                                        )}
+                                      >
+                                        <Database size={10} />
+                                        Tra cứu ICD-10
+                                      </button>
+                                    </div>
                                     <div className="flex flex-wrap gap-1 mb-2">
                                       {(indication.icd10s || []).map((code, tagIdx) => {
                                         const codeOnly = code.split(' - ')[0];
-                                        const isDefault = indication.defaultIcd10 === code;
+                                        const isDefault = (indication.defaultIcd10s || []).includes(code) || indication.defaultIcd10 === code;
                                         return (
                                           <div 
                                             key={tagIdx} 
@@ -3237,9 +2880,17 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                               title={isDefault ? "Đang là ICD-10 thường dùng" : "Chọn làm ICD-10 thường dùng"}
                                               onClick={() => {
                                                 const newList = [...formData.indications];
+                                                const currentDefaults = newList[index].defaultIcd10s || (newList[index].defaultIcd10 ? [newList[index].defaultIcd10] : []);
+                                                let nextDefaults;
+                                                if (currentDefaults.includes(code)) {
+                                                  nextDefaults = currentDefaults.filter(c => c !== code);
+                                                } else {
+                                                  nextDefaults = [...currentDefaults, code];
+                                                }
                                                 newList[index] = {
                                                   ...newList[index],
-                                                  defaultIcd10: isDefault ? undefined : code
+                                                  defaultIcd10s: nextDefaults,
+                                                  defaultIcd10: nextDefaults[0] || undefined
                                                 };
                                                 setFormData({ ...formData, indications: newList });
                                               }}
@@ -3255,11 +2906,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                               type="button"
                                               onClick={() => {
                                                 const newList = [...formData.indications];
-                                                const wasDefault = newList[index].defaultIcd10 === code;
+                                                const nextDefaults = (newList[index].defaultIcd10s || []).filter(c => c !== code);
                                                 newList[index] = {
                                                   ...newList[index],
                                                   icd10s: (newList[index].icd10s || []).filter((_, i) => i !== tagIdx),
-                                                  ...(wasDefault ? { defaultIcd10: undefined } : {})
+                                                  defaultIcd10s: nextDefaults,
+                                                  defaultIcd10: nextDefaults[0] || undefined
                                                 };
                                                 setFormData({ ...formData, indications: newList });
                                               }}
@@ -3316,8 +2968,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         )}>
                                           {icdList
                                             .filter(icd => 
-                                              icd.code.toLowerCase().includes(icdQuery.toLowerCase()) || 
-                                              icd.description.toLowerCase().includes(icdQuery.toLowerCase())
+                                              (icd.code || '').toLowerCase().includes((icdQuery || '').toLowerCase()) || 
+                                              (icd.description || '').toLowerCase().includes((icdQuery || '').toLowerCase())
                                             )
                                             .slice(0, 50)
                                             .map(icd => (
@@ -3611,7 +3263,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                 type="button"
                                 onClick={() => {
                                   const newList = [...(formData.contraindications || [])];
-                                  newList.push({ content: '', type: 'Other' });
+                                  newList.push({ 
+                                    content: '', 
+                                    type: 'Other',
+                                    ageConfig: { operator: '≤', value: '' }
+                                  });
                                   setFormData({ ...formData, contraindications: newList });
                                 }}
                                 className={cn(
@@ -3637,8 +3293,15 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                         <select
                                           value={contra.type || 'Other'}
                                           onChange={(e) => {
+                                            const newType = e.target.value as any;
                                             const newList = [...formData.contraindications];
-                                            newList[index] = { ...newList[index], type: e.target.value as any };
+                                            newList[index] = { 
+                                              ...newList[index], 
+                                              type: newType,
+                                              ageConfig: newType === 'Age' && !newList[index].ageConfig 
+                                                ? { operator: '≤', value: '' } 
+                                                : newList[index].ageConfig
+                                            };
                                             setFormData({ ...formData, contraindications: newList });
                                           }}
                                           className={cn(
@@ -3653,89 +3316,256 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
                                           <option value="Other" className={isDarkMode ? "bg-slate-900" : "bg-white"}>Khác</option>
                                         </select>
                                       </div>
-                                      <div className="sm:col-span-2 space-y-1">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nội dung</label>
-                                        <div className="relative">
-                                          {contra.type === 'ICD-10' && <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />}
-                                          {contra.type === 'ICD-10' ? (
-                                            <input
-                                              type="text"
-                                              value={contra.content}
-                                              onChange={(e) => {
-                                                const val = e.target.value;
-                                                const newList = [...formData.contraindications];
-                                                newList[index] = { ...newList[index], content: val };
-                                                setFormData({ ...formData, contraindications: newList });
-                                                setSearchingContraIcdIndex(index);
-                                                setIcdQuery(val);
-                                              }}
-                                              onFocus={() => {
-                                                setSearchingContraIcdIndex(index);
-                                                setIcdQuery(contra.content || '');
-                                              }}
-                                              onBlur={() => {
-                                                setTimeout(() => setSearchingContraIcdIndex(null), 200);
-                                              }}
-                                              className={cn(
-                                                "w-full px-3 sm:px-4 py-3 sm:py-4 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all text-xs sm:text-sm font-medium pl-8 sm:pl-9",
-                                                isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-slate-50 border-slate-200"
-                                              )}
-                                              placeholder="Tìm mã ICD-10..."
-                                            />
-                                          ) : (
-                                            <AutoExpandingTextarea
-                                              rows={contra.type === 'Other' ? 5 : 3}
-                                              value={contra.content}
-                                              onChange={(e) => {
-                                                const val = e.target.value;
-                                                const newList = [...formData.contraindications];
-                                                newList[index] = { ...newList[index], content: val };
-                                                setFormData({ ...formData, contraindications: newList });
-                                              }}
-                                              className={cn(
-                                                "w-full px-3 sm:px-4 py-3 sm:py-4 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all text-xs sm:text-sm font-medium resize-none",
-                                                isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-slate-50 border-slate-200"
-                                              )}
-                                              placeholder={
-                                                contra.type === 'Drug' ? "Tên thuốc tương tác ngược..." :
-                                                contra.type === 'Weight' ? "Cân nặng cụ thể (VD: < 40kg)..." :
-                                                contra.type === 'Age' ? "Độ tuổi (VD: Trẻ em < 12 tuổi)..." :
-                                                "Nhập nội dung chi tiết..."
-                                              }
-                                            />
-                                          )}
-                                          {searchingContraIcdIndex === index && contra.type === 'ICD-10' && (
-                                            <div className={cn(
-                                              "absolute z-50 w-full mt-1 border rounded-xl shadow-xl max-h-60 overflow-y-auto transition-colors",
-                                              isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
-                                            )}>
-                                              {icdList
-                                                .filter(icd => 
-                                                  (icd.code || '').toLowerCase().includes((icdQuery || '').toLowerCase()) || 
-                                                  (icd.description || '').toLowerCase().includes((icdQuery || '').toLowerCase())
-                                                )
-                                                .slice(0, 50)
-                                                .map(icd => (
-                                                  <button
-                                                    key={icd.code}
-                                                    type="button"
-                                                    onClick={() => {
+                                      <div className="sm:col-span-2 space-y-4">
+                                        <div className="space-y-1">
+                                          <div className="flex items-center justify-between ml-1">
+                                            <label className={cn("text-[9px] font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                              Nội dung chống chỉ định
+                                            </label>
+                                          </div>
+                                          <AutoExpandingTextarea
+                                            rows={2}
+                                            value={contra.content || ''}
+                                            onChange={(e) => {
+                                              const newList = [...formData.contraindications];
+                                              newList[index] = { ...newList[index], content: e.target.value };
+                                              setFormData({ ...formData, contraindications: newList });
+                                            }}
+                                            className={cn(
+                                              "w-full px-3 sm:px-4 py-3 sm:py-4 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all text-xs sm:text-sm font-medium",
+                                              isDarkMode ? "bg-slate-900 border-slate-700 text-white placeholder-slate-600" : "bg-white border-slate-200 placeholder-slate-400"
+                                            )}
+                                            placeholder={
+                                              contra.type === 'Drug' ? "Tên thuốc tương tác ngược..." :
+                                              contra.type === 'Weight' ? "Cân nặng cụ thể (VD: < 40kg)..." :
+                                              contra.type === 'Age' ? "Độ tuổi (VD: Trẻ em ≤ 12 tuổi)..." :
+                                              "Nhập nội dung chi tiết..."
+                                            }
+                                          />
+
+                                          {contra.type === 'Age' && (
+                                            <div className="mt-3 p-3 rounded-xl border border-dashed flex flex-wrap items-center gap-4 animate-in fade-in slide-in-from-top-1 duration-300"
+                                              style={{ borderColor: isDarkMode ? 'rgba(244, 63, 94, 0.4)' : 'rgba(225, 29, 72, 0.2)' }}>
+                                              <div className="space-y-1 w-24">
+                                                <label className="text-[9px] font-black uppercase text-slate-400 tracking-wider">So sánh</label>
+                                                <select
+                                                  value={contra.ageConfig?.operator || '≤'}
+                                                  onChange={(e) => {
+                                                    const newList = [...formData.contraindications];
+                                                    const ageVal = contra.ageConfig?.value || '';
+                                                    const unit = contra.ageConfig?.unit || 'years';
+                                                    const op = e.target.value;
+                                                    newList[index] = { 
+                                                      ...newList[index], 
+                                                      ageConfig: { operator: op as any, value: ageVal as any, unit: unit as any },
+                                                      content: ageVal !== '' ? `Tuổi ${op} ${ageVal} ${unit === 'months' ? 'tháng' : 'tuổi'}` : newList[index].content
+                                                    };
+                                                    setFormData({ ...formData, contraindications: newList });
+                                                  }}
+                                                  className={cn(
+                                                    "w-full px-3 py-2.5 border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-rose-500",
+                                                    isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200"
+                                                  )}
+                                                >
+                                                  <option value="<">{'<'}</option>
+                                                  <option value=">">{'>'}</option>
+                                                  <option value="≤">{'≤'}</option>
+                                                  <option value="≥">{'≥'}</option>
+                                                </select>
+                                              </div>
+                                              <div className="flex gap-2 items-end">
+                                                <div className="space-y-1 w-24">
+                                                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Số lượng</label>
+                                                  <input
+                                                    type="number"
+                                                    value={contra.ageConfig?.value || ''}
+                                                    onChange={(e) => {
+                                                      const valStr = e.target.value;
+                                                      const val = valStr === '' ? '' : parseInt(valStr);
                                                       const newList = [...formData.contraindications];
-                                                      newList[index] = { ...newList[index], content: `${icd.code} - ${icd.description}` };
+                                                      const op = contra.ageConfig?.operator || '≤';
+                                                      const unit = contra.ageConfig?.unit || 'years';
+                                                      newList[index] = { 
+                                                        ...newList[index], 
+                                                        ageConfig: { operator: op as any, value: val as any, unit: unit as any },
+                                                        content: val !== '' ? `Tuổi ${op} ${val} ${unit === 'months' ? 'tháng' : 'tuổi'}` : newList[index].content
+                                                      };
                                                       setFormData({ ...formData, contraindications: newList });
-                                                      setSearchingContraIcdIndex(null);
+                                                    }}
+                                                    placeholder="VD: 12"
+                                                    className={cn(
+                                                      "w-full px-3 py-2.5 border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-rose-500",
+                                                      isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200"
+                                                    )}
+                                                  />
+                                                </div>
+                                                <div className="space-y-1">
+                                                  <select
+                                                    value={contra.ageConfig?.unit || 'years'}
+                                                    onChange={(e) => {
+                                                      const unit = e.target.value as 'years' | 'months';
+                                                      const newList = [...formData.contraindications];
+                                                      const op = contra.ageConfig?.operator || '≤';
+                                                      const val = contra.ageConfig?.value || '';
+                                                      newList[index] = { 
+                                                        ...newList[index], 
+                                                        ageConfig: { operator: op as any, value: val as any, unit },
+                                                        content: val !== '' ? `Tuổi ${op} ${val} ${unit === 'months' ? 'tháng' : 'tuổi'}` : newList[index].content
+                                                      };
+                                                      setFormData({ ...formData, contraindications: newList });
                                                     }}
                                                     className={cn(
-                                                      "w-full text-left px-3 sm:px-4 py-2 text-[10px] sm:text-xs transition-colors border-b last:border-0",
-                                                      isDarkMode ? "hover:bg-slate-700 border-slate-700" : "hover:bg-blue-50 border-slate-50"
+                                                      "px-2 py-2.5 border rounded-lg text-[10px] font-black uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-rose-500",
+                                                      isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200"
                                                     )}
                                                   >
-                                                    <span className="font-bold text-blue-600">{icd.code}</span>
-                                                    <span className={cn("ml-2", isDarkMode ? "text-slate-400" : "text-slate-600")}>- {icd.description}</span>
-                                                  </button>
-                                                ))
-                                              }
+                                                    <option value="years">Tuổi (Năm)</option>
+                                                    <option value="months">Tháng</option>
+                                                  </select>
+                                                </div>
+                                              </div>
+                                              {typeof contra.ageConfig?.value === 'number' && (
+                                                <div className="flex-1 space-y-1">
+                                                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Mốc sinh (Gợi ý)</label>
+                                                  <div className={cn(
+                                                    "flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-black border",
+                                                    isDarkMode 
+                                                      ? "bg-rose-500/10 border-rose-500/20 text-rose-400" 
+                                                      : "bg-rose-50 border-rose-100 text-rose-600 shadow-sm"
+                                                  )}>
+                                                    <Calendar size={12} className="shrink-0" />
+                                                    <span>
+                                                      {(() => {
+                                                        const d = new Date();
+                                                        if (contra.ageConfig.unit === 'months') {
+                                                          d.setMonth(d.getMonth() - contra.ageConfig.value);
+                                                        } else {
+                                                          d.setFullYear(d.getFullYear() - contra.ageConfig.value);
+                                                        }
+                                                        return d.toLocaleDateString('vi-VN');
+                                                      })()}
+                                                    </span>
+                                                    <span className="opacity-50 text-[10px] font-medium">(Nay: {new Date().toLocaleDateString('vi-VN')})</span>
+                                                  </div>
+                                                </div>
+                                              )}
                                             </div>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-1">
+                                          <div className="flex items-center justify-between ml-1">
+                                            <label className={cn("text-[9px] font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                              {contra.type === 'ICD-10' ? "Mã ICD-10 gợi ý" : ""}
+                                            </label>
+                                            {contra.type === 'ICD-10' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setIcdLookupTarget({ type: 'contraindication', index });
+                                                  setIsIcdLookupOpen(true);
+                                                }}
+                                                className={cn(
+                                                  "text-[9px] font-black uppercase tracking-widest flex items-center gap-1 transition-colors",
+                                                  isDarkMode ? "text-blue-400 hover:text-blue-300" : "text-blue-600 hover:text-blue-700"
+                                                )}
+                                              >
+                                                <Database size={10} />
+                                                Tra cứu ICD-10
+                                              </button>
+                                            )}
+                                          </div>
+
+                                          {contra.type === 'ICD-10' && (
+                                            <>
+                                              <div className="flex flex-wrap gap-1 mb-2">
+                                                {(contra.icd10s || []).map((code, tagIdx) => (
+                                                  <div 
+                                                    key={tagIdx} 
+                                                    className={cn(
+                                                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border animate-in fade-in zoom-in duration-200 transition-all",
+                                                      isDarkMode ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : "bg-rose-50 text-rose-600 border-rose-100"
+                                                    )}
+                                                  >
+                                                    {code.split(' - ')[0]}
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        const newList = [...formData.contraindications];
+                                                        newList[index] = {
+                                                          ...newList[index],
+                                                          icd10s: (newList[index].icd10s || []).filter((_, i) => i !== tagIdx)
+                                                        };
+                                                        setFormData({ ...formData, contraindications: newList });
+                                                      }}
+                                                      className="hover:text-rose-500 transition-colors"
+                                                    >
+                                                      <X size={10} />
+                                                    </button>
+                                                  </div>
+                                                ))}
+                                              </div>
+
+                                              <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                                                <input
+                                                  type="text"
+                                                  value={searchingContraIcdIndex === index ? icdQuery : ''}
+                                                  onFocus={() => {
+                                                    setSearchingContraIcdIndex(index);
+                                                    setIcdQuery('');
+                                                  }}
+                                                  onChange={(e) => {
+                                                    setIcdQuery(e.target.value);
+                                                    setSearchingContraIcdIndex(index);
+                                                  }}
+                                                  onBlur={() => {
+                                                    setTimeout(() => setSearchingContraIcdIndex(null), 200);
+                                                  }}
+                                                  className={cn(
+                                                    "w-full px-3 sm:px-4 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all text-[11px] sm:text-xs font-medium pl-8 sm:pl-9",
+                                                    isDarkMode ? "bg-slate-900 border-slate-700 text-white placeholder-slate-600" : "bg-white border-slate-200 placeholder-slate-400"
+                                                  )}
+                                                  placeholder="Tìm nhanh mã ICD-10 để gán..."
+                                                />
+                                                {searchingContraIcdIndex === index && icdQuery && (
+                                                  <div className={cn(
+                                                    "absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border shadow-xl max-h-48 overflow-y-auto overflow-x-hidden",
+                                                    isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"
+                                                  )}>
+                                                    {icdList
+                                                      .filter(icd => (icd.code || '').toLowerCase().includes(icdQuery.toLowerCase()) || (icd.description || '').toLowerCase().includes(icdQuery.toLowerCase()))
+                                                      .slice(0, 50)
+                                                      .map((icd, icdIdx) => (
+                                                        <button
+                                                          key={icdIdx}
+                                                          type="button"
+                                                          onClick={() => {
+                                                            const newList = [...formData.contraindications];
+                                                            const currentIcd10s = newList[index].icd10s || [];
+                                                            const fullCode = `${icd.code} - ${icd.description}`;
+                                                            if (!currentIcd10s.includes(fullCode)) {
+                                                              newList[index] = {
+                                                                ...newList[index],
+                                                                icd10s: [...currentIcd10s, fullCode]
+                                                              };
+                                                              setFormData({ ...formData, contraindications: newList });
+                                                            }
+                                                            setIcdQuery('');
+                                                            setSearchingContraIcdIndex(null);
+                                                          }}
+                                                          className={cn(
+                                                            "w-full text-left px-3 sm:px-4 py-2 text-[10px] sm:text-xs hover:bg-rose-500 hover:text-white transition-colors border-b last:border-b-0",
+                                                            isDarkMode ? "border-slate-800" : "border-slate-100"
+                                                          )}
+                                                        >
+                                                          <span className="font-bold">{icd.code}</span> - {icd.description}
+                                                        </button>
+                                                      ))}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </>
                                           )}
                                         </div>
                                       </div>
@@ -4630,6 +4460,192 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           />
         )}
       </AnimatePresence>
+      <AnimatePresence>
+        {isIcdLookupOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsIcdLookupOpen(false)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={cn(
+                "relative w-full max-w-4xl max-h-[85vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden border",
+                isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={cn(
+                "p-4 lg:p-6 border-b flex items-center justify-between transition-colors",
+                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50 border-slate-100"
+              )}>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center border",
+                    isDarkMode ? "bg-blue-900/30 border-blue-800/50 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600"
+                  )}>
+                    <Database size={20} />
+                  </div>
+                  <div>
+                    <h3 className={cn("text-lg font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Tra cứu mã ICD-10
+                    </h3>
+                    <p className={cn("text-xs font-medium transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      Chọn mã bệnh lý để thêm vào dữ liệu thuốc
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsIcdLookupOpen(false)}
+                  className={cn(
+                    "p-2 rounded-xl transition-all",
+                    isDarkMode ? "text-slate-400 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                  )}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-4 lg:p-6 flex-1 flex flex-col gap-4 overflow-hidden">
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Tìm kiếm theo mã hoặc tên bệnh lý..."
+                    className={cn(
+                      "w-full pl-12 pr-4 py-4 border rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-medium",
+                      isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200"
+                    )}
+                    autoFocus
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+
+                <div className={cn(
+                  "flex-1 overflow-y-auto rounded-2xl border custom-scrollbar",
+                  isDarkMode ? "bg-slate-950/30 border-slate-800" : "bg-white border-slate-100"
+                )}>
+                  {icdList.filter(icd => 
+                    (icd.code || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    (icd.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+                  ).length > 0 ? (
+                    <div className="divide-y divide-slate-800/20">
+                      {icdList
+                        .filter(icd => 
+                          (icd.code || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (icd.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .slice(0, 100)
+                        .map((icd, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              if (icdLookupTarget) {
+                                if (icdLookupTarget.type === 'contraindication') {
+                                  const newList = [...formData.contraindications];
+                                  const currentIcd10s = newList[icdLookupTarget.index].icd10s || [];
+                                  const fullCode = `${icd.code} - ${icd.description}`;
+                                  if (!currentIcd10s.includes(fullCode)) {
+                                    newList[icdLookupTarget.index] = { 
+                                      ...newList[icdLookupTarget.index], 
+                                      icd10s: [...currentIcd10s, fullCode] 
+                                    };
+                                    setFormData({ ...formData, contraindications: newList });
+                                  }
+                                } else if (icdLookupTarget.type === 'indication') {
+                                  const newList = [...formData.indications];
+                                  const currentIcd10s = newList[icdLookupTarget.index].icd10s || [];
+                                  const fullCode = `${icd.code} - ${icd.description}`;
+                                  if (!currentIcd10s.includes(fullCode)) {
+                                    newList[icdLookupTarget.index] = {
+                                      ...newList[icdLookupTarget.index],
+                                      icd10s: [...currentIcd10s, fullCode]
+                                    };
+                                    setFormData({ ...formData, indications: newList });
+                                  }
+                                }
+                              }
+                              setIsIcdLookupOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left p-4 transition-all flex items-start gap-4 group",
+                              isDarkMode ? "hover:bg-blue-900/20" : "hover:bg-blue-50"
+                            )}
+                          >
+                            <div className={cn(
+                              "px-2 py-1 rounded-lg text-[10px] font-black border uppercase tracking-wider shrink-0 transition-colors",
+                              isDarkMode ? "bg-blue-500/10 text-blue-400 border-blue-500/20 group-hover:border-blue-400/30" : "bg-blue-50 text-blue-600 border-blue-100 group-hover:border-blue-200"
+                            )}>
+                              {icd.code}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={cn("text-xs font-bold leading-relaxed mb-0.5", isDarkMode ? "text-slate-200" : "text-slate-700")}>
+                                {icd.description}
+                              </p>
+                              {icd.category && (
+                                <p className="text-[10px] text-slate-500 italic">{icd.category}</p>
+                              )}
+                            </div>
+                            <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center",
+                                isDarkMode ? "bg-blue-900/40 text-blue-400" : "bg-blue-100 text-blue-600"
+                              )}>
+                                <Plus size={14} />
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      }
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+                      <div className={cn(
+                        "w-16 h-16 rounded-3xl flex items-center justify-center mb-4",
+                        isDarkMode ? "bg-slate-900 text-slate-600" : "bg-slate-50 text-slate-300"
+                      )}>
+                        <Search size={32} />
+                      </div>
+                      <h4 className={cn("text-sm font-bold mb-1", isDarkMode ? "text-slate-300" : "text-slate-600")}>Không tìm thấy kết quả</h4>
+                      <p className={cn("text-xs", isDarkMode ? "text-slate-500" : "text-slate-400")}>Thử tìm kiếm với từ khóa khác hoặc mã ICD-10 khác</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-4 border-t flex items-center justify-between",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-100"
+              )}>
+                <p className="text-[10px] text-slate-500 font-medium">Tìm thấy {icdList.length} mã ICD-10 trong hệ thống</p>
+                <button
+                  onClick={() => setIsIcdLookupOpen(false)}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                    isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                  )}
+                >
+                  Đóng
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Action Button for Adding Drug */}
       {canManage && !isGroupModalOpen && !isIngredientModalOpen && !isIngredientCategoryModalOpen && !isExcipientModalOpen && !isExcipientCategoryModalOpen && !isModalOpen && !isReviewModalOpen && (
@@ -4656,6 +4672,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({ canManage, isDarkMode, su
           </div>
         </button>
       )}
+      <DrugDetailModal 
+        isOpen={isDetailModalOpen} 
+        onClose={() => setIsDetailModalOpen(false)} 
+        drug={detailDrug} 
+        isDarkMode={isDarkMode} 
+      />
     </div>
   );
 };

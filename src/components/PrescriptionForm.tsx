@@ -584,20 +584,25 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
                             {(() => {
                               const selectedDrugId = watch(`items.${index}.drugId`);
                               const drug = drugs.find(d => d.id === selectedDrugId);
-                              const primaryInd = drug?.indications?.find(ind => ind.isPrimary);
-                              if (primaryInd) {
+                              const primaryInds = (drug?.indications || []).filter(ind => ind.isPrimary);
+                              if (primaryInds.length > 0) {
                                 return (
-                                  <button
-                                    type="button"
-                                    onClick={() => setValue(`items.${index}.note`, primaryInd.content)}
-                                    className={cn(
-                                      "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border flex items-center gap-1 transition-all hover:scale-105 active:scale-95",
-                                      isDarkMode ? "bg-amber-900/20 text-amber-400 border-amber-900/30" : "bg-amber-50 text-amber-600 border-amber-200"
-                                    )}
-                                    title="Sử dụng chỉ định thường dùng làm ghi chú"
-                                  >
-                                    <Sparkles size={10} /> {primaryInd.content.length > 20 ? primaryInd.content.substring(0, 20) + '...' : primaryInd.content}
-                                  </button>
+                                  <div className="flex flex-wrap gap-1">
+                                    {primaryInds.map((ind, pIdx) => (
+                                      <button
+                                        key={pIdx}
+                                        type="button"
+                                        onClick={() => setValue(`items.${index}.note`, ind.content)}
+                                        className={cn(
+                                          "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border flex items-center gap-1 transition-all hover:scale-105 active:scale-95 animate-in fade-in zoom-in duration-200",
+                                          isDarkMode ? "bg-amber-900/20 text-amber-400 border-amber-900/30" : "bg-amber-50 text-amber-600 border-amber-200"
+                                        )}
+                                        title={`Sử dụng chỉ định "${ind.content}" làm ghi chú`}
+                                      >
+                                        <Sparkles size={10} /> {ind.content.length > 20 ? ind.content.substring(0, 20) + '...' : ind.content}
+                                      </button>
+                                    ))}
+                                  </div>
                                 );
                               }
                               return null;
