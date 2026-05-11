@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
         manifest: {
-          name: 'KCB - Phục vụ người dân',
+          name: 'KCB PB',
           short_name: 'KCB',
-          description: 'Hệ thống hỗ trợ khám chữa bệnh và quản lý nhân sự y tế',
+          description: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
           theme_color: '#4f46e5',
           background_color: '#ffffff',
           display: 'standalone',
