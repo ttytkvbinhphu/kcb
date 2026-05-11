@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Pin, LayoutDashboard, MessageSquarePlus } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth } from '../firebase';
 import * as XLSX from 'xlsx';
-import { ICD10, Drug } from '../types';
+import { ICD10, Drug, UserProfile } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import DrugDetailModal from './DrugDetailModal';
@@ -12,8 +12,10 @@ interface ICD10ManagementProps {
   canManage: boolean;
   isDarkMode?: boolean;
   featureSettings?: any;
+  featureStates?: Record<string, string>;
   userRole?: string;
   userPowerPoints?: number;
+  userProfile?: UserProfile;
   onSelectDrug?: (drug: Drug) => void;
   initialSearchTerm?: string | null;
   onClearInitialSearch?: () => void;
@@ -23,8 +25,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   canManage, 
   isDarkMode, 
   featureSettings, 
+  featureStates,
   userRole, 
   userPowerPoints = 0,
+  userProfile,
   onSelectDrug,
   initialSearchTerm,
   onClearInitialSearch
@@ -109,8 +113,13 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   }, [featureSettings, userPowerPoints]);
 
   const canSeeNotes = useMemo(() => {
+    const status = featureStates?.view_notes;
+    if (status === 'closed') return false;
+    if (status === 'maintenance') {
+      return userRole === 'admin' || userRole === 'operator';
+    }
     return userPowerPoints >= (featureSettings?.showNotesMinPower ?? 0);
-  }, [featureSettings, userPowerPoints]);
+  }, [featureSettings, userPowerPoints, featureStates, userRole]);
 
   const canSeeShortcuts = useMemo(() => {
     return userPowerPoints >= (featureSettings?.showShortcutsMinPower ?? 0);
@@ -121,11 +130,16 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       const list = snapshot.docs.map(doc => doc.data() as ICD10);
       setIcdList(list);
       setLoading(false);
+    }, (error) => {
+      console.error("Error fetching ICD-10:", error);
+      setLoading(false);
     });
 
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       const list = snapshot.docs.map(doc => doc.data() as Drug);
       setDrugList(list);
+    }, (error) => {
+      console.error("Error fetching drugs for ICD-10:", error);
     });
 
     return () => {
@@ -176,8 +190,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       ? list.map(item => ({ ...item, isPinned: false, showOnWorkspace: false }))
       : list.map(item => ({ 
           ...item, 
-          isPinned: (item.pinnedBy || []).includes(auth.currentUser?.uid || ''),
-          showOnWorkspace: (item.workspaceBy || []).includes(auth.currentUser?.uid || '')
+          isPinned: (userProfile?.pinnedIcdCodes || []).includes(item.code),
+          showOnWorkspace: (userProfile?.workspaceIcdCodes || []).includes(item.code)
         }));
 
     // Sort by pinned first, then by code (In management mode, isPinned is effectively false above)
@@ -186,7 +200,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       if (!a.isPinned && b.isPinned) return 1;
       return (a.code || '').localeCompare(b.code || '');
     });
-  }, [icdList, searchTerm, filterStatus, icdChapterFilter, drugsByIcd, canManage]);
+  }, [icdList, searchTerm, filterStatus, icdChapterFilter, drugsByIcd, canManage, userProfile]);
 
   // Reset to page 1 when search term or filter changes
   useEffect(() => {
@@ -295,15 +309,15 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   };
 
   const handleTogglePin = async (icd: ICD10) => {
-    if (canManage || !auth.currentUser) return;
+    if (canManage || !userProfile || !auth.currentUser) return;
     try {
-      const uid = auth.currentUser.uid;
-      const pinnedBy = icd.pinnedBy || [];
-      const newPinnedBy = pinnedBy.includes(uid) 
-        ? pinnedBy.filter(id => id !== uid)
-        : [...pinnedBy, uid];
-      await updateDoc(doc(db, 'icd10', icd.code), {
-        pinnedBy: newPinnedBy
+      const pinnedIcdCodes = userProfile.pinnedIcdCodes || [];
+      const newPinnedIcdCodes = pinnedIcdCodes.includes(icd.code) 
+        ? pinnedIcdCodes.filter(c => c !== icd.code)
+        : [...pinnedIcdCodes, icd.code];
+      
+      await updateDoc(doc(db, 'userProfiles', auth.currentUser.uid), {
+        pinnedIcdCodes: newPinnedIcdCodes
       });
     } catch (error) {
       console.error("Error toggling pin:", error);
@@ -332,15 +346,15 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   };
 
   const handleToggleWorkspace = async (icd: ICD10) => {
-    if (canManage || !auth.currentUser) return;
+    if (canManage || !userProfile || !auth.currentUser) return;
     try {
-      const uid = auth.currentUser.uid;
-      const workspaceBy = icd.workspaceBy || [];
-      const newWorkspaceBy = workspaceBy.includes(uid) 
-        ? workspaceBy.filter(id => id !== uid)
-        : [...workspaceBy, uid];
-      await updateDoc(doc(db, 'icd10', icd.code), {
-        workspaceBy: newWorkspaceBy
+      const workspaceIcdCodes = userProfile.workspaceIcdCodes || [];
+      const newWorkspaceIcdCodes = workspaceIcdCodes.includes(icd.code) 
+        ? workspaceIcdCodes.filter(c => c !== icd.code)
+        : [...workspaceIcdCodes, icd.code];
+      
+      await updateDoc(doc(db, 'userProfiles', auth.currentUser.uid), {
+        workspaceIcdCodes: newWorkspaceIcdCodes
       });
     } catch (error) {
       console.error("Error toggling workspace visibility:", error);
@@ -587,19 +601,20 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           )}
         </AnimatePresence>
 
-        <div className="hidden lg:block space-y-4">
+        <div className="hidden lg:block">
           <div className="flex items-start justify-between">
-            <div className="space-y-4">
-              <div className={cn(
-                "inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                isDarkMode ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-              )}>
-                <ClipboardList size={12} />
-                Danh mục bệnh lý
+            <div className={cn(
+              "inline-flex items-center gap-4 px-6 py-3 rounded-[32px] border-2 transition-all",
+              isDarkMode 
+                ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/5" 
+                : "bg-emerald-50 border-emerald-100 text-emerald-600 shadow-xl shadow-emerald-500/10"
+            )}>
+              <div className="p-2 bg-emerald-600 text-white rounded-2xl shadow-lg shadow-emerald-600/20">
+                <ClipboardList size={32} />
               </div>
-              <h2 className={cn("text-2xl lg:text-4xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+              <span className="text-[35px] font-black tracking-tighter uppercase">
                 {featureSettings?.customTitle || (canManage ? "Quản lý ICD-10" : "Tra cứu ICD-10")}
-              </h2>
+              </span>
             </div>
 
             {/* Category Tabs move here with extra sub-label */}
@@ -650,12 +665,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="hidden lg:block">
-            <p className={cn(
-              "font-medium max-w-md transition-colors text-[10px] sm:text-xs lg:text-base",
-              isDarkMode ? "text-slate-400" : "text-slate-500"
-            )}>
-              Hệ thống cập nhật và quản lý danh mục mã bệnh chuẩn ICD-10 cùng các gợi ý điều trị.
-            </p>
           </div>
           
           {canManage && (

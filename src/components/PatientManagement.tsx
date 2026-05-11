@@ -105,7 +105,9 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
       setPatients(data);
       setLoading(false);
     }, (error) => {
+      console.error("Error fetching patients:", error);
       handleFirestoreError(error, OperationType.LIST, 'patients');
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);

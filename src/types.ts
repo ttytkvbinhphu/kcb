@@ -134,6 +134,8 @@ export interface UserProfile {
   hideZalo?: boolean;
   hasSeenWelcome?: boolean;
   isHidden?: boolean;
+  pinnedIcdCodes?: string[];
+  workspaceIcdCodes?: string[];
 }
 
 export interface ICD10 {

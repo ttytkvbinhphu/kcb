@@ -185,8 +185,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [isApproved]);
 
   useEffect(() => {
-    if (!isApproved || !uid) return;
-    const q = query(collection(db, 'icd10'), where('workspaceBy', 'array-contains', uid));
+    if (!isApproved || !uid || !userProfile?.workspaceIcdCodes || userProfile.workspaceIcdCodes.length === 0) {
+      setWorkspaceIcds([]);
+      return;
+    }
+    
+    // Fetch the actual ICD-10 details for the codes in userProfile.workspaceIcdCodes
+    const q = query(
+      collection(db, 'icd10'), 
+      where('code', 'in', userProfile.workspaceIcdCodes.slice(0, 10)) // Firestore 'in' limit is 10
+    );
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => doc.data() as ICD10);
       setWorkspaceIcds(list);
@@ -194,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       handleFirestoreError(error, OperationType.LIST, 'icd10_workspace');
     });
     return () => unsubscribe();
-  }, [isApproved]);
+  }, [isApproved, uid, userProfile?.workspaceIcdCodes]);
 
   useEffect(() => {
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);

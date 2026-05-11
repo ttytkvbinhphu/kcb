@@ -17,7 +17,7 @@ const SocialWall = lazy(() => import('./components/SocialWall'));
 const PatientManagement = lazy(() => import('./components/PatientManagement'));
 const StaffManagement = lazy(() => import('./components/StaffManagement'));
 import WelcomeSlider from './components/WelcomeSlider';
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
@@ -189,10 +189,10 @@ export default function App() {
     loginTitle: 'Hệ thống Quản lý KCB',
     loginSubtitle: 'Ứng dụng hỗ trợ Khám Chữa Bệnh',
     appDescription: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
-    loginLogoUrl: '/pwa-192x192.svg',
+    loginLogoUrl: '/icon-512.png',
     defaultTheme: 'light'
   });
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileAppsMenuRef = useRef<HTMLDivElement>(null);
   const desktopAppsMenuRef = useRef<HTMLDivElement>(null);
   const mobileSearchMenuRef = useRef<HTMLDivElement>(null);
@@ -336,7 +336,7 @@ export default function App() {
     }
   };
 
-  const handleSaveProfileField = async (changes: Partial<typeof profileEditData>) => {
+  const handleSaveProfileField = async (changes: Partial<UserProfile>) => {
     if (!user || !userProfile) return;
     try {
       const updatedData = {
@@ -781,6 +781,11 @@ export default function App() {
         errorMessage.includes('auth/cancelled-popup-request');
 
       if (!isCancellation) {
+        if (errorCode === 'auth/popup-blocked') {
+          alert("Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép hiện cửa sổ bật lên (popup) trên trình duyệt của bạn và thử lại.");
+          return;
+        }
+        
         console.error("Login error details:", error);
         // If it's a Firestore error, get more details
         if (errorCode?.includes('permission') || errorMessage.toLowerCase().includes('permission')) {
@@ -998,9 +1003,9 @@ export default function App() {
                 style={{ backgroundColor: systemSettings.loginPrimaryColor || '#3b82f6' }}
               >
                 {systemSettings.loginLogoUrl ? (
-                  <img src={systemSettings.loginLogoUrl || undefined} className="w-12 h-12 object-contain" alt="Logo" referrerPolicy="no-referrer" />
+                  <img src={systemSettings.loginLogoUrl || undefined} className="w-16 h-16 object-contain" alt="Logo" referrerPolicy="no-referrer" />
                 ) : (
-                  <Pill size={40} className="text-white" />
+                  <img src="/icon-512.png" className="w-16 h-16 object-contain" alt="Logo" />
                 )}
               </div>
               <h1 className={cn("text-4xl font-black tracking-tight mb-2 transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
@@ -1184,28 +1189,30 @@ export default function App() {
               </div>
 
               <div className="flex-1 overflow-y-auto no-scrollbar">
-                {guestView === 'drugs' && (
-                  <div className="h-full">
-                    <DrugDirectory 
-                      canManage={false} 
-                      isDarkMode={isDarkMode} 
-                      featureSettings={featureSettings['view_directory']}
-                      userRole={userProfile?.role}
-                      userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
-                    />
-                  </div>
-                )}
-                {guestView === 'icd10' && (
-                  <div className="h-full p-4 lg:p-8">
-                    <ICD10Management 
-                      canManage={false} 
-                      isDarkMode={isDarkMode}
-                      featureSettings={featureSettings['view_icd10']}
-                      userRole={userProfile?.role}
-                      userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
-                    />
-                  </div>
-                )}
+                <Suspense fallback={<div className="flex items-center justify-center p-20"><Loader2 className="animate-spin text-primary" /></div>}>
+                  {guestView === 'drugs' && (
+                    <div className="h-full">
+                      <DrugDirectory 
+                        canManage={false} 
+                        isDarkMode={isDarkMode} 
+                        featureSettings={featureSettings['view_directory']}
+                        userRole={userProfile?.role}
+                        userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
+                      />
+                    </div>
+                  )}
+                  {guestView === 'icd10' && (
+                    <div className="h-full p-4 lg:p-8">
+                      <ICD10Management 
+                        canManage={false} 
+                        isDarkMode={isDarkMode}
+                        featureSettings={featureSettings['view_icd10']}
+                        userRole={userProfile?.role}
+                        userPowerPoints={userProfile?.role ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0}
+                      />
+                    </div>
+                  )}
+                </Suspense>
               </div>
             </motion.div>
           </div>
@@ -1290,17 +1297,6 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-      </div>
-    );
-  }
-
-  if (!userProfile || permsLoading) {
-    return (
-      <div className={cn(
-        "min-h-screen flex items-center justify-center transition-colors",
-        isDarkMode ? "bg-slate-950" : "bg-slate-50"
-      )}>
-        <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
       </div>
     );
   }
@@ -1523,8 +1519,10 @@ export default function App() {
           canManage={isManagementMode} 
           isDarkMode={isDarkMode} 
           featureSettings={featureSettings['view_icd10']}
+          featureStates={featureStates}
           userRole={userProfile.role}
           userPowerPoints={userPowerPoints}
+          userProfile={userProfile}
           onSelectDrug={(drug) => {
             setExternalSelectedDrugId(drug.id);
             setActiveTab('view_directory');
@@ -1647,7 +1645,8 @@ export default function App() {
       "min-h-screen font-sans transition-colors duration-300 flex",
       isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
     )}>
-      <Sidebar 
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary" /></div>}>
+        <Sidebar 
         activeTab={activeTab} 
         setActiveTab={(tab) => {
           setActiveTab(tab);
@@ -1695,7 +1694,7 @@ export default function App() {
               onClick={() => setActiveTab('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95"
             >
-              <img src="/pwa-192x192.svg" alt="Logo" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
+              <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
               <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                 {systemSettings.appName}
               </h1>
@@ -2079,7 +2078,7 @@ export default function App() {
               className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95 group"
               title="Trở về Workspace"
             >
-              <img src="/pwa-192x192.svg" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
+              <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
               <span className="font-bold text-sm">{systemSettings.appName}</span>
             </button>
           </div>
@@ -2166,33 +2165,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Quick Access Icons - HIDDEN */}
-            {false && (() => {
-              const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-              return ALL_TABS.filter(t => {
-                const status = featureStates[t.id];
-                const settings = featureSettings[t.id];
-                const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
-                const roleAllowed = (settings?.allowedRoles || []).length === 0 || (settings?.allowedRoles || []).includes(userProfile?.role);
-                const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_');
-              }).map(item => (
-                <button
-                  key={`quick-${item.id}`}
-                  onClick={() => setActiveTab(item.id)}
-                  title={featureSettings[item.id]?.customTitle || item.label}
-                  className={cn(
-                    "p-2 rounded-xl transition-all relative group shadow-sm",
-                    activeTab === item.id 
-                      ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                      : (isDarkMode ? "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white" : "bg-white border border-slate-100 text-slate-500 hover:text-primary")
-                  )}
-                >
-                  <item.icon size={18} />
-                </button>
-              ));
-            })()}
-
             <div className="relative" ref={desktopAppsMenuRef}>
               <button 
                 onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
@@ -2580,11 +2552,34 @@ export default function App() {
                   </div>
 
                   {/* Personal Info Edit Section */}
-                  <div className="space-y-4">
-                    <label className={cn(
-                      "block text-xs font-black uppercase tracking-widest transition-colors",
-                      isDarkMode ? "text-slate-500" : "text-slate-400"
-                    )}>Quyền riêng tư</label>
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <label className={cn(
+                        "block text-xs font-black uppercase tracking-widest transition-colors",
+                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                      )}>Thông tin cá nhân</label>
+                      <div className="relative group">
+                        <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
+                        <input
+                          type="tel"
+                          value={userProfile.zalo || ''}
+                          onChange={(e) => handleSaveProfileField({ zalo: e.target.value })}
+                          placeholder="Nhập số Zalo liên hệ..."
+                          className={cn(
+                            "w-full pl-11 pr-4 py-3 rounded-2xl border-2 outline-none font-bold text-sm transition-all shadow-sm",
+                            isDarkMode 
+                              ? "bg-slate-800 border-slate-700 text-white focus:border-primary placeholder:text-slate-600" 
+                              : "bg-white border-slate-100 text-slate-900 focus:border-primary placeholder:text-slate-400"
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className={cn(
+                        "block text-xs font-black uppercase tracking-widest transition-colors",
+                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                      )}>Quyền riêng tư</label>
                     
                     <div className="space-y-4">
                       <div className="space-y-3">
@@ -2667,8 +2662,9 @@ export default function App() {
 
                     </div>
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className={cn(
                         "block text-xs font-black uppercase tracking-widest mb-3 transition-colors",
@@ -2955,7 +2951,10 @@ export default function App() {
               setIsPrivacyConfirmOpen(false);
             }}
             title="Cảnh báo quyền riêng tư"
-            message="Bạn có chắc chắn muốn công khai Email không? Mọi người trong hệ thống sẽ có thể nhìn thấy email liên hệ của bạn."
+            message={privacyConfirmType === 'email' 
+              ? "Bạn có chắc chắn muốn công khai Email không? Mọi người trong hệ thống sẽ có thể nhìn thấy email liên hệ của bạn."
+              : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người trong hệ thống sẽ có thể nhìn thấy số điện thoại Zalo của bạn."
+            }
             confirmText="Công khai"
             cancelText="Hủy"
             type="warning"
@@ -2973,6 +2972,7 @@ export default function App() {
             isDarkMode={isDarkMode}
           />
       </main>
+      </Suspense>
     </div>
     </>
   );

@@ -37,6 +37,7 @@ import {
   deleteDoc, 
   query, 
   orderBy, 
+  where,
   handleFirestoreError, 
   OperationType 
 } from '../firebase';
@@ -139,7 +140,19 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   });
 
   useEffect(() => {
-    const qReports = query(collection(db, 'adr_reports'), orderBy('reportedAt', 'desc'));
+    let qReports;
+    const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
+    
+    if (isPrivileged) {
+      qReports = query(collection(db, 'adr_reports'), orderBy('reportedAt', 'desc'));
+    } else {
+      qReports = query(
+        collection(db, 'adr_reports'), 
+        where('reporterUid', '==', currentUserUid),
+        orderBy('reportedAt', 'desc')
+      );
+    }
+
     const unsubscribeReports = onSnapshot(qReports, (snapshot) => {
       const reportsData = snapshot.docs.map(doc => ({
         ...doc.data(),
@@ -148,7 +161,9 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       setReports(reportsData);
       setLoading(false);
     }, (error) => {
+      console.error("Error fetching ADR reports:", error);
       handleFirestoreError(error, OperationType.LIST, 'adr_reports');
+      setLoading(false);
     });
 
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
@@ -157,6 +172,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
         id: doc.id
       })) as Drug[];
       setDrugs(drugsData);
+    }, (error) => {
+      console.error("Error fetching drugs:", error);
     });
 
     const unsubscribeCatalog = onSnapshot(collection(db, 'adr_catalog'), (snapshot) => {
@@ -173,6 +190,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       });
 
       setCatalogItems(sortedData);
+    }, (error) => {
+      console.error("Error fetching ADR catalog:", error);
     });
 
     return () => {
@@ -180,7 +199,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       unsubscribeDrugs();
       unsubscribeCatalog();
     };
-  }, []);
+  }, [userRole, currentUserUid]);
 
   const handleOpenModal = (report?: ADRReport) => {
     if (report) {

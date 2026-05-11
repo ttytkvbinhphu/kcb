@@ -25,9 +25,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [configDepartments, setConfigDepartments] = useState<string[]>([]);
   const [configRoles, setConfigRoles] = useState<{id: string, name: string}[]>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [confirmUid, setConfirmUid] = useState<string | null>(null);
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [systemSettings, setSystemSettings] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -110,8 +112,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     setConfirmName(name);
     setIsConfirmOpen(true);
   };
-
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const confirmDelete = async () => {
     if (!confirmUid) return;
