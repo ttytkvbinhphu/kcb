@@ -1,39 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search, Check } from 'lucide-react';
 import { Ingredient, Excipient } from '../types';
-import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, handleFirestoreError, OperationType } from '../firebase';
+import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, sanitizeData } from '../firebase';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
 
 interface CatalogManagementProps {
-  type: 'ingredient' | 'excipient' | 'ingredient_category' | 'excipient_category';
+  type: 'ingredient' | 'excipient' | 'ingredient_category' | 'excipient_category' | 'company';
   isDarkMode: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   inline?: boolean;
+  externalTrigger?: number;
 }
 
-const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode, onClose, inline = false }) => {
+const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode, onClose, inline = false, externalTrigger = 0 }) => {
   const collectionName = 
     type === 'ingredient' ? 'ingredients' : 
     type === 'excipient' ? 'excipients' : 
     type === 'ingredient_category' ? 'ingredient_categories' :
-    'excipient_categories';
+    type === 'excipient_category' ? 'excipient_categories' :
+    'companies';
 
   const label = 
     type === 'ingredient' ? 'Hoạt chất' : 
     type === 'excipient' ? 'Tá dược' : 
     type === 'ingredient_category' ? 'Phân loại hoạt chất' :
-    'Phân loại tá dược';
+    type === 'excipient_category' ? 'Phân loại tá dược' :
+    'Công ty';
   
   const [items, setItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [relatedItems, setRelatedItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmData, setConfirmData] = useState<{ id: string, name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentAlias, setCurrentAlias] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   
   const [formData, setFormData] = useState<any>({
     name: '',
@@ -57,6 +63,22 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
   }, [collectionName]);
 
   useEffect(() => {
+    if (type === 'ingredient_category') {
+      const q = query(collection(db, 'ingredients'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setRelatedItems(snapshot.docs.map(doc => doc.data()));
+      });
+      return () => unsubscribe();
+    } else if (type === 'excipient_category') {
+      const q = query(collection(db, 'excipients'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setRelatedItems(snapshot.docs.map(doc => doc.data()));
+      });
+      return () => unsubscribe();
+    }
+  }, [type]);
+
+  useEffect(() => {
     if (type === 'ingredient') {
       const q = query(collection(db, 'ingredient_categories'), orderBy('name'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -76,6 +98,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
     }
   }, [type]);
 
+  useEffect(() => {
+    if (externalTrigger > 0) {
+      handleOpenModal();
+    }
+  }, [externalTrigger]);
+
   const handleOpenModal = (item?: any) => {
     if (item) {
       setEditingItem(item);
@@ -84,6 +112,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
       setFormData({ ...item, aliases });
     } else {
       setEditingItem(null);
+      setCurrentAlias('');
       setFormData({
         id: Math.random().toString(36).substr(2, 9),
         name: '',
@@ -97,19 +126,27 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return;
+    if (!formData.name || isSaving) return;
 
     const id = formData.id || Math.random().toString(36).substring(2, 11);
+    setIsSaving(true);
 
     try {
+      // Add any pending alias before saving
+      let finalAliases = [...(formData.aliases || [])];
+      const pendingAlias = currentAlias.trim();
+      if (pendingAlias && !finalAliases.includes(pendingAlias)) {
+        finalAliases.push(pendingAlias);
+      }
+
       // Clean up data to satisfy firestore rules
       const saveData: any = { 
         id, 
         name: formData.name.trim()
       };
       
-      if (formData.aliases && formData.aliases.length > 0) {
-        saveData.aliases = formData.aliases.map((a: string) => a.trim()).filter(Boolean);
+      if (finalAliases.length > 0) {
+        saveData.aliases = finalAliases.map((a: string) => a.trim()).filter(Boolean);
         if (saveData.aliases.length > 0) {
           saveData.alias = saveData.aliases[0]; // For backward compatibility
         }
@@ -117,6 +154,11 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
 
       if (formData.description && formData.description.trim()) {
         saveData.description = formData.description.trim();
+      }
+
+      if (type === 'company') {
+        if (formData.address) saveData.address = formData.address.trim();
+        if (formData.phone) saveData.phone = formData.phone.trim();
       }
       
       if ((type === 'ingredient' || type === 'excipient')) {
@@ -129,11 +171,18 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
         }
       }
 
-      await setDoc(doc(db, collectionName, id), saveData);
+      await setDoc(doc(db, collectionName, id), sanitizeData(saveData));
       setIsModalOpen(false);
+      
+      // Auto-close the whole management modal if we just added a company from the drug editor
+      if (!inline && type === 'company' && !editingItem && onClose) {
+        onClose();
+      }
     } catch (error) {
       console.error(`Error saving ${type}:`, error);
       handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${id}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -169,27 +218,30 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
         isDarkMode ? "bg-slate-950 border border-slate-800" : "bg-slate-50"
       )}
     >
-      <div className={cn(
-        "p-4 sm:p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4",
-        isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"
-      )}>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="p-1.5 sm:p-2 bg-indigo-600 rounded-lg sm:rounded-xl text-white">
-            <Database className="w-5 h-5 sm:w-6 sm:h-6" />
+      {!inline && (
+        <div className={cn(
+          "p-4 sm:p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4",
+          isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-200 bg-white"
+        )}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-1.5 sm:p-2 bg-indigo-600 rounded-lg sm:rounded-xl text-white">
+              <Database className="w-5 h-5 sm:w-6 sm:h-6" />
+            </div>
+            <div>
+              <h3 className={cn("text-lg sm:text-xl font-black", isDarkMode ? "text-white" : "text-slate-900", type === 'company' && "hidden sm:block")}>Quản lý {label}</h3>
+              <p className="text-[10px] sm:text-xs text-slate-500 font-medium">Tổng cộng: {items.length} mục</p>
+            </div>
           </div>
-          <div>
-            <h3 className={cn("text-lg sm:text-xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>Quản lý {label}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-500 font-medium">Tổng cộng: {items.length} mục</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <button 
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg sm:rounded-xl font-bold text-[10px] sm:text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20"
-          >
-            <Plus size={16} /> Thêm mới
-          </button>
-          {!inline && (
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button 
+              onClick={() => handleOpenModal()}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20 text-xs",
+                "hover:bg-indigo-700 active:scale-95"
+              )}
+            >
+              <Plus size={16} /> Thêm mới
+            </button>
             <button 
               onClick={onClose}
               className={cn(
@@ -199,9 +251,9 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
             >
               <X size={20} />
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className={cn(
         "p-4 border-b",
@@ -211,7 +263,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
             type="text"
-            placeholder={`Tìm kiếm ${label.toLowerCase()}...`}
+            placeholder={type === 'company' ? "Tìm kiếm tên công ty..." : `Tìm kiếm ${label.toLowerCase()}...`}
             className={cn(
               "w-full pl-10 pr-4 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
               isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
@@ -236,8 +288,17 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
               )}>
                  <div className="flex justify-between items-start">
                   <div className="flex-1 overflow-hidden pr-8">
-                     <h4 className={cn("font-bold text-sm truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>
+                     <h4 className={cn("font-bold text-sm truncate mb-1 flex items-center gap-2", isDarkMode ? "text-white" : "text-slate-900")}>
                        {item.name}
+                       {(type === 'ingredient_category' || type === 'excipient_category') && (
+                         <span className={cn(
+                           "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black",
+                           isDarkMode ? "bg-indigo-900/40 text-indigo-400" : "bg-indigo-50 text-indigo-600"
+                         )}>
+                           <Database size={10} />
+                           {relatedItems.filter(ri => ri.categoryId === item.id || (ri.categoryIds || []).includes(item.id)).length}
+                         </span>
+                       )}
                        {item.aliases && item.aliases.length > 0 ? (
                          <span className="ml-2 font-medium text-xs text-slate-400 italic">
                            ({item.aliases.join(', ')})
@@ -276,9 +337,19 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                          )}
                        </div>
                      )}
-                     {item.description && (
-                       <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
-                     )}
+                    {type === 'company' && (item.address || item.phone) && (
+                      <div className="flex flex-col gap-0.5 mb-1">
+                        {item.address && (
+                          <p className="text-[10px] text-slate-500 italic truncate">Đ/c: {item.address}</p>
+                        )}
+                        {item.phone && (
+                          <p className="text-[10px] font-black text-indigo-500">SĐT: {item.phone}</p>
+                        )}
+                      </div>
+                    )}
+                    {item.description && (
+                      <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
+                    )}
                   </div>
                   <div className="absolute right-3 top-3 flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                      <button 
@@ -362,71 +433,93 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                       )}
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder={`Ví dụ: ${type === 'ingredient' ? 'Paracetamol' : type === 'excipient' ? 'Lactose' : 'Kháng sinh'}...`}
+                      placeholder={`Ví dụ: ${type === 'ingredient' ? 'Paracetamol' : type === 'excipient' ? 'Lactose' : type === 'company' ? 'Agimexpharm' : 'Kháng sinh'}...`}
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi khác (Aliases)</label>
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <AnimatePresence mode="popLayout">
-                          {(formData.aliases || []).map((alias: string, idx: number) => (
-                            <motion.div
-                              layout
-                              initial={{ opacity: 0, scale: 0.8 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.8 }}
-                              key={`${alias}-${idx}`}
-                              className={cn(
-                                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
-                                isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
-                              )}
-                            >
-                              <span>{alias}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const nextAliases = [...formData.aliases];
-                                  nextAliases.splice(idx, 1);
-                                  setFormData({ ...formData, aliases: nextAliases });
-                                }}
-                                className="hover:text-rose-500 transition-colors"
+                  {type !== 'company' && (
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi khác (Aliases)</label>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          <AnimatePresence mode="popLayout">
+                            {(formData.aliases || []).map((alias: string, idx: number) => (
+                              <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                key={`${alias}-${idx}`}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
+                                )}
                               >
-                                <X size={12} />
-                              </button>
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          className={cn(
-                            "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
-                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                          )}
-                          placeholder="Nhấn Enter để thêm tên gọi khác..."
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const value = e.currentTarget.value.trim();
+                                <span>{alias}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextAliases = [...formData.aliases];
+                                    nextAliases.splice(idx, 1);
+                                    setFormData({ ...formData, aliases: nextAliases });
+                                  }}
+                                  className="hover:text-rose-500 transition-colors"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            className={cn(
+                              "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                            )}
+                            placeholder="Nhấn Enter hoặc nút + để thêm..."
+                            value={currentAlias}
+                            onChange={(e) => setCurrentAlias(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const value = currentAlias.trim();
+                                if (value && !(formData.aliases || []).includes(value)) {
+                                  setFormData({
+                                    ...formData,
+                                    aliases: [...(formData.aliases || []), value]
+                                  });
+                                  setCurrentAlias('');
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const value = currentAlias.trim();
                               if (value && !(formData.aliases || []).includes(value)) {
                                 setFormData({
                                   ...formData,
                                   aliases: [...(formData.aliases || []), value]
                                 });
-                                e.currentTarget.value = '';
+                                setCurrentAlias('');
                               }
-                            }
-                          }}
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Plus size={16} className="text-slate-400" />
+                            }}
+                            className={cn(
+                              "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all",
+                              currentAlias.trim() 
+                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" 
+                                : "text-slate-400"
+                            )}
+                          >
+                            <Plus size={16} />
+                          </button>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {(type === 'ingredient' || type === 'excipient') && (
                     <div>
@@ -481,6 +574,37 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                     </div>
                   )}
 
+                  {type === 'company' && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Địa chỉ</label>
+                        <input
+                          type="text"
+                          className={cn(
+                            "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                          )}
+                          value={formData.address || ''}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          placeholder="Địa chỉ công ty..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại</label>
+                        <input
+                          type="text"
+                          className={cn(
+                            "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                          )}
+                          value={formData.phone || ''}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          placeholder="Số điện thoại liên hệ..."
+                        />
+                      </div>
+                    </>
+                  )}
+
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Mô tả / Ghi chú</label>
                     <textarea
@@ -512,12 +636,24 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                   </button>
                   <button
                     type="submit"
+                    disabled={isSaving}
                     className={cn(
-                      "flex-1 py-2.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-all shadow-lg",
-                      isDarkMode ? "shadow-none" : "shadow-indigo-200"
+                      "flex-1 py-2.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2",
+                      (isDarkMode ? "shadow-none" : "shadow-indigo-200"),
+                      isSaving && "opacity-70 cursor-not-allowed"
                     )}
                   >
-                    Lưu lại
+                    {isSaving ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Đang lưu...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Lưu lại
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

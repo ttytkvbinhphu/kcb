@@ -1,20 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink } from 'lucide-react';
-import { Drug, ICD10 } from '../types';
+import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink, Briefcase, Lock } from 'lucide-react';
+import { Drug, ICD10, Ingredient } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { db, collection, onSnapshot, handleFirestoreError, OperationType } from '../firebase';
+import { db, collection, onSnapshot, handleFirestoreError, OperationType, query, orderBy } from '../firebase';
 
 interface DrugDetailModalProps {
   drug: Drug | null;
   isOpen: boolean;
   onClose: () => void;
   isDarkMode: boolean;
+  canSeeIcdSuggestions?: boolean;
+  canSeeCommonIndications?: boolean;
 }
 
-const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose, isDarkMode }) => {
+const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ 
+  drug, 
+  isOpen, 
+  onClose, 
+  isDarkMode,
+  canSeeIcdSuggestions = true,
+  canSeeCommonIndications = true
+}) => {
   const [activeDetailTab, setActiveDetailTab] = useState<'indications' | 'contraindications' | 'dosage' | 'interactions' | 'warnings' | 'side_effects' | 'pharmacology' | 'info'>('indications');
   const [icdList, setIcdList] = useState<ICD10[]>([]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -25,7 +35,17 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
       handleFirestoreError(error, OperationType.LIST, 'icd10');
     });
 
-    return () => unsubscribeIcd();
+    const qIngredients = query(collection(db, 'ingredients'), orderBy('name'));
+    const unsubscribeIngredients = onSnapshot(qIngredients, (snapshot) => {
+      setIngredients(snapshot.docs.map(doc => doc.data() as Ingredient));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'ingredients');
+    });
+
+    return () => {
+      unsubscribeIcd();
+      unsubscribeIngredients();
+    };
   }, [isOpen]);
 
   if (!drug) return null;
@@ -130,17 +150,31 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
                         "font-bold uppercase tracking-widest text-[9px] lg:text-[11px] mb-3 opacity-70",
                         isDarkMode ? "text-blue-300" : "text-blue-600"
                       )}>
-                        {(drug.activeIngredients || []).map(ing => `${ing.name} ${ing.amount}${ing.unit}`).join(' + ')}
+                        {(drug.activeIngredients || []).map(ing => {
+                          const baseIngredient = ingredients.find(i => 
+                            i.name.toLowerCase() === ing.name.toLowerCase() ||
+                            i.alias?.toLowerCase() === ing.name.toLowerCase() ||
+                            i.aliases?.some(a => a.toLowerCase() === ing.name.toLowerCase())
+                          );
+                          
+                          let displayName = `${ing.name} ${ing.amount}${ing.unit}`;
+                          if (baseIngredient) {
+                             const allAliases = new Set<string>();
+                             if (baseIngredient.name.toLowerCase() !== ing.name.toLowerCase()) allAliases.add(baseIngredient.name);
+                             if (baseIngredient.alias && baseIngredient.alias.toLowerCase() !== ing.name.toLowerCase()) allAliases.add(baseIngredient.alias);
+                             if (baseIngredient.aliases) {
+                               baseIngredient.aliases.forEach(a => {
+                                 if (a.toLowerCase() !== ing.name.toLowerCase()) allAliases.add(a);
+                               });
+                             }
+                             if (allAliases.size > 0) {
+                               displayName += ` (${Array.from(allAliases).join(', ')})`;
+                             }
+                          }
+                          return displayName;
+                        }).join(' + ')}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {drug.category && (
-                          <span className={cn(
-                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                            isDarkMode ? "bg-white/5 text-slate-300" : "bg-white/80 text-slate-600 shadow-sm"
-                          )}>
-                            {drug.category}
-                          </span>
-                        )}
                         {drug.atcCode && (
                           <span className={cn(
                             "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
@@ -234,7 +268,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
                               <div className="flex items-start gap-3">
                                 <div className={cn(
                                   "w-2 h-2 rounded-full mt-2 shadow-sm shrink-0",
-                                  item.isPrimary ? "bg-amber-500" : "bg-blue-500"
+                                  (item.isPrimary && canSeeCommonIndications) ? "bg-amber-500" : "bg-blue-500"
                                 )} />
                                 <div className="flex-1">
                                   {item.title && (
@@ -242,7 +276,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
                                   )}
                                   <p className="text-sm leading-relaxed whitespace-pre-line">{item.content}</p>
                                   
-                                  {item.icd10s && item.icd10s.length > 0 && (
+                                  {canSeeIcdSuggestions && item.icd10s && item.icd10s.length > 0 && (
                                     <div className="mt-4 flex flex-wrap gap-2">
                                       {item.icd10s.map((fullName, idx) => {
                                         const code = fullName.split(' - ')[0];
@@ -285,7 +319,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
                             <div>
                               <h5 className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">{item.type || 'Chung'}</h5>
                               <p className="text-sm leading-relaxed">{item.content}</p>
-                              {item.icd10s && item.icd10s.length > 0 && (
+                              {canSeeIcdSuggestions && item.icd10s && item.icd10s.length > 0 && (
                                 <div className="mt-3 flex flex-wrap gap-2">
                                   {item.icd10s.map((code, idx) => (
                                     <span key={idx} className="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black border border-rose-100">
@@ -456,6 +490,40 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({ drug, isOpen, onClose
                     {/* Info Tab */}
                     {activeDetailTab === 'info' && (
                       <div className="space-y-4">
+                        {/* Thông tin công ty */}
+                        <div className={cn(
+                          "p-6 rounded-3xl border space-y-4",
+                          isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
+                        )}>
+                          <div className="flex items-center gap-3 mb-2">
+                             <Briefcase size={18} className="text-blue-500" />
+                             <h4 className="text-[10px] font-black uppercase tracking-widest text-blue-500">Thông tin công ty</h4>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Nhà sản xuất</p>
+                              <p className="text-sm font-bold flex items-center gap-2">
+                                {drug.manufacturer || 'Chưa cập nhật'}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Số đăng ký (SĐK)</p>
+                              <p className="text-sm font-bold">
+                                {drug.registrationNumber || 'Chưa cập nhật'}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-[9px] font-black uppercase tracking-widest opacity-50">Phiên bản tờ hướng dẫn</p>
+                              <p className="text-sm font-bold">
+                                {drug.leafletVersion || 'Chưa cập nhật'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
                         {/* Người cập nhật */}
                         <div className={cn(
                           "p-5 rounded-2xl border flex items-center gap-4",

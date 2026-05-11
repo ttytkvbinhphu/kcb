@@ -7,7 +7,7 @@ import { Prescription, PrescriptionItem, Drug, ICD10, UserProfile } from '../typ
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
-import { db, auth, collection, setDoc, doc, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, orderBy } from '../firebase';
+import { db, auth, collection, setDoc, doc, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, orderBy, sanitizeData } from '../firebase';
 
 const prescriptionSchema = z.object({
   patientName: z.string().min(2, 'Tên bệnh nhân quá ngắn'),
@@ -197,7 +197,7 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
         doctorUid: auth.currentUser.uid,
       };
       
-      await setDoc(doc(db, 'prescriptions', id), newPrescription);
+      await setDoc(doc(db, 'prescriptions', id), sanitizeData(newPrescription));
       setSubmittedData(newPrescription);
       setStep(3);
     } catch (error) {

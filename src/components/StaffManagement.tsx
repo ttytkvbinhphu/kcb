@@ -12,6 +12,10 @@ interface StaffManagementProps {
 
 const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage }) => {
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [availableTitles, setAvailableTitles] = useState<{id: string, name: string}[]>([]);
+  const [availablePositions, setAvailablePositions] = useState<{id: string, name: string}[]>([]);
+  const [availableSpecialties, setAvailableSpecialties] = useState<{id: string, name: string}[]>([]);
+  const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,7 +49,29 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    const unsubTitles = onSnapshot(collection(db, 'config_titles'), (snapshot) => {
+      setAvailableTitles(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubPositions = onSnapshot(collection(db, 'config_positions'), (snapshot) => {
+      setAvailablePositions(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubSpecialties = onSnapshot(collection(db, 'config_specialties'), (snapshot) => {
+      setAvailableSpecialties(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubDepartments = onSnapshot(collection(db, 'config_departments'), (snapshot) => {
+      setAvailableDepartments(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    return () => {
+      unsubscribe();
+      unsubTitles();
+      unsubPositions();
+      unsubSpecialties();
+      unsubDepartments();
+    };
   }, []);
 
   const handleSave = async () => {
@@ -371,9 +397,15 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       value={formData.type}
                       onChange={(e) => setFormData({...formData, type: e.target.value as any})}
                     >
-                      <option value="Bác sĩ">Bác sĩ</option>
-                      <option value="Dược sĩ">Dược sĩ</option>
-                      <option value="Điều dưỡng">Điều dưỡng</option>
+                      {availableTitles.length > 0 ? (
+                        availableTitles.map(t => <option key={t.id} value={t.name}>{t.name}</option>)
+                      ) : (
+                        <>
+                          <option value="Bác sĩ">Bác sĩ</option>
+                          <option value="Dược sĩ">Dược sĩ</option>
+                          <option value="Điều dưỡng">Điều dưỡng</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -407,30 +439,36 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chuyên khoa</label>
-                    <input 
-                      type="text" 
+                    <select 
                       className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
                       value={formData.specialty}
                       onChange={(e) => setFormData({...formData, specialty: e.target.value})}
-                    />
+                    >
+                      <option value="">Chọn chuyên khoa...</option>
+                      {availableSpecialties.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chức vụ</label>
-                    <input 
-                      type="text" 
+                    <select 
                       className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
                       value={formData.position}
                       onChange={(e) => setFormData({...formData, position: e.target.value})}
-                    />
+                    >
+                      <option value="">Chọn chức vụ...</option>
+                      {availablePositions.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Khoa / Phòng</label>
-                    <input 
-                      type="text" 
+                    <select 
                       className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
                       value={formData.department}
                       onChange={(e) => setFormData({...formData, department: e.target.value})}
-                    />
+                    >
+                      <option value="">Chọn khoa/phòng...</option>
+                      {availableDepartments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số điện thoại</label>

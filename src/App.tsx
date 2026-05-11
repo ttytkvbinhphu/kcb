@@ -1,20 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import DrugDirectory from './components/DrugDirectory';
-import InteractionChecker from './components/InteractionChecker';
-import PrescriptionForm from './components/PrescriptionForm';
-import ICD10Management from './components/ICD10Management';
-import UserManagement from './components/UserManagement';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import ConfirmModal from './components/ConfirmModal';
-import ADRManagement from './components/ADRManagement';
-import PatientManagement from './components/PatientManagement';
-import StaffManagement from './components/StaffManagement';
-import SystemConfig from './components/SystemConfig';
-import SocialWall from './components/SocialWall';
-import Calendar from './components/Calendar';
-import Notes from './components/Notes';
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight } from 'lucide-react';
+const Sidebar = lazy(() => import('./components/Sidebar'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const DrugDirectory = lazy(() => import('./components/DrugDirectory'));
+const InteractionChecker = lazy(() => import('./components/InteractionChecker'));
+const PrescriptionForm = lazy(() => import('./components/PrescriptionForm'));
+const ICD10Management = lazy(() => import('./components/ICD10Management'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const Calendar = lazy(() => import('./components/Calendar'));
+const Notes = lazy(() => import('./components/Notes'));
+const CalculatorWidget = lazy(() => import('./components/Calculator'));
+const TodoWidget = lazy(() => import('./components/TodoList'));
+const ADRManagement = lazy(() => import('./components/ADRManagement'));
+const SystemConfig = lazy(() => import('./components/SystemConfig'));
+const SocialWall = lazy(() => import('./components/SocialWall'));
+const PatientManagement = lazy(() => import('./components/PatientManagement'));
+const StaffManagement = lazy(() => import('./components/StaffManagement'));
+import WelcomeSlider from './components/WelcomeSlider';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
@@ -23,9 +26,10 @@ import { UserProfile, Notification, SystemSettings, Announcement } from './types
 import { seedInitialData } from './lib/seed';
 
 const ALL_TABS = [
-  { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+  { id: 'dashboard', label: 'Workspace', icon: LayoutDashboard },
   { id: 'view_calendar', label: 'Lịch công tác', icon: CalendarIcon },
   { id: 'view_notes', label: 'Ghi chú', icon: MessageSquare },
+  { id: 'view_todo', label: 'Việc cần làm', icon: ListTodo },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList },
   { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert },
@@ -33,6 +37,7 @@ const ALL_TABS = [
   { id: 'view_patients', label: 'Tra cứu bệnh nhân', icon: Users },
   { id: 'view_prescription', label: 'Kê toa thử', icon: FileText },
   { id: 'view_social', label: 'Mạng xã hội', icon: MessageSquare },
+  { id: 'view_calculator', label: 'Máy tính', icon: Calculator },
   { id: 'view_profile', label: 'Trang cá nhân', icon: Users },
   { id: 'manage_users', label: 'Quản lý người dùng', icon: Users },
   { id: 'manage_staff', label: 'Quản lý nhân sự', icon: Briefcase },
@@ -43,6 +48,7 @@ const ALL_TABS = [
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
   { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutDashboard },
+  { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
   { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award },
@@ -76,42 +82,98 @@ export default function App() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [welcomeSlides, setWelcomeSlides] = useState<any[]>([]);
+  const [showWelcomeSlider, setShowWelcomeSlider] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationTab, setNotificationTab] = useState<'all' | 'unread' | 'read' | 'announcements'>('unread');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileEditData, setProfileEditData] = useState({
-    zaloNumber: '',
     hideEmail: false,
-    hideZalo: false
   });
 
   // Sync profileEditData with userProfile for real-time consistency in Settings
   useEffect(() => {
     if (userProfile && !isProfileModalOpen) {
       setProfileEditData({
-        zaloNumber: userProfile.zaloNumber || '',
         hideEmail: userProfile.hideEmail || false,
-        hideZalo: userProfile.hideZalo || false
       });
     }
   }, [userProfile, isProfileModalOpen]);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isPrivacyConfirmOpen, setIsPrivacyConfirmOpen] = useState(false);
-  const [privacyConfirmType, setPrivacyConfirmType] = useState<'email' | 'zalo'>('email');
+  const [privacyConfirmType, setPrivacyConfirmType] = useState<'email'>('email');
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isAdminMode, setIsAdminMode] = useState(() => {
     const saved = localStorage.getItem('isAdminMode');
     return saved === 'true';
   });
+
+  const syncUserProfile = async () => {
+    if (auth.currentUser) {
+      try {
+        await auth.currentUser.reload();
+        const refreshedUser = auth.currentUser;
+        const googlePhoto = refreshedUser.providerData[0]?.photoURL || refreshedUser.photoURL;
+        const googleName = refreshedUser.providerData[0]?.displayName || refreshedUser.displayName;
+        
+        const userRef = doc(db, 'users', refreshedUser.uid);
+        const userSnap = await getDoc(userRef);
+        
+        if (userSnap.exists()) {
+          const profile = userSnap.data() as UserProfile;
+          const updatedProfile = {
+            ...profile,
+            photoURL: googlePhoto || profile.photoURL || '',
+            displayName: profile.displayName || googleName || profile.displayName,
+            photoSyncToken: Date.now().toString()
+          };
+          await setDoc(userRef, updatedProfile);
+          setUserProfile(updatedProfile);
+        }
+      } catch (e) {
+        console.error("Manual sync failed", e);
+      }
+    }
+  };
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('isSidebarCollapsed');
+    return saved === 'true';
+  });
   const [externalSelectedDrugId, setExternalSelectedDrugId] = useState<string | null>(null);
+  const [externalIcdSearchQuery, setExternalIcdSearchQuery] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('isAdminMode', isAdminMode.toString());
   }, [isAdminMode]);
+
+  useEffect(() => {
+    localStorage.setItem('isSidebarCollapsed', isSidebarCollapsed.toString());
+    // Dispatch resize event to let components (like charts) know the layout changed
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+  }, [isSidebarCollapsed]);
   const [guestView, setGuestView] = useState<'none' | 'drugs' | 'icd10' | 'terms'>('none');
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
+  useEffect(() => {
+    if (guestView === 'none' || guestView === 'terms') return;
+    
+    const tabId = guestView === 'drugs' ? 'view_directory' : 'view_icd10';
+    // If featureSettings has keys, it means it's loaded.
+    if (Object.keys(featureSettings).length > 0) {
+      const settings = featureSettings[tabId] || {};
+      const status = featureStates[tabId];
+      const allowedRoles = settings.allowedRoles || [];
+      const isAllowed = allowedRoles.length === 0 || allowedRoles.includes('guest');
+      
+      if (status === 'closed' || status === 'maintenance' || !isAllowed) {
+        setGuestView('none');
+        setShowLoginPrompt(true);
+      }
+    }
+  }, [guestView, featureSettings, featureStates]);
 
   useEffect(() => {
     if (showLoginPrompt) {
@@ -121,10 +183,11 @@ export default function App() {
   }, [showLoginPrompt]);
 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
-    appName: 'KCB Bình Phú',
+    appName: 'KCB PB',
     loginTitle: 'Hệ thống Quản lý KCB',
-    loginSubtitle: 'Phòng khám Đa khoa Bình Phú',
-    appDescription: 'Hệ thống hỗ trợ quyết định lâm sàng và quản lý dược lý hiện đại dành cho nhân viên y tế tại KCB Bình Phú.',
+    loginSubtitle: 'Ứng dụng hỗ trợ Khám Chữa Bệnh',
+    appDescription: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
+    loginLogoUrl: '/pwa-192x192.svg',
     defaultTheme: 'light'
   });
   const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -145,6 +208,30 @@ export default function App() {
     el.style.display = 'none';
     void el.offsetHeight; // Trigger synchronous reflow
     el.style.display = '';
+  }, [activeTab]);
+
+  // Handle mobile back button and history state
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      // If back button is pressed, revert to dashboard if we're in a utility view
+      if (activeTab !== 'dashboard') {
+        setActiveTab('dashboard');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab]);
+
+  useEffect(() => {
+    // When switching to a sub-page/utility, push state to history
+    // Only push if we're not already on dashboard and the current hash doesn't match
+    if (activeTab !== 'dashboard' && window.location.hash !== `#${activeTab}`) {
+      window.history.pushState({ tab: activeTab }, '', `#${activeTab}`);
+    } else if (activeTab === 'dashboard' && window.location.hash !== '') {
+      // If we returned to dashboard manually, clear the hash
+      window.history.replaceState(null, '', window.location.pathname);
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -216,6 +303,21 @@ export default function App() {
     localStorage.setItem('theme', theme);
   }, [theme, isDarkMode]);
 
+  useEffect(() => {
+    if (isAuthReady && welcomeSlides.length > 0 && systemSettings.showWelcomeSlider !== false) {
+      const hasSeen = sessionStorage.getItem('hasSeenWelcome_v2');
+      if (!hasSeen) {
+        setShowWelcomeSlider(true);
+      }
+    }
+  }, [user, isAuthReady, welcomeSlides, systemSettings.showWelcomeSlider]);
+  
+  useEffect(() => {
+    if (systemSettings.appName) {
+      document.title = systemSettings.appName;
+    }
+  }, [systemSettings.appName]);
+
   const handleSaveProfile = async () => {
     if (!user || !userProfile) return;
     try {
@@ -260,19 +362,40 @@ export default function App() {
         }
       }
     }, (error) => {
-      console.error("Error loading system settings:", error);
       handleFirestoreError(error, OperationType.GET, 'system_settings/main');
+    });
+
+    const unsubFeatures = onSnapshot(doc(db, 'system_config', 'features'), (snapshot) => {
+      if (snapshot.exists()) {
+        setFeatureStates(snapshot.data() as any);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_config/features');
+    });
+
+    const unsubFeatureSettings = onSnapshot(doc(db, 'system_config', 'feature_settings'), (snapshot) => {
+      if (snapshot.exists()) {
+        setFeatureSettings(snapshot.data() as any);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
+    });
+
+    const unsubSlides = onSnapshot(query(collection(db, 'welcome_slides'), orderBy('order', 'asc')), (snapshot) => {
+      setWelcomeSlides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'welcome_slides');
     });
 
     if (!user) {
       setRolePermissions([]);
       setTitlePermissions([]);
       setPermsLoading(false);
-      setFeatureStates({});
-      setFeatureSettings({});
       setConfigRoles([]);
       return () => {
         unsubSettings();
+        unsubFeatures();
+        unsubFeatureSettings();
       };
     }
 
@@ -284,26 +407,10 @@ export default function App() {
         setUserProfile(snapshot.data() as UserProfile);
       }
     }, (error) => {
-      console.error("Error listening to user profile:", error);
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
     });
 
-    const unsubFeatures = onSnapshot(doc(db, 'system_config', 'features'), (snapshot) => {
-      if (snapshot.exists()) {
-        setFeatureStates(snapshot.data() as any);
-      }
-    }, (error) => {
-      console.error("Error loading feature states:", error);
-      handleFirestoreError(error, OperationType.GET, 'system_config/features');
-    });
 
-    const unsubFeatureSettings = onSnapshot(doc(db, 'system_config', 'feature_settings'), (snapshot) => {
-      if (snapshot.exists()) {
-        setFeatureSettings(snapshot.data() as any);
-      }
-    }, (error) => {
-      console.error("Error loading feature settings:", error);
-      handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
-    });
     
     // Safety timeout for permissions loading
     const permsTimeout = setTimeout(() => {
@@ -312,12 +419,13 @@ export default function App() {
 
     const unsubConfigRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
       setConfigRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'config_roles');
     });
 
     const unsubRolePerms = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
       setRolePermissions(snapshot.docs.map(doc => doc.data()));
     }, (error) => {
-      console.error("Error loading role permissions:", error);
       handleFirestoreError(error, OperationType.LIST, 'role_permissions');
     });
 
@@ -326,7 +434,6 @@ export default function App() {
       setPermsLoading(false);
       clearTimeout(permsTimeout);
     }, (error) => {
-      console.error("Error loading title permissions:", error);
       setPermsLoading(false);
       clearTimeout(permsTimeout);
       handleFirestoreError(error, OperationType.LIST, 'title_permissions');
@@ -375,7 +482,7 @@ export default function App() {
 
       setAnnouncements(filtered);
     }, (error) => {
-      console.error("Error loading announcements:", error);
+      handleFirestoreError(error, OperationType.LIST, 'announcements');
     });
 
     return () => {
@@ -388,6 +495,7 @@ export default function App() {
       unsubSettings();
       unsubFeatures();
       unsubFeatureSettings();
+      unsubSlides();
     };
   }, [user, userProfile?.role, userProfile?.title, userProfile?.uid]);
 
@@ -548,14 +656,15 @@ export default function App() {
             const googlePhoto = refreshedUser.providerData[0]?.photoURL || refreshedUser.photoURL;
             const googleName = refreshedUser.providerData[0]?.displayName || refreshedUser.displayName;
 
-            if (profile.photoURL !== googlePhoto || (googleName && profile.displayName !== googleName && !profile.displayName)) {
+            const isPlaceholderName = !profile.displayName || profile.displayName === 'Quản trị viên' || profile.displayName === 'Thành viên mới';
+            if (profile.photoURL !== googlePhoto || (googleName && profile.displayName !== googleName && (isPlaceholderName || !profile.displayName))) {
               const updatedProfile = {
                 ...profile,
                 title: profile.title || 'Chưa cập nhật',
                 position: profile.position || 'Chưa cập nhật',
                 specialty: profile.specialty || 'Không',
                 photoURL: googlePhoto || profile.photoURL || '',
-                displayName: profile.displayName || googleName || profile.displayName,
+                displayName: googleName || profile.displayName,
                 photoSyncToken: Date.now().toString()
               };
               try {
@@ -768,17 +877,18 @@ export default function App() {
 
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
-        isDarkMode ? "bg-slate-950" : "bg-slate-50"
-      )}>
+          "min-h-screen flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
+          isDarkMode ? "bg-slate-950" : "bg-slate-50"
+        )}>
         {/* Dynamic Background */}
         {systemSettings.loginBgUrl && (
           <div className="absolute inset-0 z-0">
              <img 
-               src={systemSettings.loginBgUrl} 
+               src={systemSettings.loginBgUrl || undefined} 
                className="w-full h-full object-cover" 
                alt="Background" 
                style={{ filter: `blur(${systemSettings.loginBgBlur || 0}px)` }}
+               referrerPolicy="no-referrer"
              />
              <div 
                className="absolute inset-0 bg-black" 
@@ -827,8 +937,22 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.1 }}
                   onClick={() => {
-                    if (feature.id === 'drugs') setGuestView('drugs');
-                    else if (feature.id === 'icd10') setGuestView('icd10');
+                    const checkGuestAccess = (tabId: string) => {
+                      const settings = featureSettings[tabId] || {};
+                      const status = featureStates[tabId];
+                      if (status === 'closed' || status === 'maintenance') return false;
+                      const allowedRoles = settings.allowedRoles || [];
+                      return allowedRoles.length === 0 || allowedRoles.includes('guest');
+                    };
+                    
+                    if (feature.id === 'drugs') {
+                      if (checkGuestAccess('view_directory')) setGuestView('drugs');
+                      else setShowLoginPrompt(true);
+                    }
+                    else if (feature.id === 'icd10') {
+                      if (checkGuestAccess('view_icd10')) setGuestView('icd10');
+                      else setShowLoginPrompt(true);
+                    }
                     else setShowLoginPrompt(true);
                   }}
                   className={cn(
@@ -872,13 +996,17 @@ export default function App() {
                 style={{ backgroundColor: systemSettings.loginPrimaryColor || '#3b82f6' }}
               >
                 {systemSettings.loginLogoUrl ? (
-                  <img src={systemSettings.loginLogoUrl} className="w-12 h-12 object-contain" alt="Logo" referrerPolicy="no-referrer" />
+                  <img src={systemSettings.loginLogoUrl || undefined} className="w-12 h-12 object-contain" alt="Logo" referrerPolicy="no-referrer" />
                 ) : (
                   <Pill size={40} className="text-white" />
                 )}
               </div>
-              <h1 className={cn("text-4xl font-black tracking-tight mb-2 transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>{systemSettings.appName}</h1>
-              <p className={cn("font-medium text-lg transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/60" : "text-slate-500")}>{systemSettings.loginSubtitle}</p>
+              <h1 className={cn("text-4xl font-black tracking-tight mb-2 transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
+                {systemSettings.loginTitle || systemSettings.appName}
+              </h1>
+              <p className={cn("font-medium text-lg transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/60" : "text-slate-500")}>
+                {systemSettings.loginSubtitle}
+              </p>
             </div>
 
             {/* Mobile Features (Visible only on mobile) */}
@@ -889,8 +1017,22 @@ export default function App() {
                   type="button"
                   disabled={loginLoading}
                   onClick={() => {
-                    if (f.id === 'drugs') setGuestView('drugs');
-                    else if (f.id === 'icd10') setGuestView('icd10');
+                    const checkGuestAccess = (tabId: string) => {
+                      const settings = featureSettings[tabId] || {};
+                      const status = featureStates[tabId];
+                      if (status === 'closed' || status === 'maintenance') return false;
+                      const allowedRoles = settings.allowedRoles || [];
+                      return allowedRoles.length === 0 || allowedRoles.includes('guest');
+                    };
+                    
+                    if (f.id === 'drugs') {
+                      if (checkGuestAccess('view_directory')) setGuestView('drugs');
+                      else setShowLoginPrompt(true);
+                    }
+                    else if (f.id === 'icd10') {
+                      if (checkGuestAccess('view_icd10')) setGuestView('icd10');
+                      else setShowLoginPrompt(true);
+                    }
                     else setShowLoginPrompt(true);
                   }}
                   className={cn(
@@ -1146,7 +1288,7 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-</div>
+      </div>
     );
   }
 
@@ -1181,7 +1323,22 @@ export default function App() {
   const titleAllowedTabs = titlePerm?.allowedTabs || [];
   
   // Combine permissions: Role (Management) + Title (Work)
-  let allowedTabs = Array.from(new Set([...roleAllowedTabs, ...titleAllowedTabs, 'view_social', 'view_calendar', 'view_notes', 'view_profile', 'view_patients']));
+  let allowedTabs = Array.from(new Set([
+    ...roleAllowedTabs, 
+    ...titleAllowedTabs, 
+    'view_social', 
+    'view_calendar', 
+    'view_notes', 
+    'view_profile', 
+    'view_patients', 
+    'view_calculator',
+    'view_todo',
+    'view_directory',
+    'view_icd10',
+    'view_interaction',
+    'view_adr',
+    'view_prescription'
+  ]));
   
   // Auto-allow admin tabs for admins
   if (userProfile.role === 'admin') {
@@ -1189,9 +1346,14 @@ export default function App() {
     allowedTabs = Array.from(new Set([...allowedTabs, ...adminTabs]));
   }
 
-  // CRITICAL: Restrict access for unapproved users
+  // CRITICAL: Restrict access for unapproved users but allow specifically configured features
   if (!userProfile.isApproved) {
-    allowedTabs = ['dashboard'];
+    const unapprovedAllowed = ALL_TABS.filter(t => {
+      const settings = featureSettings[t.id] || {};
+      const allowedRoles = settings.allowedRoles || [];
+      return allowedRoles.includes('unapproved') || allowedRoles.includes('guest');
+    }).map(t => t.id);
+    allowedTabs = Array.from(new Set(['dashboard', ...unapprovedAllowed]));
   }
 
   const currentTabItem = ALL_TABS.find(t => t.id === activeTab);
@@ -1316,6 +1478,7 @@ export default function App() {
           featureStates={featureStates}
           featureSettings={featureSettings}
           uid={user?.uid || ''}
+          setExternalIcdSearchQuery={setExternalIcdSearchQuery}
         />;
       case 'calendar':
         return <Calendar isDarkMode={isDarkMode} />;
@@ -1364,6 +1527,8 @@ export default function App() {
             setExternalSelectedDrugId(drug.id);
             setActiveTab('view_directory');
           }}
+          initialSearchTerm={externalIcdSearchQuery}
+          onClearInitialSearch={() => setExternalIcdSearchQuery(null)}
         />;
       case 'users':
         return <UserManagement isDarkMode={isDarkMode} />;
@@ -1403,34 +1568,18 @@ export default function App() {
           initialTab="feed"
           featureSettings={featureSettings['view_social']}
           subHeaderPortalId="mobile-subheader-portal"
-          onSyncProfile={async () => {
-            if (auth.currentUser) {
-              try {
-                await auth.currentUser.reload();
-                const refreshedUser = auth.currentUser;
-                const googlePhoto = refreshedUser.providerData[0]?.photoURL || refreshedUser.photoURL;
-                const googleName = refreshedUser.providerData[0]?.displayName || refreshedUser.displayName;
-                
-                const userRef = doc(db, 'users', refreshedUser.uid);
-                const userSnap = await getDoc(userRef);
-                
-                if (userSnap.exists()) {
-                  const profile = userSnap.data() as UserProfile;
-                  const updatedProfile = {
-                    ...profile,
-                    photoURL: googlePhoto || profile.photoURL || '',
-                    displayName: profile.displayName || googleName || profile.displayName,
-                    photoSyncToken: Date.now().toString()
-                  };
-                  await setDoc(userRef, updatedProfile);
-                  setUserProfile(updatedProfile);
-                }
-              } catch (e) {
-                console.error("Manual sync failed", e);
-              }
-            }
-          }}
+          onSyncProfile={syncUserProfile}
         />;
+      case 'calculator':
+      case 'view_calculator':
+        return (
+          <div className="flex flex-col items-center justify-center py-4 lg:py-12 px-4">
+            <CalculatorWidget isDarkMode={isDarkMode} onClose={() => setActiveTab('dashboard')} />
+          </div>
+        );
+      case 'todo':
+      case 'view_todo':
+        return <TodoWidget isDarkMode={isDarkMode} onClose={() => setActiveTab('dashboard')} />;
       case 'profile':
       case 'view_profile':
         return <SocialWall 
@@ -1441,33 +1590,7 @@ export default function App() {
           initialTab="profile"
           featureSettings={featureSettings['view_social']}
           subHeaderPortalId="mobile-subheader-portal"
-          onSyncProfile={async () => {
-            if (auth.currentUser) {
-              try {
-                await auth.currentUser.reload();
-                const refreshedUser = auth.currentUser;
-                const googlePhoto = refreshedUser.providerData[0]?.photoURL || refreshedUser.photoURL;
-                const googleName = refreshedUser.providerData[0]?.displayName || refreshedUser.displayName;
-                
-                const userRef = doc(db, 'users', refreshedUser.uid);
-                const userSnap = await getDoc(userRef);
-                
-                if (userSnap.exists()) {
-                  const profile = userSnap.data() as UserProfile;
-                  const updatedProfile = {
-                    ...profile,
-                    photoURL: googlePhoto || profile.photoURL || '',
-                    displayName: profile.displayName || googleName || profile.displayName,
-                    photoSyncToken: Date.now().toString()
-                  };
-                  await setDoc(userRef, updatedProfile);
-                  setUserProfile(updatedProfile);
-                }
-              } catch (e) {
-                console.error("Manual sync failed", e);
-              }
-            }
-          }}
+          onSyncProfile={syncUserProfile}
         />;
       case 'history':
         return (
@@ -1504,7 +1627,21 @@ export default function App() {
   const sidebarAllowedTabs = allowedTabs;
 
   return (
-    <div className={cn(
+    <>
+      {showWelcomeSlider && welcomeSlides.length > 0 && (
+        <WelcomeSlider 
+          key="app-welcome-slider"
+          onComplete={() => {
+            setShowWelcomeSlider(false);
+            sessionStorage.setItem('hasSeenWelcome_v2', 'true');
+          }} 
+          isDarkMode={isDarkMode}
+          userName={user?.displayName || userProfile?.displayName || undefined}
+          slides={welcomeSlides}
+        />
+      )}
+
+      <div className={cn(
       "min-h-screen font-sans transition-colors duration-300 flex",
       isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
     )}>
@@ -1526,6 +1663,8 @@ export default function App() {
         isEditMode={isEditMode}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
         isAdminMode={isAdminMode}
         setIsAdminMode={setIsAdminMode}
         appName={systemSettings.appName}
@@ -1534,7 +1673,10 @@ export default function App() {
         uid={user?.uid || ''}
       />
       
-      <main ref={(el) => { mainScrollRef.current = el; }} className="flex-1 lg:ml-[260px] h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar">
+      <main ref={(el) => { mainScrollRef.current = el; }} className={cn(
+        "flex-1 h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
+        isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
+      )}>
         {/* Mobile Header */}
       <div className={cn(
         "lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b backdrop-blur-md",
@@ -1551,12 +1693,7 @@ export default function App() {
               onClick={() => setActiveTab('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95"
             >
-              <div className={cn(
-                "p-1.5 rounded-lg",
-                userProfile?.role === 'admin' ? "bg-indigo-600" : "bg-primary"
-              )}>
-                <Pill size={14} className="text-white" />
-              </div>
+              <img src="/pwa-192x192.svg" alt="Logo" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
               <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                 {systemSettings.appName}
               </h1>
@@ -1938,14 +2075,9 @@ export default function App() {
             <button 
               onClick={() => setActiveTab('dashboard')}
               className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95 group"
-              title="Trở về Tổng quan"
+              title="Trở về Workspace"
             >
-              <div className={cn(
-                "p-1.5 rounded-lg transition-all",
-                userProfile.role === 'admin' ? "bg-indigo-600" : "bg-primary"
-              )}>
-                <Pill size={16} className="text-white" />
-              </div>
+              <img src="/pwa-192x192.svg" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
               <span className="font-bold text-sm">{systemSettings.appName}</span>
             </button>
           </div>
@@ -2103,7 +2235,10 @@ export default function App() {
                           const allowedRoles = settings?.allowedRoles || [];
                           const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
                           const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
+                          
+                          // Restore original logic: Show if explicitly included in utilities_box hiddenLocations
                           const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
+                          
                           return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
                         }).sort((a, b) => {
                           const orderA = featureSettings[a.id]?.order ?? 999;
@@ -2348,14 +2483,23 @@ export default function App() {
           </div>
         )}
 
-        <div className="p-3 lg:px-6 lg:pb-6 lg:pt-0">
+        <div className="p-0 sm:p-3 lg:px-6 lg:pb-6 lg:pt-0">
           <motion.div
             key={activeTab}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.15 }}
           >
-            {renderContent()}
+            <Suspense fallback={
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                  Đang tải giao diện...
+                </p>
+              </div>
+            }>
+              {renderContent()}
+            </Suspense>
           </motion.div>
         </div>
 
@@ -2438,24 +2582,9 @@ export default function App() {
                     <label className={cn(
                       "block text-xs font-black uppercase tracking-widest transition-colors",
                       isDarkMode ? "text-slate-500" : "text-slate-400"
-                    )}>Thông tin cá nhân & Quyền riêng tư</label>
+                    )}>Quyền riêng tư</label>
                     
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>Số Zalo</p>
-                        <input 
-                          type="text"
-                          value={profileEditData.zaloNumber}
-                          onChange={(e) => setProfileEditData(prev => ({ ...prev, zaloNumber: e.target.value }))}
-                          onBlur={() => handleSaveProfileField({ zaloNumber: profileEditData.zaloNumber })}
-                          placeholder="Nhập số Zalo của bạn..."
-                          className={cn(
-                            "w-full px-4 py-3 rounded-xl border text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all",
-                            isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder:text-slate-600" : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
-                          )}
-                        />
-                      </div>
-
                       <div className="space-y-3">
                         <div className={cn(
                           "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
@@ -2491,44 +2620,6 @@ export default function App() {
                             <div className={cn(
                               "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
                               !profileEditData.hideEmail ? "left-6" : "left-1"
-                            )} />
-                          </button>
-                        </div>
-
-                        <div className={cn(
-                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
-                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
-                        )}>
-                          <div className="flex items-center gap-3">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
-                              <MessageSquare size={14} className="text-emerald-500" />
-                            </div>
-                            <div>
-                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
-                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                                {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
-                              </p>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => {
-                              const nextHideZalo = !profileEditData.hideZalo;
-                              if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
-                                setPrivacyConfirmType('zalo');
-                                setIsPrivacyConfirmOpen(true);
-                              } else {
-                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
-                                handleSaveProfileField({ hideZalo: nextHideZalo });
-                              }
-                            }}
-                            className={cn(
-                              "w-10 h-5 rounded-full relative transition-colors",
-                              !profileEditData.hideZalo ? "bg-emerald-500" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
-                            )}
-                          >
-                            <div className={cn(
-                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
-                              !profileEditData.hideZalo ? "left-6" : "left-1"
                             )} />
                           </button>
                         </div>
@@ -2817,17 +2908,11 @@ export default function App() {
               if (privacyConfirmType === 'email') {
                 setProfileEditData(prev => ({ ...prev, hideEmail: false }));
                 handleSaveProfileField({ hideEmail: false });
-              } else {
-                setProfileEditData(prev => ({ ...prev, hideZalo: false }));
-                handleSaveProfileField({ hideZalo: false });
               }
               setIsPrivacyConfirmOpen(false);
             }}
             title="Cảnh báo quyền riêng tư"
-            message={privacyConfirmType === 'email' 
-              ? "Bạn có chắc chắn muốn công khai Email không? Mọi người trong hệ thống sẽ có thể nhìn thấy email liên hệ của bạn."
-              : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người trong hệ thống sẽ có thể nhìn thấy số Zalo của bạn."
-            }
+            message="Bạn có chắc chắn muốn công khai Email không? Mọi người trong hệ thống sẽ có thể nhìn thấy email liên hệ của bạn."
             confirmText="Công khai"
             cancelText="Hủy"
             type="warning"
@@ -2846,5 +2931,6 @@ export default function App() {
           />
       </main>
     </div>
+    </>
   );
 }

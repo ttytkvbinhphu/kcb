@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2 } from 'lucide-react';
-import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType } from '../firebase';
+import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
 import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
@@ -17,15 +17,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '' });
+  const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '', department: '' });
   
   const [configTitles, setConfigTitles] = useState<string[]>([]);
   const [configPositions, setConfigPositions] = useState<string[]>([]);
   const [configSpecialties, setConfigSpecialties] = useState<string[]>([]);
+  const [configDepartments, setConfigDepartments] = useState<string[]>([]);
   const [configRoles, setConfigRoles] = useState<{id: string, name: string}[]>([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmUid, setConfirmUid] = useState<string | null>(null);
   const [confirmName, setConfirmName] = useState<string | null>(null);
+  const [systemSettings, setSystemSettings] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -46,8 +48,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     const unsubSpecialties = onSnapshot(collection(db, 'config_specialties'), (snapshot) => {
       setConfigSpecialties(snapshot.docs.map(doc => doc.data().name).sort());
     });
+    const unsubDepartments = onSnapshot(collection(db, 'config_departments'), (snapshot) => {
+      setConfigDepartments(snapshot.docs.map(doc => doc.data().name).sort());
+    });
     const unsubRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
       setConfigRoles(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubSettings = onSnapshot(doc(db, 'system_settings', 'main'), (doc) => {
+      if (doc.exists()) {
+        setSystemSettings(doc.data());
+      }
     });
 
     return () => {
@@ -55,7 +66,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       unsubTitles();
       unsubPositions();
       unsubSpecialties();
+      unsubDepartments();
       unsubRoles();
+      unsubSettings();
     };
   }, []);
 
@@ -87,12 +100,59 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     setIsConfirmOpen(true);
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const confirmDelete = async () => {
     if (!confirmUid) return;
+    setIsDeleting(true);
     try {
+      // Collections and their respective field names for owner/creator UID
+      const cascadingCollections = [
+        { name: 'prescriptions', field: 'doctorUid' },
+        { name: 'adr_reports', field: 'reporterUid' },
+        { name: 'calendar_events', field: 'createdBy' },
+        { name: 'notes', field: 'createdBy' },
+        { name: 'social_posts', field: 'authorUid' },
+        { name: 'social_likes', field: 'userId' },
+        { name: 'social_comments', field: 'authorUid' },
+        { name: 'notifications', field: 'userId' },
+        { name: 'auth_logs', field: 'userId' }
+      ];
+
+      // Sequential deletion to avoid batch limits for heavy users
+      for (const col of cascadingCollections) {
+        const q = query(collection(db, col.name), where(col.field, '==', confirmUid));
+        const snapshot = await getDocs(q);
+        for (const d of snapshot.docs) {
+          await deleteDoc(doc(db, col.name, d.id));
+          
+          // If it's a social post, we also need to delete its interactions
+          if (col.name === 'social_posts') {
+            const likesQ = query(collection(db, 'social_likes'), where('postId', '==', d.id));
+            const likesSnap = await getDocs(likesQ);
+            for (const ld of likesSnap.docs) {
+              await deleteDoc(doc(db, 'social_likes', ld.id));
+            }
+
+            const commentsQ = query(collection(db, 'social_comments'), where('postId', '==', d.id));
+            const commentsSnap = await getDocs(commentsQ);
+            for (const cd of commentsSnap.docs) {
+              await deleteDoc(doc(db, 'social_comments', cd.id));
+            }
+          }
+        }
+      }
+
+      // Finally delete the user profile itself
       await deleteDoc(doc(db, 'users', confirmUid));
+
+      setIsConfirmOpen(false);
+      setConfirmUid(null);
+      setConfirmName(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${confirmUid}`);
+      handleFirestoreError(error, OperationType.DELETE, `cascade_delete/${confirmUid}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -102,7 +162,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       displayName: user.displayName || '',
       title: user.title || '',
       position: user.position || '',
-      specialty: user.specialty || 'Không'
+      specialty: user.specialty || 'Không',
+      department: user.department || ''
     });
   };
 
@@ -114,7 +175,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         displayName: editForm.displayName,
         title: editForm.title,
         position: editForm.position,
-        specialty: editForm.specialty
+        specialty: editForm.specialty,
+        department: editForm.department
       });
       setEditingUser(null);
     } catch (error) {
@@ -126,6 +188,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     (u.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
     (u.displayName || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
+
+  const unapprovedUsers = users.filter(u => !u.isApproved);
 
   return (
     <div className={cn(
@@ -169,6 +233,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
           </div>
         </div>
       </div>
+
 
       <div className={cn(
         "rounded-[24px] lg:rounded-[32px] border transition-all overflow-hidden",
@@ -253,6 +318,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   )}>
                     {user.specialty || 'Không'}
                   </div>
+                  <div className={cn(
+                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
+                    isDarkMode ? "bg-teal-500/10 text-teal-400 border-teal-500/20" : "bg-teal-50 text-teal-700 border-teal-100"
+                  )}>
+                    {user.department || 'Chưa phân khoa'}
+                  </div>
                 </div>
 
                 <div className={cn(
@@ -321,6 +392,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
                   isDarkMode ? "text-slate-500" : "text-slate-400"
                 )}>Chuyên môn</th>
+                <th className={cn(
+                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
+                  isDarkMode ? "text-slate-500" : "text-slate-400"
+                )}>Khoa/Phòng</th>
                 <th className={cn(
                   "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
                   isDarkMode ? "text-slate-500" : "text-slate-400"
@@ -419,6 +494,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                           isDarkMode ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border-indigo-100"
                         )}>
                           {user.position || 'Nhân viên'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
+                          isDarkMode ? "bg-teal-500/10 text-teal-400 border-teal-500/20" : "bg-teal-50 text-teal-700 border-teal-100"
+                        )}>
+                          {user.department || 'Chưa phân khoa'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -659,6 +742,37 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         placeholder="Hoặc nhập chuyên môn khác..."
                       />
                     </div>
+
+                    <div>
+                      <label className={cn("block text-[10px] font-bold mb-3 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Khoa/Phòng</label>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {configDepartments.map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => setEditForm({ ...editForm, department: d })}
+                            className={cn(
+                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
+                              editForm.department === d 
+                                ? (isDarkMode ? "bg-teal-500/20 border-teal-500 text-teal-400" : "bg-teal-50 border-teal-600 text-teal-600")
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
+                            )}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        className={cn(
+                          "w-full px-5 py-3.5 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                        )}
+                        value={editForm.department || ''}
+                        onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                        placeholder="Hoặc nhập Khoa/Phòng khác..."
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -713,7 +827,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         onClose={() => setIsConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Xác nhận xóa người dùng"
-        message={`Bạn có chắc chắn muốn xóa người dùng "${confirmName}" khỏi hệ thống? Hành động này không thể hoàn tác.`}
+        message={`Bạn có chắc chắn muốn xóa người dùng "${confirmName}" khỏi hệ thống? Tất cả dữ liệu bài đăng, ghi chú, đơn thuốc... do tài khoản này tạo ra cũng sẽ bị xóa. Hành động này không thể hoàn tác.`}
         confirmText="Xác nhận xóa"
         isDarkMode={isDarkMode}
       />

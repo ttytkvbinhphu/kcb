@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { Reorder } from 'motion/react';
 
@@ -16,6 +17,8 @@ interface SidebarProps {
   isEditMode: boolean;
   isOpen: boolean;
   setIsOpen: (val: boolean) => void;
+  isCollapsed?: boolean;
+  setIsCollapsed?: (val: boolean) => void;
   isAdminMode?: boolean;
   setIsAdminMode?: (val: boolean) => void;
   appName: string;
@@ -45,6 +48,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   isEditMode, 
   isOpen, 
   setIsOpen, 
+  isCollapsed = false,
+  setIsCollapsed,
   isAdminMode,
   setIsAdminMode,
   appName,
@@ -54,12 +59,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
+  const [tooltip, setTooltip] = useState<{ label: string; y: number; isMaintenance?: boolean; isClosed?: boolean } | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const allPossibleItems: SidebarItem[] = [
-      { id: 'dashboard', label: featureSettings['dashboard']?.customTitle || 'Tổng quan', icon: LayoutDashboard, section: 'member', group: 'general' },
+      { id: 'dashboard', label: featureSettings['dashboard']?.customTitle || 'Workspace', icon: LayoutDashboard, section: 'member', group: 'general' },
       { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, section: 'member', group: 'general' },
       { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, section: 'member', group: 'general' },
+      { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, section: 'member', group: 'general' },
       { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
       { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
@@ -67,18 +75,15 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Tra cứu bệnh nhân', icon: Users, section: 'member', group: 'general' },
       { id: 'view_prescription', label: featureSettings['view_prescription']?.customTitle || 'Kê toa thử', icon: FileText, section: 'member', group: 'general' },
       { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Mạng xã hội', icon: MessageSquare, section: 'member', group: 'general' },
+      { id: 'view_calculator', label: featureSettings['view_calculator']?.customTitle || 'Máy tính', icon: Calculator, section: 'member', group: 'general' },
       
       { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutGrid, section: 'admin', group: 'admin' },
+      { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
       { id: 'admin_general', label: 'Cài đặt chung', icon: Globe, section: 'admin', group: 'admin' },
       { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
-      { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award, section: 'admin', group: 'admin' },
-      { id: 'admin_positions', label: 'Quản lý Chức vụ', icon: Briefcase, section: 'admin', group: 'admin' },
-      { id: 'admin_specialties', label: 'Quản lý Chuyên khoa', icon: GraduationCap, section: 'admin', group: 'admin' },
-      { id: 'admin_roles', label: 'Quản lý Nhóm quyền', icon: ShieldCheck, section: 'admin', group: 'admin' },
-      { id: 'admin_permissions', label: 'Phân quyền hệ thống', icon: Lock, section: 'admin', group: 'admin' },
+      { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users, section: 'admin', group: 'admin' },
       
       { id: 'manage_users', label: 'Quản lý người dùng', icon: Users, section: 'admin', group: 'admin' },
-      { id: 'manage_staff', label: 'Quản lý nhân sự', icon: Briefcase, section: 'admin', group: 'admin' },
       { id: 'manage_directory', label: featureSettings['manage_directory']?.customTitle || 'Quản lý thuốc', icon: Pill, section: 'member', group: 'pharmacy' },
       { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'member', group: 'pharmacy' },
       { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'pharmacy' },
@@ -177,12 +182,26 @@ const Sidebar: React.FC<SidebarProps> = ({
     const status = featureStates[item.id];
     const isMaintenance = status === 'maintenance';
     const isClosed = status === 'closed';
+    const isActive = activeTab === item.id;
+
+    const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+      if (!isCollapsed || isEditMode) return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setTooltip({
+        label: item.label,
+        y: rect.top + rect.height / 2,
+        isMaintenance,
+        isClosed,
+      });
+    };
 
     return (
       <Reorder.Item
         key={item.id}
         value={item}
         drag={isEditMode ? "y" : false}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setTooltip(null)}
         className={cn(
           "relative group",
           isEditMode && "cursor-default"
@@ -192,38 +211,58 @@ const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => !isEditMode && setActiveTab(item.id)}
           className={cn(
             "w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all duration-200",
+            isCollapsed ? "justify-center" : "px-2",
             isEditMode && "border border-dashed border-primary/30 bg-primary/5",
-            activeTab === item.id 
-              ? (isAdminMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" : 
+            isActive
+              ? (isAdminMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" :
                 "bg-primary text-white shadow-lg shadow-primary/20")
               : (isDarkMode ? "text-slate-400 hover:bg-slate-800 hover:text-white" : "text-slate-500 hover:bg-primary-light/50 hover:text-primary")
           )}
         >
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <item.icon size={16} className={cn(
-              "transition-colors shrink-0",
-              activeTab === item.id ? "text-white" : cn(isDarkMode ? "text-slate-500" : "text-slate-400", 
-                isAdminMode ? "group-hover:text-indigo-400" : "group-hover:text-primary")
-            )} />
-            <span className="font-bold text-xs truncate">{item.label}</span>
+          <div className={cn("flex items-center gap-2 min-w-0", isCollapsed ? "justify-center flex-1" : "flex-1")}>
+            {isCollapsed ? (
+              <div className={cn(
+                "flex items-center justify-center w-9 h-9 rounded-xl transition-all duration-200",
+                !isActive && (isDarkMode
+                  ? "group-hover:bg-slate-700 group-hover:ring-2 group-hover:ring-primary/30"
+                  : "group-hover:bg-primary/10 group-hover:ring-2 group-hover:ring-primary/20")
+              )}>
+                <item.icon size={20} className={cn(
+                  "transition-all duration-200 group-hover:scale-110",
+                  isActive ? "text-white" : cn(
+                    isDarkMode ? "text-slate-400" : "text-slate-400",
+                    isAdminMode ? "group-hover:text-indigo-400" : "group-hover:text-primary"
+                  )
+                )} />
+              </div>
+            ) : (
+              <item.icon size={16} className={cn(
+                "transition-colors shrink-0",
+                isActive ? "text-white" : cn(isDarkMode ? "text-slate-500" : "text-slate-400",
+                  isAdminMode ? "group-hover:text-indigo-400" : "group-hover:text-primary")
+              )} />
+            )}
+            {!isCollapsed && <span className="font-bold text-[14px] truncate">{item.label}</span>}
           </div>
-          
-          {isMaintenance && !isAdminMode && (
-            <div className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tighter">
-              Bảo trì
-            </div>
-          )}
 
-          {isClosed && !isAdminMode && (
-            <div className="px-1.5 py-0.5 rounded-md bg-rose-500 text-[8px] font-black text-white uppercase tracking-tighter">
-              Đóng
-            </div>
-          )}
-
-          {isEditMode && (
-            <div className="opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1">
-              <GripVertical size={14} className="text-primary" />
-            </div>
+          {!isCollapsed && (
+            <>
+              {isMaintenance && !isAdminMode && (
+                <div className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tighter">
+                  Bảo trì
+                </div>
+              )}
+              {isClosed && !isAdminMode && (
+                <div className="px-1.5 py-0.5 rounded-md bg-rose-500 text-[8px] font-black text-white uppercase tracking-tighter">
+                  Đóng
+                </div>
+              )}
+              {isEditMode && (
+                <div className="opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1">
+                  <GripVertical size={14} className="text-primary" />
+                </div>
+              )}
+            </>
           )}
         </button>
       </Reorder.Item>
@@ -232,6 +271,51 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
+      {/* Portal Tooltip for collapsed sidebar */}
+      {isCollapsed && tooltip && ReactDOM.createPortal(
+        <div
+          className="pointer-events-none"
+          style={{
+            position: 'fixed',
+            left: 92,
+            top: tooltip.y,
+            transform: 'translateY(-50%)',
+            zIndex: 9999,
+          }}
+        >
+          <div className={cn(
+            "flex items-center gap-2 px-3.5 py-2 rounded-xl shadow-2xl whitespace-nowrap",
+            "animate-in fade-in slide-in-from-left-2 duration-150",
+            isDarkMode
+              ? "bg-slate-800 border border-slate-600/80 text-white shadow-black/40"
+              : "bg-white border border-slate-200 text-slate-800 shadow-slate-300/50"
+          )}>
+            {/* Arrow */}
+            <div className={cn(
+              "absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 border-l border-b",
+              isDarkMode ? "bg-slate-800 border-slate-600/80" : "bg-white border-slate-200"
+            )} />
+            <span className={cn(
+              "text-[13px] font-bold relative z-10",
+              isDarkMode ? "text-white" : "text-slate-800"
+            )}>
+              {tooltip.label}
+            </span>
+            {tooltip.isMaintenance && !isAdminMode && (
+              <span className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tight">
+                Bảo trì
+              </span>
+            )}
+            {tooltip.isClosed && !isAdminMode && (
+              <span className="px-1.5 py-0.5 rounded-md bg-rose-500 text-[8px] font-black text-white uppercase tracking-tight">
+                Đóng
+              </span>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Mobile Overlay */}
       <div 
         className={cn(
@@ -243,13 +327,14 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar */}
       <div className={cn(
-        "w-[260px] h-screen flex flex-col fixed left-0 top-0 shadow-xl border-r transition-transform duration-300 z-50 lg:translate-x-0",
+        "h-screen flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
+        isCollapsed ? "w-[80px]" : "w-[260px]",
         isAdminMode 
           ? (isDarkMode ? "bg-slate-950 border-indigo-900/30 text-white" : "bg-white border-indigo-100 text-slate-900")
           : (isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900"),
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className={cn("p-3 border-b relative", isDarkMode ? "border-slate-800" : "border-slate-100")}>
+        <div className={cn("p-2 sm:p-3 border-b relative", isDarkMode ? "border-slate-800" : "border-slate-100")}>
           <button 
             onClick={() => setIsOpen(false)}
             className={cn(
@@ -260,6 +345,21 @@ const Sidebar: React.FC<SidebarProps> = ({
             <X size={18} className="text-slate-400" />
           </button>
 
+          {/* Pc Toggle Button */}
+          {setIsCollapsed && (
+            <button 
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className={cn(
+                "hidden lg:flex absolute -right-3 top-6 w-6 h-6 rounded-full border items-center justify-center z-[60] transition-all",
+                isDarkMode ? "bg-slate-900 border-slate-700 hover:text-white" : "bg-white border-slate-200 hover:text-primary shadow-sm"
+              )}
+            >
+              {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+          )}
+
+
+
           {isAdminMode && setIsAdminMode && (
             <button 
               onClick={() => {
@@ -268,13 +368,15 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
               className={cn(
                 "w-full p-2 rounded-lg border flex items-center gap-2 transition-all group/back mb-3",
+                isCollapsed ? "justify-center" : "",
                 isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
               )}
+              title={isCollapsed ? "Thoát AdminCP" : undefined}
             >
-              <div className="p-1.5 bg-rose-500 text-white rounded-md shadow-sm group-hover/back:scale-110 transition-transform">
+              <div className="p-1.5 bg-rose-500 text-white rounded-md shadow-sm group-hover/back:scale-110 transition-transform shrink-0">
                 <LogOut size={12} />
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-rose-500">Thoát AdminCP</span>
+              {!isCollapsed && <span className="text-[14px] font-black uppercase tracking-widest text-rose-500 truncate">Thoát AdminCP</span>}
             </button>
           )}
 
@@ -282,41 +384,46 @@ const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => setActiveTab('view_profile')}
             className={cn(
               "w-full p-2 rounded-lg border flex items-center gap-2 transition-all group/profile mb-2",
+              isCollapsed ? "justify-center" : "",
               activeTab === 'view_profile'
                 ? (isDarkMode ? "bg-primary/20 border-primary/50" : "bg-primary/5 border-primary/20")
                 : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 shadow-sm hover:border-slate-200")
             )}
+            title={isCollapsed ? displayName : undefined}
           >
             {photoURL ? (
               <img 
                 src={getBustedPhotoURL(photoURL, photoSyncToken)} 
                 alt={displayName} 
-                className={cn("w-7 h-7 rounded-full border-2 shadow-sm transition-transform group-hover/profile:scale-110", isDarkMode ? "border-slate-800" : "border-white")}
+                className={cn("w-7 h-7 rounded-full border-2 shadow-sm transition-transform group-hover/profile:scale-110 shrink-0", isDarkMode ? "border-slate-800" : "border-white")}
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={cn("w-7 h-7 rounded-full flex items-center justify-center transition-transform group-hover/profile:scale-110", isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-400 shadow-sm")}>
+              <div className={cn("w-7 h-7 rounded-full flex items-center justify-center transition-transform group-hover/profile:scale-110 shrink-0", isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-400 shadow-sm")}>
                 <Users size={14} />
               </div>
             )}
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider truncate">
-                {title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên')}
-              </p>
-              <p className={cn("text-[11px] font-bold truncate transition-colors", 
-                activeTab === 'view_profile' ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")
-              )}>
-                {displayName}
-              </p>
-            </div>
+            {!isCollapsed && (
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider truncate">
+                  {title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên')}
+                </p>
+                <p className={cn("text-[14px] font-bold truncate transition-colors", 
+                  activeTab === 'view_profile' ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")
+                )}>
+                  {displayName}
+                </p>
+              </div>
+            )}
           </button>
         </div>
         
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-6 mt-2">
           <div>
-            <div className="px-2 mb-2 flex items-center gap-2">
+            <div className={cn("px-2 mb-2 flex items-center gap-2", isCollapsed ? "justify-center" : "")}>
               <div className={cn(
                 "h-px flex-1", 
+                isCollapsed && "hidden",
                 isAdminMode 
                   ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
                   : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
@@ -327,10 +434,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                   ? (isDarkMode ? "text-indigo-400" : "text-indigo-500") 
                   : (isDarkMode ? "text-slate-500" : "text-slate-400")
               )}>
-                {isAdminMode ? "Admin Control Panel" : "Tính năng của nhân viên"}
+                {isCollapsed ? "•" : (isAdminMode ? "Admin Control Panel" : "Tính năng Y tế")}
               </p>
               <div className={cn(
                 "h-px flex-1", 
+                isCollapsed && "hidden",
                 isAdminMode 
                   ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
                   : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
@@ -343,15 +451,15 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {!isAdminMode && pharmacyItems.length > 0 && (
             <div>
-              <div className="px-2 mb-2 flex items-center gap-2">
-                <div className={cn("h-px flex-1", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
+              <div className={cn("px-2 mb-2 flex items-center gap-2", isCollapsed ? "justify-center" : "")}>
+                <div className={cn("h-px flex-1", isCollapsed ? "hidden" : (isDarkMode ? "bg-slate-800" : "bg-slate-200"))} />
                 <p className={cn(
                   "text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap",
                   isDarkMode ? "text-slate-500" : "text-slate-400"
                 )}>
-                  - Dược - Vật tư, thiết bị y tế -
+                  {isCollapsed ? "•" : "- Dược - Vật tư -"}
                 </p>
-                <div className={cn("h-px flex-1", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
+                <div className={cn("h-px flex-1", isCollapsed ? "hidden" : (isDarkMode ? "bg-slate-800" : "bg-slate-200"))} />
               </div>
               <Reorder.Group axis="y" values={pharmacyItems} onReorder={handleReorderPharmacy} className="space-y-0.5">
                 {pharmacyItems.map(renderItem)}
@@ -362,11 +470,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         <div className={cn("p-2 border-t", isDarkMode ? "border-slate-800" : "border-slate-100")}>
           <div className={cn(
-            "px-2 py-1.5 rounded-lg text-[9px] font-bold flex items-center gap-2 transition-colors",
+            "px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all",
+            isCollapsed ? "justify-center" : "",
             isDarkMode ? "text-slate-500 bg-slate-900/50" : "text-slate-400 bg-white border border-slate-100 shadow-sm"
-          )}>
-            <MessageSquare size={10} className="text-primary" />
-            <span>Zalo: 093.262.10.28 (DS. Bảo)</span>
+          )} title="Zalo: 093.262.10.28 (DS. Bảo)">
+            <MessageSquare size={10} className="text-primary shrink-0" />
+            {!isCollapsed && <span className="truncate">Zalo: 093.262.10.28 (DS. Bảo)</span>}
           </div>
         </div>
 

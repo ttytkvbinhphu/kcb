@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, FileUp, Users, ChevronRight, X, Loader2, Check, AlertTriangle, Filter, Eye, Trash2, Download, Table, Pill, ClipboardList, Activity } from 'lucide-react';
+import { Search, Users, ChevronRight, X, Loader2, Check, AlertTriangle, Filter, Eye, Trash2, Pill, ClipboardList, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, writeBatch, where, getDocs } from '../firebase';
 import { Patient, PatientDrug, PatientSupply, PatientSubclinical } from '../types';
-import * as XLSX from 'xlsx';
 
 interface PatientManagementProps {
   isDarkMode: boolean;
@@ -53,7 +52,6 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -63,11 +61,6 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     subclinical: PatientSubclinical[];
   }>({ drugs: [], supplies: [], subclinical: [] });
   const [detailsLoading, setDetailsLoading] = useState(false);
-
-  // Import state
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState('');
 
   // Manual Input state
   const [manualPatient, setManualPatient] = useState<Partial<Patient>>({
@@ -153,230 +146,6 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     (p.MA_BN || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
     (p.SO_CCCD || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
-
-  const downloadSampleExcel = () => {
-    const patients = [
-      {
-        MA_LK: '20240001', MA_BN: 'BN001', HO_TEN: 'Nguyễn Văn A', SO_CCCD: '001090123456', 
-        NGAY_SINH: '1985-05-15', GIOI_TINH: '1', NHOM_MAU: 'A+', MA_DANTOC: '01', 
-        MA_NGHE_NGHIEP: '01', DIA_CHI: '123 Đường Lê Lợi, Quận 1, TP.HCM', DIEN_THOAI: '0901234567', 
-        MA_THE_BHYT: 'GD4797921500001', MA_DKBD: '79001', GT_THE_TU: '2024-01-01', GT_THE_DEN: '2024-12-31', 
-        LY_DO_VV: 'Đau bụng âm ỉ vùng thượng vị', CHAN_DOAN_VAO: 'Viêm loét dạ dày tá tràng', 
-        CHAN_DOAN_RV: 'Viêm dạ dày cấp', MA_BENH_CHINH: 'K29.1', MA_BENH_KT: 'K29.5', 
-        GIAY_CHUYEN_TUYEN: '', NGAYGIO_VAO: '2024-04-01 08:30:00', NGAYGIO_RA: '2024-04-01 11:45:00', 
-        SO_NGAY_DIEU_TRI_3176: '3 giờ 15 phút', PP_DIEU_TRI: 'Nội khoa', CAN_NANG: '65', 
-        MA_BAC_SI: 'BS001', TEN_BAC_SI: 'BS. Lê Văn Tám'
-      },
-      {
-        MA_LK: '20240002', MA_BN: 'BN002', HO_TEN: 'Trần Thị B', SO_CCCD: '001095654321', 
-        NGAY_SINH: '1992-10-20', GIOI_TINH: '2', NHOM_MAU: 'B-', MA_DANTOC: '01', 
-        MA_NGHE_NGHIEP: '02', DIA_CHI: '456 Đường Nguyễn Huệ, Quận 1, TP.HCM', DIEN_THOAI: '0912345678', 
-        MA_THE_BHYT: 'DN4797921500002', MA_DKBD: '79002', GT_THE_TU: '2024-01-01', GT_THE_DEN: '2024-12-31', 
-        LY_DO_VV: 'Sốt cao, ho kéo dài', CHAN_DOAN_VAO: 'Viêm phế quản cấp', 
-        CHAN_DOAN_RV: 'Viêm phế quản', MA_BENH_CHINH: 'J20.9', MA_BENH_KT: '', 
-        GIAY_CHUYEN_TUYEN: '', NGAYGIO_VAO: '2024-04-02 09:00:00', NGAYGIO_RA: '2024-04-02 10:30:00', 
-        SO_NGAY_DIEU_TRI_3176: '1 giờ 30 phút', PP_DIEU_TRI: 'Nội khoa', CAN_NANG: '52', 
-        MA_BAC_SI: 'BS002', TEN_BAC_SI: 'BS. Nguyễn Thị Hoa'
-      },
-      {
-        MA_LK: '20240003', MA_BN: 'BN003', HO_TEN: 'Lê Văn C', SO_CCCD: '001088776655', 
-        NGAY_SINH: '1970-01-01', GIOI_TINH: '1', NHOM_MAU: 'O+', MA_DANTOC: '01', 
-        MA_NGHE_NGHIEP: '03', DIA_CHI: '789 Đường Cách Mạng Tháng 8, Quận 10, TP.HCM', DIEN_THOAI: '0988776655', 
-        MA_THE_BHYT: 'HT4797921500003', MA_DKBD: '79010', GT_THE_TU: '2024-01-01', GT_THE_DEN: '2024-12-31', 
-        LY_DO_VV: 'Đau đầu, chóng mặt', CHAN_DOAN_VAO: 'Tăng huyết áp vô căn', 
-        CHAN_DOAN_RV: 'Tăng huyết áp', MA_BENH_CHINH: 'I10', MA_BENH_KT: 'E11', 
-        GIAY_CHUYEN_TUYEN: '', NGAYGIO_VAO: '2024-04-03 14:00:00', NGAYGIO_RA: '2024-04-03 15:30:00', 
-        SO_NGAY_DIEU_TRI_3176: '1 giờ 30 phút', PP_DIEU_TRI: 'Nội khoa', CAN_NANG: '70', 
-        MA_BAC_SI: 'BS003', TEN_BAC_SI: 'BS. Phạm Văn Dũng'
-      },
-      {
-        MA_LK: '20240004', MA_BN: 'BN004', HO_TEN: 'Phạm Thị D', SO_CCCD: '001099887766', 
-        NGAY_SINH: '2000-12-12', GIOI_TINH: '2', NHOM_MAU: 'AB+', MA_DANTOC: '01', 
-        MA_NGHE_NGHIEP: '04', DIA_CHI: '321 Đường Võ Văn Kiệt, Quận 5, TP.HCM', DIEN_THOAI: '0977665544', 
-        MA_THE_BHYT: 'TE4797921500004', MA_DKBD: '79005', GT_THE_TU: '2024-01-01', GT_THE_DEN: '2024-12-31', 
-        LY_DO_VV: 'Đau họng, nuốt vướng', CHAN_DOAN_VAO: 'Viêm Amidan cấp', 
-        CHAN_DOAN_RV: 'Viêm Amidan', MA_BENH_CHINH: 'J03.9', MA_BENH_KT: '', 
-        GIAY_CHUYEN_TUYEN: '', NGAYGIO_VAO: '2024-04-04 10:00:00', NGAYGIO_RA: '2024-04-04 11:00:00', 
-        SO_NGAY_DIEU_TRI_3176: '1 giờ', PP_DIEU_TRI: 'Nội khoa', CAN_NANG: '48', 
-        MA_BAC_SI: 'BS004', TEN_BAC_SI: 'BS. Đỗ Thị Lan'
-      }
-    ];
-
-    const drugs = [
-      { MA_LK: '20240001', TEN_THUOC: 'Paracetamol 500mg', HOAT_CHAT: 'Paracetamol', DON_VI_TINH: 'Viên', HAM_LUONG: '500mg', LIEU_DUNG: 'Ngày 2 lần, mỗi lần 1 viên', CACH_DUNG: 'Uống sau ăn', SO_LUONG: '10', MA_BAC_SI: 'BS001', TEN_BAC_SI: 'BS. Lê Văn Tám', NGAYGIO_YL: '2024-04-01 09:00:00' },
-      { MA_LK: '20240001', TEN_THUOC: 'Omeprazol 20mg', HOAT_CHAT: 'Omeprazol', DON_VI_TINH: 'Viên', HAM_LUONG: '20mg', LIEU_DUNG: 'Ngày 1 lần, mỗi lần 1 viên', CACH_DUNG: 'Uống trước ăn sáng 30p', SO_LUONG: '14', MA_BAC_SI: 'BS001', TEN_BAC_SI: 'BS. Lê Văn Tám', NGAYGIO_YL: '2024-04-01 09:00:00' },
-      { MA_LK: '20240002', TEN_THUOC: 'Amoxicillin 500mg', HOAT_CHAT: 'Amoxicillin', DON_VI_TINH: 'Viên', HAM_LUONG: '500mg', LIEU_DUNG: 'Ngày 3 lần, mỗi lần 1 viên', CACH_DUNG: 'Uống sau ăn', SO_LUONG: '21', MA_BAC_SI: 'BS002', TEN_BAC_SI: 'BS. Nguyễn Thị Hoa', NGAYGIO_YL: '2024-04-02 09:30:00' },
-      { MA_LK: '20240003', TEN_THUOC: 'Amlodipin 5mg', HOAT_CHAT: 'Amlodipin', DON_VI_TINH: 'Viên', HAM_LUONG: '5mg', LIEU_DUNG: 'Ngày 1 lần, mỗi lần 1 viên', CACH_DUNG: 'Uống sáng', SO_LUONG: '30', MA_BAC_SI: 'BS003', TEN_BAC_SI: 'BS. Phạm Văn Dũng', NGAYGIO_YL: '2024-04-03 14:30:00' }
-    ];
-
-    const supplies = [
-      { MA_LK: '20240001', TEN_VAT_TU: 'Bông gòn y tế', DON_VI_TINH: 'Gói', SO_LUONG: '1', DON_GIA: '5000', THANH_TIEN: '5000' },
-      { MA_LK: '20240002', TEN_VAT_TU: 'Khẩu trang y tế', DON_VI_TINH: 'Cái', SO_LUONG: '2', DON_GIA: '2000', THANH_TIEN: '4000' },
-      { MA_LK: '20240003', TEN_VAT_TU: 'Kim tiêm G25', DON_VI_TINH: 'Cái', SO_LUONG: '1', DON_GIA: '3000', THANH_TIEN: '3000' },
-      { MA_LK: '20240004', TEN_VAT_TU: 'Gạc tiệt trùng', DON_VI_TINH: 'Miếng', SO_LUONG: '5', DON_GIA: '1000', THANH_TIEN: '5000' }
-    ];
-
-    const subclinical = [
-      { MA_LK: '20240001', TEN_CHI_SO: 'Huyết áp', GIA_TRI: '120/80', DON_VI: 'mmHg', KET_LUAN: 'Bình thường' },
-      { MA_LK: '20240002', TEN_CHI_SO: 'Nhiệt độ', GIA_TRI: '38.5', DON_VI: 'độ C', KET_LUAN: 'Sốt nhẹ' },
-      { MA_LK: '20240003', TEN_CHI_SO: 'Glucose máu', GIA_TRI: '6.5', DON_VI: 'mmol/L', KET_LUAN: 'Hơi cao' },
-      { MA_LK: '20240004', TEN_CHI_SO: 'Nhịp tim', GIA_TRI: '80', DON_VI: 'lần/phút', KET_LUAN: 'Bình thường' }
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(patients), "Patients");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(drugs), "Drugs");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(supplies), "Supplies");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(subclinical), "Subclinical");
-    XLSX.writeFile(wb, "Mau_Du_Lieu_Benh_Nhan.xlsx");
-  };
-
-  const parseExcel = (file: File, sheetName?: string): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-        const targetSheetName = sheetName || workbook.SheetNames[0];
-        const sheet = workbook.Sheets[targetSheetName];
-        if (!sheet) {
-          resolve([]);
-          return;
-        }
-        const json = XLSX.utils.sheet_to_json(sheet);
-        resolve(json);
-      };
-      reader.onerror = reject;
-      reader.readAsBinaryString(file);
-    });
-  };
-
-  const handleImport = async () => {
-    if (!importFile) {
-      alert("Vui lòng chọn file Excel dữ liệu tổng hợp");
-      return;
-    }
-
-    setImporting(true);
-    setImportProgress('Đang xử lý dữ liệu...');
-
-    try {
-      const batchSize = 500;
-      
-      const reader = new FileReader();
-      const workbook = await new Promise<XLSX.WorkBook>((resolve) => {
-        reader.onload = (e) => resolve(XLSX.read(e.target?.result, { type: 'binary' }));
-        reader.readAsBinaryString(importFile);
-      });
-
-      const hasSheet = (name: string) => workbook.SheetNames.some(s => (s || '').toLowerCase() === (name || '').toLowerCase());
-      const getSheetData = (possibleNames: string[]) => {
-        const name = workbook.SheetNames.find(s => possibleNames.includes((s || '').toLowerCase()));
-        return name ? XLSX.utils.sheet_to_json(workbook.Sheets[name]) : [];
-      };
-
-      // 1. Process Patients (First sheet or 'Patients' or 'BenhNhan')
-      setImportProgress('Đang tải thông tin bệnh nhân...');
-      const patientData = getSheetData(['patients', 'benhnhan', (workbook.SheetNames[0] || '').toLowerCase()]);
-      let batch = writeBatch(db);
-      let count = 0;
-      for (const item of patientData as any[]) {
-        if (!item.MA_LK) continue;
-        const docRef = doc(db, 'patients', String(item.MA_LK));
-        batch.set(docRef, {
-          ...item,
-          MA_LK: String(item.MA_LK),
-          MA_BN: String(item.MA_BN || ''),
-          HO_TEN: String(item.HO_TEN || ''),
-          updatedAt: new Date().toISOString()
-        });
-        count++;
-        if (count % batchSize === 0) {
-          await batch.commit();
-          batch = writeBatch(db);
-        }
-      }
-      await batch.commit();
-
-      // 2. Process Drugs
-      setImportProgress('Đang tải thông tin thuốc...');
-      const drugData = getSheetData(['drugs', 'thuoc']);
-      if (drugData.length > 0) {
-        batch = writeBatch(db);
-        count = 0;
-        for (const item of drugData as any[]) {
-          if (!item.MA_LK) continue;
-          const docRef = doc(collection(db, 'patient_drugs'));
-          batch.set(docRef, {
-            ...item,
-            MA_LK: String(item.MA_LK)
-          });
-          count++;
-          if (count % batchSize === 0) {
-            await batch.commit();
-            batch = writeBatch(db);
-          }
-        }
-        await batch.commit();
-      }
-
-      // 3. Process Supplies
-      setImportProgress('Đang tải thông tin vật tư...');
-      const supplyData = getSheetData(['supplies', 'vattu']);
-      if (supplyData.length > 0) {
-        batch = writeBatch(db);
-        count = 0;
-        for (const item of supplyData as any[]) {
-          if (!item.MA_LK) continue;
-          const docRef = doc(collection(db, 'patient_supplies'));
-          batch.set(docRef, {
-            ...item,
-            MA_LK: String(item.MA_LK)
-          });
-          count++;
-          if (count % batchSize === 0) {
-            await batch.commit();
-            batch = writeBatch(db);
-          }
-        }
-        await batch.commit();
-      }
-
-      // 4. Process Subclinical
-      setImportProgress('Đang tải thông tin cận lâm sàng...');
-      const subclinicalData = getSheetData(['subclinical', 'canlamsang']);
-      if (subclinicalData.length > 0) {
-        batch = writeBatch(db);
-        count = 0;
-        for (const item of subclinicalData as any[]) {
-          if (!item.MA_LK) continue;
-          const docRef = doc(collection(db, 'patient_subclinical'));
-          batch.set(docRef, {
-            ...item,
-            MA_LK: String(item.MA_LK)
-          });
-          count++;
-          if (count % batchSize === 0) {
-            await batch.commit();
-            batch = writeBatch(db);
-          }
-        }
-        await batch.commit();
-      }
-
-      setImportProgress('Hoàn tất!');
-      setTimeout(() => {
-        setIsImportModalOpen(false);
-        setImporting(false);
-        setImportFile(null);
-      }, 1500);
-
-    } catch (error) {
-      console.error("Import error:", error);
-      alert("Lỗi khi import dữ liệu. Vui lòng kiểm tra lại định dạng file.");
-      setImporting(false);
-    }
-  };
 
   const handleDeletePatient = async (maLk: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa bệnh nhân này và tất cả dữ liệu liên quan?")) return;
@@ -465,16 +234,6 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
               >
                 <Users size={14} />
                 Nhập thủ công
-              </button>
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all",
-                  isDarkMode ? "shadow-none" : "shadow-md shadow-blue-200"
-                )}
-              >
-                <FileUp size={14} />
-                Import Excel
               </button>
             </>
           )}
@@ -1000,149 +759,6 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                   )}
                 >
                   {savingManual ? <Loader2 className="animate-spin mx-auto" size={20} /> : "Lưu thông tin"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Import Modal */}
-      <AnimatePresence>
-        {isImportModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => !importing && setIsImportModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/60"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className={cn(
-                "relative w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border transition-colors",
-                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-              )}
-            >
-              <div className={cn(
-                "p-6 border-b flex items-center justify-between",
-                isDarkMode ? "border-slate-800" : "border-slate-100"
-              )}>
-                <h3 className="text-xl font-black tracking-tight">Import dữ liệu bệnh nhân</h3>
-                <button onClick={() => !importing && setIsImportModalOpen(false)} className={cn(
-                  "p-2 rounded-xl transition-colors",
-                  isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
-                )}>
-                  <X size={20} />
-                </button>
-              </div>
-              
-              <div className="p-8 space-y-6">
-                <div className="flex justify-between items-center">
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-bold">Tải lên dữ liệu Excel</h3>
-                    <p className="text-xs text-slate-500">Hệ thống hỗ trợ import từ file Excel (.xlsx, .xls)</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => setImportFile(null)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-xs font-bold transition-all",
-                        isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      )}
-                    >
-                      Xóa file
-                    </button>
-                    <button 
-                      onClick={downloadSampleExcel}
-                      className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
-                        isDarkMode ? "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20" : "bg-blue-50 text-blue-600 hover:bg-blue-100"
-                      )}
-                    >
-                      <Download size={14} />
-                      Tải file mẫu (4 ví dụ)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest">File Excel dữ liệu (Chứa 4 Tab)</label>
-                    <div className={cn(
-                      "relative border-2 border-dashed rounded-[24px] p-12 transition-all flex flex-col items-center justify-center gap-4",
-                      importFile 
-                        ? "border-emerald-500 bg-emerald-500/5" 
-                        : (isDarkMode ? "border-slate-700 hover:border-blue-500 bg-slate-800/50" : "border-slate-200 hover:border-blue-500 bg-slate-50/50")
-                    )}>
-                      <div className={cn(
-                        "p-4 rounded-2xl",
-                        importFile ? "bg-emerald-500/20 text-emerald-500" : "bg-blue-500/10 text-blue-500"
-                      )}>
-                        <Table size={40} />
-                      </div>
-                      <div className="text-center space-y-1">
-                        <p className="text-sm font-bold">
-                          {importFile ? importFile.name : "Kéo thả hoặc nhấn để chọn file Excel"}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {importFile ? "Sẵn sàng để import" : "File mẫu có sẵn 4 tab: Patients, Drugs, Supplies, Subclinical"}
-                        </p>
-                      </div>
-                      <input
-                        type="file"
-                        accept=".xlsx, .xls"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                        disabled={importing}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className={cn(
-                  "p-4 rounded-2xl flex items-start gap-3 transition-colors",
-                  isDarkMode ? "bg-blue-900/20" : "bg-blue-50"
-                )}>
-                  <AlertTriangle className="text-blue-500 shrink-0" size={20} />
-                  <p className={cn("text-xs leading-relaxed font-medium transition-colors", isDarkMode ? "text-blue-400" : "text-blue-600")}>
-                    Vui lòng đảm bảo các file Excel có cấu trúc cột đúng như quy định. File 1 là bắt buộc để liên kết dữ liệu.
-                  </p>
-                </div>
-
-                {importing && (
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span>{importProgress}</span>
-                      <Loader2 className="animate-spin" size={16} />
-                    </div>
-                    <div className={cn(
-                      "h-2 rounded-full overflow-hidden transition-colors",
-                      isDarkMode ? "bg-slate-800" : "bg-slate-100"
-                    )}>
-                      <motion.div 
-                        className="h-full bg-blue-600"
-                        initial={{ width: "0%" }}
-                        animate={{ width: "100%" }}
-                        transition={{ duration: 10 }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleImport}
-                  disabled={importing || !importFile}
-                  className={cn(
-                    "w-full py-4 bg-blue-600 text-white rounded-2xl font-bold transition-all disabled:bg-slate-300 flex items-center justify-center gap-2",
-                    isDarkMode ? "shadow-none disabled:bg-slate-800" : "shadow-lg shadow-blue-200"
-                  )}
-                >
-                  {importing ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />}
-                  {importing ? "Đang xử lý..." : "Bắt đầu Import"}
                 </button>
               </div>
             </motion.div>

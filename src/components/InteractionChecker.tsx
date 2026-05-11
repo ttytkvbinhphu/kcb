@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import DrugDetailModal from './DrugDetailModal';
-import { db, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, setDoc, doc, deleteDoc, query, orderBy } from '../firebase';
+import { db, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, setDoc, doc, deleteDoc, query, orderBy, sanitizeData } from '../firebase';
 import ConfirmModal from './ConfirmModal';
 
 interface InteractionCheckerProps {
@@ -171,7 +171,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         updatedBy: currentUserName
       };
 
-      await setDoc(doc(db, 'manual_interactions', id), data);
+      await setDoc(doc(db, 'manual_interactions', id), sanitizeData(data));
       setIsModalOpen(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'manual_interactions');
@@ -245,11 +245,18 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          maxOutputTokens: 2048,
         }
       });
 
-      const data = JSON.parse(response.text || '{}');
-      setResult({ ...data, isAI: true });
+      const text = response.text || '{}';
+      try {
+        const data = JSON.parse(text.trim());
+        setResult({ ...data, isAI: true });
+      } catch (parseError) {
+        console.error("JSON Parse failed in InteractionChecker:", parseError);
+        throw new Error("Dữ liệu phản hồi từ AI không hợp lệ.");
+      }
     } catch (error) {
       console.error("Lỗi kiểm tra tương tác:", error);
       setResult({

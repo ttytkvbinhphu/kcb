@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getBustedPhotoURL(url?: string, token?: string) {
-  if (!url) return '';
+  if (!url) return null;
   if (!token) return url;
   // Only bust if it's a known avatar service or we want to be aggressive
   const separator = url.includes('?') ? '&' : '?';

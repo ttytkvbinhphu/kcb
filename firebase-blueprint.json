@@ -47,13 +47,14 @@
           "description": "Chống chỉ định" 
         },
         "sideEffects": { "type": "array", "items": { "type": "any" }, "description": "Tác dụng phụ" },
-        "category": { "type": "string", "description": "Phân loại thuốc" },
         "groupId": { "type": "string", "description": "ID nhóm thuốc chính" },
         "groupIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách ID các nhóm thuốc" },
         "avatarUrl": { "type": "string", "description": "URL ảnh đại diện thuốc" },
         "isRx": { "type": "boolean", "description": "Thuốc kê đơn" },
         "isClosed": { "type": "boolean", "description": "Trạng thái đóng/mở thuốc (ẩn với người dùng thông thường)" },
         "pdfUrl": { "type": "string", "description": "URL file HDSD" },
+        "registrationNumber": { "type": "string" },
+        "leafletVersion": { "type": "string" },
         "bannerUrl": { "type": "string" },
         "generalAdministration": { "type": "string" },
         "dosageAndAdministration": { "type": "array", "items": { "type": "object" } },
@@ -67,7 +68,7 @@
         "driving": { "type": "string", "description": "Ảnh hưởng đến lái xe, vận hành máy móc" },
         "overdose": { "type": "string" }
       },
-      "required": ["id", "name", "activeIngredients", "category"]
+      "required": ["id", "name", "activeIngredients"]
     },
     "Prescription": {
       "title": "Prescription",
@@ -474,6 +475,55 @@
         "description": { "type": "string" }
       },
       "required": ["id", "name"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Danh sách các công ty dược phẩm.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "alias": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "website": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "WelcomeSlide": {
+      "title": "WelcomeSlide",
+      "description": "Thông tin slide chào mừng hiển thị ở trang đăng nhập/đăng ký.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "description2": { "type": "string" },
+        "description3": { "type": "string" },
+        "description4": { "type": "string" },
+        "position2": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
+        "position3": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
+        "position4": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
+        "imageUrl": { "type": "string" },
+        "imageUrl2": { "type": "string" },
+        "imageUrl3": { "type": "string" },
+        "imageUrl4": { "type": "string" },
+        "imagePosition2": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
+        "imagePosition3": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
+        "imagePosition4": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
+        "order": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "bgColor": { "type": "string" },
+        "titleAlign": { "type": "string", "enum": ["left", "center", "right"] },
+        "descAlign": { "type": "string", "enum": ["left", "center", "right"] },
+        "imageFit": { "type": "string", "enum": ["cover", "contain"] },
+        "buttonText": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "order"]
     }
   },
   "firestore": {
@@ -608,6 +658,14 @@
     "/excipient_categories/{id}": {
       "schema": "ExcipientCategory",
       "description": "Danh mục phân loại tá dược."
+    },
+    "/companies/{id}": {
+      "schema": "Company",
+      "description": "Danh mục công ty dược phẩm."
+    },
+    "/welcome_slides/{slideId}": {
+      "schema": "WelcomeSlide",
+      "description": "Danh sách các slide chào mừng hiển thị tại trang đăng nhập."
     }
   }
 }

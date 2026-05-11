@@ -24,19 +24,11 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
+      assetsDir: 'assets',
       emptyOutDir: true,
-      reportCompressedSize: false,
-      chunkSizeWarningLimit: 2000,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
-            'vendor-ui': ['lucide-react', 'motion', 'clsx', 'tailwind-merge', 'react-easy-crop'],
-            'vendor-logic': ['react-hook-form', 'zod', 'date-fns', 'xlsx'],
-          },
-        },
-      },
+      sourcemap: false,
+      target: 'esnext',
+      chunkSizeWarningLimit: 3000
     },
     server: {
       port: 3000,

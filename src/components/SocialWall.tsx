@@ -294,16 +294,18 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [editPosition, setEditPosition] = useState(userProfile.position || '');
   const [editSpecialty, setEditSpecialty] = useState(userProfile.specialty || '');
   const [editDepartment, setEditDepartment] = useState(userProfile.department || '');
-  const [editZalo, setEditZalo] = useState(userProfile.zaloNumber || '');
   const [hideEmail, setHideEmail] = useState(userProfile.hideEmail || false);
-  const [hideZalo, setHideZalo] = useState(userProfile.hideZalo || false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [privacyConfirm, setPrivacyConfirm] = useState<{ open: boolean; type: 'email' | 'zalo' }>({ open: false, type: 'email' });
+  const [privacyConfirm, setPrivacyConfirm] = useState<{ open: boolean; type: 'email' }>({ open: false, type: 'email' });
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedTextStyle, setSelectedTextStyle] = useState('modern');
   const [selectedBackgroundImage, setSelectedBackgroundImage] = useState<string | null>(null);
+  const [availableTitles, setAvailableTitles] = useState<{id: string, name: string}[]>([]);
+  const [availablePositions, setAvailablePositions] = useState<{id: string, name: string}[]>([]);
+  const [availableSpecialties, setAvailableSpecialties] = useState<{id: string, name: string}[]>([]);
+  const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
@@ -336,9 +338,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       setEditPosition(userProfile.position || '');
       setEditSpecialty(userProfile.specialty || '');
       setEditDepartment(userProfile.department || '');
-      setEditZalo(userProfile.zaloNumber || '');
       setHideEmail(userProfile.hideEmail || false);
-      setHideZalo(userProfile.hideZalo || false);
     }
   }, [userProfile, isEditingProfile]);
 
@@ -377,10 +377,30 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       console.error("Error fetching users for social wall:", error);
     });
 
+    const unsubTitles = onSnapshot(collection(db, 'config_titles'), (snapshot) => {
+      setAvailableTitles(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubPositions = onSnapshot(collection(db, 'config_positions'), (snapshot) => {
+      setAvailablePositions(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubSpecialties = onSnapshot(collection(db, 'config_specialties'), (snapshot) => {
+      setAvailableSpecialties(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
+    const unsubDepartments = onSnapshot(collection(db, 'config_departments'), (snapshot) => {
+      setAvailableDepartments(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+    });
+
     return () => {
       unsubscribe();
       likesUnsub();
       usersUnsub();
+      unsubTitles();
+      unsubPositions();
+      unsubSpecialties();
+      unsubDepartments();
     };
   }, [userProfile.uid]);
 
@@ -491,9 +511,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         position: editPosition,
         specialty: editSpecialty,
         department: editDepartment,
-        zaloNumber: editZalo,
         hideEmail: hideEmail,
-        hideZalo: hideZalo,
       };
       await setDoc(userRef, updatedProfile);
       setUserProfile(updatedProfile);
@@ -916,44 +934,68 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Học hàm/Học vị</label>
-                          <input 
-                            type="text"
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chức danh</label>
+                          <select 
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
                             className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all",
+                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                             )}
-                          />
+                          >
+                            <option value="">Chọn chức danh...</option>
+                            {availableTitles.map(t => (
+                              <option key={t.id} value={t.name}>{t.name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div className="space-y-2">
                           <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Khoa/Phòng</label>
-                          <input 
-                            type="text"
+                          <select 
                             value={editDepartment}
                             onChange={(e) => setEditDepartment(e.target.value)}
                             className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all",
+                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                             )}
-                          />
+                          >
+                            <option value="">Chọn khoa/phòng...</option>
+                            {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map(d => (
+                              <option key={d.id} value={d.name}>{d.name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            Số Zalo
-                            <span className="text-[10px] font-bold text-slate-500 normal-case">(Tùy chọn)</span>
-                          </label>
-                          <input 
-                            type="text"
-                            value={editZalo}
-                            onChange={(e) => setEditZalo(e.target.value)}
-                            placeholder="Nhập số điện thoại Zalo..."
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chức vụ</label>
+                          <select 
+                            value={editPosition}
+                            onChange={(e) => setEditPosition(e.target.value)}
                             className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all",
+                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                             )}
-                          />
+                          >
+                            <option value="">Chọn chức vụ...</option>
+                            {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                              <option key={p.id} value={p.name}>{p.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chuyên khoa</label>
+                          <select 
+                            value={editSpecialty}
+                            onChange={(e) => setEditSpecialty(e.target.value)}
+                            className={cn(
+                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                            )}
+                          >
+                            <option value="">Chọn chuyên khoa...</option>
+                            {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                              <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 
@@ -967,87 +1009,44 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <label className={cn(
                             "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
-                            hideEmail 
+                            !hideEmail 
                               ? "border-primary bg-primary/5 shadow-sm" 
                               : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
                           )}>
                              <div className="flex items-center gap-3">
                                <div className={cn(
                                  "p-2 rounded-lg transition-colors", 
-                                 hideEmail ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                 !hideEmail ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
                                )}>
-                                 {hideEmail ? <Lock size={14} /> : <Globe size={14} />}
+                                 {!hideEmail ? <Globe size={14} /> : <Lock size={14} />}
                                </div>
                                <div>
                                  <p className="text-[11px] font-black uppercase tracking-wider">Email liên hệ</p>
                                  <p className="text-[9px] font-bold text-slate-500 mt-0.5">
-                                   {hideEmail ? 'Đang ẩn với mọi người' : 'Đang công khai'}
+                                   {!hideEmail ? 'Đang công khai' : 'Đang ẩn với mọi người'}
                                  </p>
                                </div>
                              </div>
                              <input 
                                type="checkbox"
-                               checked={hideEmail}
+                               checked={!hideEmail}
                                onChange={(e) => {
-                                 const newVal = e.target.checked;
-                                 if (!newVal) { // Switching to PUBLIC
+                                 const isPublic = e.target.checked;
+                                 if (isPublic) { // Switching to PUBLIC
                                    setPrivacyConfirm({ open: true, type: 'email' });
                                  } else {
-                                   setHideEmail(newVal);
+                                   setHideEmail(true); // Switch to HIDDEN
                                  }
                                }}
                                className="sr-only"
                              />
                              <div className={cn(
                                "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
-                               hideEmail 
+                               !hideEmail 
                                  ? "bg-primary border-primary" 
                                  : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
                              )}>
-                               {hideEmail && <Check size={12} className="text-white" />}
-                             </div>
-                          </label>
-
-                          <label className={cn(
-                            "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
-                            hideZalo 
-                              ? "border-primary bg-primary/5 shadow-sm" 
-                              : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
-                          )}>
-                             <div className="flex items-center gap-3">
-                               <div className={cn(
-                                 "p-2 rounded-lg transition-colors", 
-                                 hideZalo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
-                               )}>
-                                 {hideZalo ? <Lock size={14} /> : <Globe size={14} />}
-                               </div>
-                               <div>
-                                 <p className="text-[11px] font-black uppercase tracking-wider">Số Zalo / SĐT</p>
-                                 <p className="text-[9px] font-bold text-slate-500 mt-0.5">
-                                   {hideZalo ? 'Đang ẩn với mọi người' : 'Đang công khai'}
-                                 </p>
-                               </div>
-                             </div>
-                             <input 
-                               type="checkbox"
-                               checked={hideZalo}
-                               onChange={(e) => {
-                                 const newVal = e.target.checked;
-                                 if (!newVal) { // Switching to PUBLIC
-                                   setPrivacyConfirm({ open: true, type: 'zalo' });
-                                 } else {
-                                   setHideZalo(newVal);
-                                 }
-                               }}
-                               className="sr-only"
-                             />
-                             <div className={cn(
-                               "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
-                               hideZalo 
-                                 ? "bg-primary border-primary" 
-                                 : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
-                             )}>
-                               {hideZalo && <Check size={12} className="text-white" />}
+                               {!hideEmail && <Check size={12} className="text-white" />}
                              </div>
                           </label>
                         </div>
@@ -1103,7 +1102,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                               </p>
                             </div>
                             <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Học hàm/Học vị</p>
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chức danh</p>
                               <p className={cn("text-sm font-black mt-1", isDarkMode ? "text-slate-200" : "text-slate-900")}>
                                 {selectedProfile.title || 'Chưa cập nhật'}
                               </p>
@@ -1145,27 +1144,6 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                 <p className={cn("text-sm font-black mt-1 truncate transition-opacity", !selectedProfile.hideEmail ? "opacity-100" : "opacity-50", isDarkMode ? "text-slate-200" : "text-slate-900")}>
                                   {selectedProfile.email}
                                 </p>
-                              </div>
-                            )}
-
-                            {selectedProfile.zaloNumber && (!selectedProfile.hideZalo || selectedProfile.uid === userProfile.uid) && (
-                              <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                  Số Zalo / SĐT
-                                  {selectedProfile.hideZalo && selectedProfile.uid === userProfile.uid && (
-                                    <span className="text-[8px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 lowercase flex items-center gap-1">
-                                      <Lock size={8} /> Đang ẩn
-                                    </span>
-                                  )}
-                                </p>
-                                <div className={cn("flex items-center gap-2 mt-1 transition-opacity", !selectedProfile.hideZalo ? "opacity-100" : "opacity-50")}>
-                                  <div className="p-1.5 bg-indigo-500 text-white rounded-lg">
-                                    <Phone size={10} />
-                                  </div>
-                                  <p className={cn("text-sm font-black", isDarkMode ? "text-slate-200" : "text-slate-900")}>
-                                    {selectedProfile.zaloNumber}
-                                  </p>
-                                </div>
                               </div>
                             )}
                           </div>
@@ -1330,14 +1308,10 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         onClose={() => setPrivacyConfirm({ ...privacyConfirm, open: false })}
         onConfirm={() => {
           if (privacyConfirm.type === 'email') setHideEmail(false);
-          else setHideZalo(false);
           setPrivacyConfirm({ ...privacyConfirm, open: false });
         }}
         title="Cảnh báo quyền riêng tư"
-        message={privacyConfirm.type === 'email'
-          ? "Bạn có chắc chắn muốn công khai Email không? Mọi người sẽ có thể nhìn thấy email liên hệ của bạn."
-          : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người sẽ có thể nhìn thấy số Zalo của bạn."
-        }
+        message="Bạn có chắc chắn muốn công khai Email không? Mọi người sẽ có thể nhìn thấy email liên hệ của bạn."
         confirmText="Công khai"
         cancelText="Hủy"
         type="warning"

@@ -218,9 +218,9 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
             Ghi chú cá nhân
           </div>
           <h2 className={cn(
-            "text-3xl lg:text-5xl font-black tracking-tighter transition-colors",
+            "text-3xl lg:text-4xl font-black tracking-tighter transition-colors",
             isDarkMode ? "text-white" : "text-black"
-          )}>Ghi chú & Lưu ý</h2>
+          )}>Ghi chú</h2>
           <p className={cn(
             "max-w-2xl text-sm lg:text-lg font-medium leading-relaxed transition-colors opacity-80",
             isDarkMode ? "text-slate-400" : "text-slate-500"
@@ -272,7 +272,7 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 className={cn(
-                  "group relative p-6 rounded-[32px] border-2 transition-all hover:shadow-2xl flex flex-col min-h-[240px]",
+                  "group relative p-6 rounded-lg border-2 transition-all hover:shadow-2xl flex flex-col min-h-[240px]",
                   isDarkMode ? `${colorConfig.dark} border-slate-800 hover:border-${colorConfig.name}-500/50` : `${colorConfig.light} border-white hover:border-${colorConfig.name}-200 shadow-xl shadow-slate-200/50`
                 )}
               >
@@ -503,7 +503,7 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.9 }}
                         className={cn(
-                          "w-full max-w-xs p-6 rounded-[32px] shadow-2xl border text-center",
+                          "w-full max-w-xs p-6 rounded-lg shadow-2xl border text-center",
                           isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                         )}
                       >

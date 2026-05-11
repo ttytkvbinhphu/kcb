@@ -7,7 +7,7 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: drugs
-    // Fields: id, name, activeIngredients, dosageForm, excipients, manufacturer, indications, contraindications, sideEffects, category
+    // Fields: id, name, activeIngredients, dosageForm, excipients, manufacturer, indications, contraindications, sideEffects
     //
     // Collection: prescriptions
     // Fields: id, patientName, patientAge, patientGender, diagnosis, items, createdAt, doctorName, doctorUid
@@ -39,6 +39,9 @@ service cloud.firestore {
     // Collection: excipient_categories
     // Fields: id, name, description
     //
+    // Collection: companies
+    // Fields: id, name, description, address, phone, email, website
+    //
     // Collection: system_settings
     // Fields: appName, loginTitle, loginSubtitle, appDescription, defaultTheme
     //
@@ -66,12 +69,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        (request.auth.token.email == "ttytkvbinhphu@gmail.com" || (
+      return isAuthenticated() && (
+        request.auth.token.email == "ttytkvbinhphu@gmail.com" || 
+        request.auth.token.get('email', '') == "ttytkvbinhphu@gmail.com" || (
           request.auth.token.get('email_verified', false) == true &&
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'
-        ));
+        )
+      );
     }
 
     function isOperator() {
@@ -110,11 +115,10 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidDrug(data) {
-      return hasRequiredFields(['id', 'name', 'activeIngredients', 'category']) &&
+      return hasRequiredFields(['id', 'name', 'activeIngredients']) &&
              data.id is string && data.id.size() > 0 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 1000 &&
              data.activeIngredients is list && data.activeIngredients.size() > 0 &&
-             data.category is string &&
              (!('isClosed' in data) || data.isClosed is bool) &&
              (!('indications' in data) || data.indications is list) &&
              (!('contraindications' in data) || data.contraindications is list) &&
@@ -126,6 +130,8 @@ service cloud.firestore {
              (!('groupId' in data) || data.groupId == null || data.groupId is string) &&
              (!('groupIds' in data) || data.groupIds is list) &&
              (!('driving' in data) || data.driving is string) &&
+             (!('registrationNumber' in data) || data.registrationNumber is string) &&
+             (!('leafletVersion' in data) || data.leafletVersion is string) &&
              (!('pdfUrl' in data) || data.pdfUrl is string) &&
              (!('avatarUrl' in data) || data.avatarUrl is string) &&
              (!('bannerUrl' in data) || data.bannerUrl is string) &&
@@ -167,11 +173,16 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() > 0 &&
              data.displayName.size() < 100 &&
              isValidEmail(data.email) &&
-             data.role in ['operator', 'admin', 'member', 'operator_doctor', 'operator_pharmacist'] &&
+             data.role in ['admin', 'operator', 'member', 'operator_doctor', 'operator_pharmacist'] &&
              (!('isApproved' in data) || data.isApproved is bool) &&
              (!('title' in data) || (data.title is string && data.title.size() < 100)) &&
              (!('position' in data) || (data.position is string && data.position.size() < 100)) &&
-             (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 100));
+             (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 100)) &&
+             (!('department' in data) || (data.department is string && data.department.size() < 200)) &&
+             (!('photoURL' in data) || data.photoURL is string) &&
+             (!('photoSyncToken' in data) || data.photoSyncToken is number) &&
+             (!('isOnline' in data) || data.isOnline is bool) &&
+             (!('lastActive' in data) || data.lastActive is string);
     }
 
     function isValidICD10(data) {
@@ -221,14 +232,22 @@ service cloud.firestore {
     function isValidConfigItem(data) {
       return hasRequiredFields(['name']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
-             (!('order' in data) || data.order is number);
+             (!('id' in data) || data.id is string) &&
+             (!('order' in data) || data.order is number) &&
+             (!('powerPoints' in data) || data.powerPoints is number);
     }
 
     function isValidCatalogEntry(data) {
       return hasRequiredFields(['id', 'name']) &&
              data.id is string && data.id.size() > 0 &&
              data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
-             (!('description' in data) || (data.description is string && data.description.size() < 2000)) &&
+             (!('alias' in data) || data.alias is string) &&
+             (!('aliases' in data) || data.aliases is list) &&
+             (!('description' in data) || (data.description is string && data.description.size() < 5000)) &&
+             (!('address' in data) || data.address is string) &&
+             (!('phone' in data) || data.phone is string) &&
+             (!('email' in data) || data.email is string) &&
+             (!('website' in data) || data.website is string) &&
              (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() > 0)) &&
              (!('categoryIds' in data) || (data.categoryIds is list));
     }
@@ -329,6 +348,18 @@ service cloud.firestore {
              isValidDateString(data.createdAt);
     }
 
+    function isValidRolePermission(data) {
+      return hasRequiredFields(['roleId', 'allowedTabs']) &&
+             data.roleId is string &&
+             data.allowedTabs is list;
+    }
+
+    function isValidTitlePermission(data) {
+      return hasRequiredFields(['titleId', 'allowedTabs']) &&
+             data.titleId is string &&
+             data.allowedTabs is list;
+    }
+
     function isValidAnnouncement(data) {
       return hasRequiredFields(['content', 'createdAt']) &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
@@ -343,14 +374,47 @@ service cloud.firestore {
              (!('defaultTitleId' in data) || data.defaultTitleId is string);
     }
 
+    function isValidTodo(data) {
+      return hasRequiredFields(['title', 'createdBy', 'createdAt', 'completed', 'priority']) &&
+             data.title is string && data.title.size() > 0 &&
+             data.createdBy == request.auth.uid &&
+             isValidDateString(data.createdAt) &&
+             data.completed is bool &&
+             data.priority in ['low', 'medium', 'high', 'urgent'] &&
+             (!('id' in data) || data.id is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('dueDate' in data) || data.dueDate is string || data.dueDate == null) &&
+             (!('department' in data) || data.department is string || data.department == null) &&
+             (!('category' in data) || data.category is string) &&
+             (!('completedAt' in data) || data.completedAt is string);
+    }
+
     function isValidAuthLog(data) {
       return hasRequiredFields(['id', 'userId', 'userEmail', 'userName', 'type', 'timestamp']) &&
              data.id is string &&
              data.userId == request.auth.uid &&
              // Relax email check for better reliability across different providers/auth states
-             (data.userEmail == request.auth.token.email || !('email' in request.auth.token)) &&
+             (data.userEmail == request.auth.token.email || 
+              data.userEmail == request.auth.token.get('email', '') ||
+              !('email' in request.auth.token)) &&
              data.type in ['login', 'logout'] &&
              isValidDateString(data.timestamp);
+    }
+
+    function isValidWelcomeSlide(data) {
+      return hasRequiredFields(['id', 'title', 'order']) &&
+             data.id is string && data.id.size() > 0 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.order is number &&
+             (!('imageUrl' in data) || data.imageUrl is string) &&
+             (!('description' in data) || data.description is string) &&
+             (!('isActive' in data) || data.isActive is bool) &&
+             (!('bgColor' in data) || data.bgColor is string) &&
+             (!('titleAlign' in data) || data.titleAlign in ['left', 'center', 'right']) &&
+             (!('descAlign' in data) || data.descAlign in ['left', 'center', 'right']) &&
+             (!('imageFit' in data) || data.imageFit in ['cover', 'contain']) &&
+             (!('buttonText' in data) || data.buttonText is string) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt));
     }
 
     // ===============================================================
@@ -406,6 +470,11 @@ service cloud.firestore {
     match /excipient_categories/{id} {
       allow read: if true;
       allow write: if isOperator();
+    }
+
+    match /companies/{id} {
+      allow read: if true;
+      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
     }
 
     // Prescriptions: Operators can create and read their own prescriptions. Admins can read all.
@@ -466,14 +535,19 @@ service cloud.firestore {
       allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
       allow delete: if isAdmin();
     }
+    match /config_departments/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidConfigItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
     match /role_permissions/{roleId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isValidRolePermission(request.resource.data);
     }
 
     match /title_permissions/{titleId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isValidTitlePermission(request.resource.data);
     }
 
     // Patients: Only operators/admins can manage
@@ -533,7 +607,7 @@ service cloud.firestore {
     }
 
     match /system_config/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -565,6 +639,19 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidSocialComment(request.resource.data);
       allow update: if isAuthenticated() && resource.data.authorUid == request.auth.uid && isValidSocialComment(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.authorUid == request.auth.uid || isAdmin());
+    }
+
+    match /todos/{todoId} {
+      allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow create: if isAuthenticated() && isValidTodo(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && isValidTodo(request.resource.data);
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    match /welcome_slides/{slideId} {
+      allow read: if true; // Publicly readable for login screen
+      allow write: if isAdmin() && isValidWelcomeSlide(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     // Default deny

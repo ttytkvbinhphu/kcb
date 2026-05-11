@@ -183,10 +183,11 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             <div className="absolute inset-0 z-0">
               {editSettings.loginBgUrl ? (
                 <img 
-                  src={editSettings.loginBgUrl} 
+                  src={editSettings.loginBgUrl || undefined} 
                   className="w-full h-full object-cover" 
                   alt="Background preview" 
                   style={{ filter: `blur(${editSettings.loginBgBlur || 0}px)` }}
+                  referrerPolicy="no-referrer"
                 />
               ) : (
                 <div className="absolute inset-0 bg-slate-900/5" />
@@ -226,7 +227,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                )}>
                   <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: editSettings.loginPrimaryColor || '#3b82f6' }}>
                     {editSettings.loginLogoUrl ? (
-                      <img src={editSettings.loginLogoUrl} className="w-8 h-8 object-contain" alt="Logo preview" referrerPolicy="no-referrer" />
+                      <img src={editSettings.loginLogoUrl || undefined} className="w-8 h-8 object-contain" alt="Logo preview" referrerPolicy="no-referrer" />
                     ) : (
                       <Pill size={24} className="text-white" />
                     )}

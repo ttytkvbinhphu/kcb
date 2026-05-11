@@ -21,14 +21,20 @@ export interface Drug {
   }[];
   sideEffects: string[] | { frequency: string; content: string }[];
   dosage?: string; // Tóm tắt liều dùng chung
-  category: string;
   groupId?: string; // Legacy: single group
   groupIds?: string[]; // Multiple groups support
   avatarUrl?: string;
   bannerUrl?: string;
   pdfUrl?: string;
+  registrationNumber?: string;
+  leafletVersion?: string;
+  leafletUpdateDate?: string;
   isClosed?: boolean;
   isRx?: boolean;
+  status?: 'active' | 'suspended';
+  stockStatus?: 'available' | 'low' | 'out' | string;
+  expiryStatus?: 'valid' | 'expiring' | 'expired' | string;
+  expiryDate?: string;
   generalAdministration?: string; // Common usage instructions (e.g., before/after food)
   administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
@@ -65,6 +71,8 @@ export interface DrugGroup {
 export interface Ingredient {
   id: string;
   name: string;
+  alias?: string;
+  aliases?: string[];
   description?: string;
   categoryId?: string; // Legacy: single category
   categoryIds?: string[]; // Multiple categories support
@@ -120,14 +128,31 @@ export interface UserProfile {
   role: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member';
   isApproved?: boolean;
   photoSyncToken?: string;
-  zaloNumber?: string;
   hideEmail?: boolean;
-  hideZalo?: boolean;
+  hiddenQuickActions?: string[];
+  hasSeenWelcome?: boolean;
 }
 
 export interface ICD10 {
   code: string;
   description: string;
+  notes?: string;
+  isPinned?: boolean;
+  showOnWorkspace?: boolean;
+  isAppendixA2?: boolean;
+  commonDrugs?: string[];
+  pinnedBy?: string[];
+  workspaceBy?: string[];
+}
+
+export interface Company {
+  id: string;
+  name: string;
+  description?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
 }
 
 export interface InteractionResult {
@@ -414,6 +439,25 @@ export interface Note {
   updatedAt: string;
 }
 
+export interface Todo {
+  id: string;
+  text: string;
+  completed: boolean;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  type: 'prescription_review' | 'drug_dispensing' | 'follow_up' | 'inventory_check' | 'clinical_note' | 'insurance_approval' | 'laboratory_review' | 'other';
+  dueDate?: string;
+  dueTime?: string;
+  category?: string;
+  notes?: string;
+  patientId?: string;
+  department?: string;
+  assignedTo?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Notification {
   id: string;
   userId: string;
@@ -457,4 +501,5 @@ export interface SystemSettings {
   loginCardGlassMode?: boolean;
   termsOfUse?: string;
   termsUpdateDate?: string;
+  showWelcomeSlider?: boolean;
 }
