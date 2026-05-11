@@ -130,7 +130,10 @@ export interface UserProfile {
   photoSyncToken?: string;
   hideEmail?: boolean;
   hiddenQuickActions?: string[];
+  zalo?: string;
+  hideZalo?: boolean;
   hasSeenWelcome?: boolean;
+  isHidden?: boolean;
 }
 
 export interface ICD10 {

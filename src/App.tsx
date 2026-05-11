@@ -89,6 +89,7 @@ export default function App() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileEditData, setProfileEditData] = useState({
     hideEmail: false,
+    hideZalo: false,
   });
 
   // Sync profileEditData with userProfile for real-time consistency in Settings
@@ -96,13 +97,14 @@ export default function App() {
     if (userProfile && !isProfileModalOpen) {
       setProfileEditData({
         hideEmail: userProfile.hideEmail || false,
+        hideZalo: userProfile.hideZalo || false,
       });
     }
   }, [userProfile, isProfileModalOpen]);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isPrivacyConfirmOpen, setIsPrivacyConfirmOpen] = useState(false);
-  const [privacyConfirmType, setPrivacyConfirmType] = useState<'email'>('email');
+  const [privacyConfirmType, setPrivacyConfirmType] = useState<'email' | 'zalo'>('email');
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isAdminMode, setIsAdminMode] = useState(() => {
@@ -2623,6 +2625,44 @@ export default function App() {
                             )} />
                           </button>
                         </div>
+
+                        <div className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                              <MessageSquare size={14} className="text-primary" />
+                            </div>
+                            <div>
+                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
+                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
+                              </p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              const nextHideZalo = !profileEditData.hideZalo;
+                              if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
+                                setPrivacyConfirmType('zalo');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                                handleSaveProfileField({ hideZalo: nextHideZalo });
+                              }
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors",
+                              !profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                              !profileEditData.hideZalo ? "left-6" : "left-1"
+                            )} />
+                          </button>
+                        </div>
                       </div>
 
                     </div>
@@ -2908,6 +2948,9 @@ export default function App() {
               if (privacyConfirmType === 'email') {
                 setProfileEditData(prev => ({ ...prev, hideEmail: false }));
                 handleSaveProfileField({ hideEmail: false });
+              } else if (privacyConfirmType === 'zalo') {
+                setProfileEditData(prev => ({ ...prev, hideZalo: false }));
+                handleSaveProfileField({ hideZalo: false });
               }
               setIsPrivacyConfirmOpen(false);
             }}

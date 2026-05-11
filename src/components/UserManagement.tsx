@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2 } from 'lucide-react';
+import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, Globe, GraduationCap, Eye, EyeOff } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
 import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,7 +17,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '', department: '' });
+  const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '', department: '', zalo: '' });
   
   const [configTitles, setConfigTitles] = useState<string[]>([]);
   const [configPositions, setConfigPositions] = useState<string[]>([]);
@@ -82,6 +82,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
     }
   };
+  const toggleHidden = async (user: UserProfile) => {
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        ...user,
+        isHidden: !user.isHidden
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+    }
+  };
+
 
   const changeRole = async (user: UserProfile, newRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member') => {
     try {
@@ -112,6 +123,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         { name: 'adr_reports', field: 'reporterUid' },
         { name: 'calendar_events', field: 'createdBy' },
         { name: 'notes', field: 'createdBy' },
+        { name: 'todos', field: 'createdBy' },
         { name: 'social_posts', field: 'authorUid' },
         { name: 'social_likes', field: 'userId' },
         { name: 'social_comments', field: 'authorUid' },
@@ -121,25 +133,32 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
       // Sequential deletion to avoid batch limits for heavy users
       for (const col of cascadingCollections) {
-        const q = query(collection(db, col.name), where(col.field, '==', confirmUid));
-        const snapshot = await getDocs(q);
-        for (const d of snapshot.docs) {
-          await deleteDoc(doc(db, col.name, d.id));
-          
-          // If it's a social post, we also need to delete its interactions
-          if (col.name === 'social_posts') {
-            const likesQ = query(collection(db, 'social_likes'), where('postId', '==', d.id));
-            const likesSnap = await getDocs(likesQ);
-            for (const ld of likesSnap.docs) {
-              await deleteDoc(doc(db, 'social_likes', ld.id));
-            }
+        try {
+          const q = query(collection(db, col.name), where(col.field, '==', confirmUid));
+          const snapshot = await getDocs(q);
+          for (const d of snapshot.docs) {
+            try {
+              // If it's a social post, we also need to delete its interactions
+              if (col.name === 'social_posts') {
+                const likesQ = query(collection(db, 'social_likes'), where('postId', '==', d.id));
+                const likesSnap = await getDocs(likesQ);
+                for (const ld of likesSnap.docs) {
+                  await deleteDoc(doc(db, 'social_likes', ld.id)).catch(e => console.warn(`Failed to delete like ${ld.id}:`, e));
+                }
 
-            const commentsQ = query(collection(db, 'social_comments'), where('postId', '==', d.id));
-            const commentsSnap = await getDocs(commentsQ);
-            for (const cd of commentsSnap.docs) {
-              await deleteDoc(doc(db, 'social_comments', cd.id));
+                const commentsQ = query(collection(db, 'social_comments'), where('postId', '==', d.id));
+                const commentsSnap = await getDocs(commentsQ);
+                for (const cd of commentsSnap.docs) {
+                  await deleteDoc(doc(db, 'social_comments', cd.id)).catch(e => console.warn(`Failed to delete comment ${cd.id}:`, e));
+                }
+              }
+              await deleteDoc(doc(db, col.name, d.id));
+            } catch (innerErr) {
+              console.warn(`Error deleting document ${d.id} in ${col.name}:`, innerErr);
             }
           }
+        } catch (outerErr) {
+          console.warn(`Error processing collection ${col.name}:`, outerErr);
         }
       }
 
@@ -148,7 +167,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
       setIsConfirmOpen(false);
       setConfirmUid(null);
-      setConfirmName(null);
+      setConfirmName('');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `cascade_delete/${confirmUid}`);
     } finally {
@@ -163,7 +184,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       title: user.title || '',
       position: user.position || '',
       specialty: user.specialty || 'Không',
-      department: user.department || ''
+      department: user.department || '',
+      zalo: user.zalo || ''
     });
   };
 
@@ -176,7 +198,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         title: editForm.title,
         position: editForm.position,
         specialty: editForm.specialty,
-        department: editForm.department
+        department: editForm.department,
+        zalo: editForm.zalo
       });
       setEditingUser(null);
     } catch (error) {
@@ -289,7 +312,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         </span>
                       )}
                     </div>
-                    <p className="text-[10px] font-medium text-slate-400 truncate">{user.email}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-[10px] font-medium text-slate-400 truncate">{user.email}</p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Mail size={8} className={user.hideEmail ? "text-rose-500" : "text-emerald-500"} />
+                        <Phone size={8} className={user.hideZalo ? "text-rose-500" : "text-emerald-500"} />
+                      </div>
+                    </div>
                   </div>
                   <button
                     onClick={() => toggleApproval(user)}
@@ -345,6 +374,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   </select>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleHidden(user)}
+                      className={cn(
+                        "p-2 rounded-lg border transition-all",
+                        user.isHidden
+                          ? (isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-500" : "bg-amber-50 border-amber-100 text-amber-600")
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400")
+                      )}
+                      title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
+                    >
+                      {user.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
                     <button
                       onClick={() => startEditing(user)}
                       className={cn(
@@ -474,9 +515,25 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                                 </span>
                               )}
                             </div>
-                            <p className={cn("text-[10px] font-bold opacity-60 truncate", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                              {user.email}
-                            </p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <p className={cn("text-[10px] font-bold opacity-60 truncate", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                {user.email}
+                              </p>
+                              <div className="flex items-center gap-1.5 shrink-0 border-l pl-3 border-slate-200 dark:border-slate-800">
+                                <div title={user.hideEmail ? "Email: Riêng tư" : "Email: Công khai"} className={cn(
+                                  "p-1 rounded-md transition-colors",
+                                  user.hideEmail ? "text-rose-500 bg-rose-500/10" : "text-emerald-500 bg-emerald-500/10"
+                                )}>
+                                  <Mail size={10} />
+                                </div>
+                                <div title={user.hideZalo ? "Zalo: Riêng tư" : "Zalo: Công khai"} className={cn(
+                                  "p-1 rounded-md transition-colors",
+                                  user.hideZalo ? "text-rose-500 bg-rose-500/10" : "text-emerald-500 bg-emerald-500/10"
+                                )}>
+                                  <Phone size={10} />
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -541,6 +598,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
+                            onClick={() => toggleHidden(user)}
+                            className={cn(
+                              "p-2 rounded-lg transition-all border-2",
+                              user.isHidden
+                                ? (isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:border-amber-500/50" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-amber-600 hover:border-amber-200")
+                            )}
+                            title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
+                          >
+                            {user.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                          <button
                             onClick={() => startEditing(user)}
                             className={cn(
                               "p-2 rounded-lg transition-all border-2",
@@ -583,215 +652,228 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
       <AnimatePresence>
         {editingUser && (
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-0 lg:p-6">
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                "w-full h-full lg:h-auto lg:max-w-xl lg:rounded-[40px] shadow-2xl overflow-hidden border transition-all flex flex-col",
+                "w-full max-w-2xl lg:rounded-[32px] shadow-2xl overflow-hidden border transition-all flex flex-col max-h-[90vh]",
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}
             >
               <div className={cn(
-                "p-8 lg:p-10 border-b flex items-center justify-between text-white transition-colors shrink-0 relative overflow-hidden",
+                "px-6 py-5 border-b flex items-center justify-between text-white transition-colors shrink-0 relative overflow-hidden",
                 editingUser.role === 'admin' ? "bg-indigo-600" : 
-                editingUser.role === 'operator_doctor' ? "bg-emerald-600" :
-                editingUser.role === 'operator_pharmacist' ? "bg-teal-600" :
-                editingUser.role === 'operator' ? "bg-emerald-600" : "bg-slate-600"
+                ['operator_doctor', 'operator_pharmacist', 'operator'].includes(editingUser.role || '') ? "bg-emerald-600" : "bg-slate-600"
               )}>
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
-                <div className="relative z-10">
-                  <h3 className="text-2xl lg:text-3xl font-black tracking-tight">Chỉnh sửa hồ sơ</h3>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="px-2 py-0.5 bg-white/20 rounded text-[10px] font-black uppercase tracking-widest">
-                      {editingUser.role}
-                    </div>
-                    <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest truncate max-w-[200px] lg:max-w-none">{editingUser.email}</p>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-black text-xl">
+                    {editForm.displayName?.[0] || editingUser.email?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight">Chỉnh sửa hồ sơ</h3>
+                    <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest truncate max-w-[250px]">
+                      {editingUser.email}
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setEditingUser(null)} className="relative z-10 p-3 hover:bg-white/20 rounded-2xl transition-colors">
-                  <X size={24} />
+                <button onClick={() => setEditingUser(null)} className="relative z-10 p-2 hover:bg-white/20 rounded-xl transition-colors">
+                  <X size={20} />
                 </button>
               </div>
               
-              <div className={cn("flex-1 p-8 lg:p-10 space-y-8 overflow-y-auto custom-scrollbar", isDarkMode ? "bg-slate-900" : "bg-white")}>
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
-                      <UserIcon size={18} />
-                    </div>
-                    <label className={cn("text-[11px] font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Thông tin cơ bản</label>
+              <div className={cn("flex-1 p-6 space-y-6 overflow-y-auto custom-scrollbar", isDarkMode ? "bg-slate-900" : "bg-white")}>
+                {/* Basic Info Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <UserIcon size={12} /> Họ và tên
+                    </label>
+                    <input
+                      type="text"
+                      className={cn(
+                        "w-full px-4 py-3 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm shadow-sm",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.displayName || ''}
+                      onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
+                      placeholder="Nhập họ và tên..."
+                    />
                   </div>
-                  
-                  <div className="space-y-6">
-                    <div>
-                      <label className={cn("block text-[10px] font-bold mb-2 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Họ và tên</label>
-                      <input
-                        type="text"
-                        className={cn(
-                          "w-full px-5 py-4 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-base shadow-sm",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                        )}
-                        value={editForm.displayName || ''}
-                        onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-                        placeholder="Nhập họ và tên..."
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <Phone size={12} /> Số Zalo
+                    </label>
+                    <input
+                      type="tel"
+                      className={cn(
+                        "w-full px-4 py-3 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm shadow-sm",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.zalo || ''}
+                      onChange={(e) => setEditForm({ ...editForm, zalo: e.target.value })}
+                      placeholder="Nhập số Zalo..."
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                      <ShieldCheck size={18} />
+                {/* Professional Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Chức danh */}
+                  <div className="space-y-3">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <Award size={12} /> Chức danh
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {configTitles.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, title: t })}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all border-2",
+                            editForm.title === t 
+                              ? (isDarkMode ? "bg-indigo-500/20 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-600 text-indigo-600")
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
+                          )}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
-                    <label className={cn("text-[11px] font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Chuyên môn & Chức vụ</label>
+                    <input
+                      type="text"
+                      className={cn(
+                        "w-full px-4 py-2.5 border-2 rounded-xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-xs",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.title || ''}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      placeholder="Hoặc nhập khác..."
+                    />
                   </div>
 
-                  <div className="space-y-6">
-                    <div>
-                      <label className={cn("block text-[10px] font-bold mb-3 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Chức danh</label>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {configTitles.map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setEditForm({ ...editForm, title: t })}
-                            className={cn(
-                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
-                              editForm.title === t 
-                                ? (isDarkMode ? "bg-blue-500/20 border-blue-500 text-blue-400" : "bg-blue-50 border-blue-600 text-blue-600")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
-                            )}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="text"
-                        className={cn(
-                          "w-full px-5 py-3.5 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                        )}
-                        value={editForm.title || ''}
-                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                        placeholder="Hoặc nhập chức danh khác..."
-                      />
+                  {/* Chức vụ */}
+                  <div className="space-y-3">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <ShieldCheck size={12} /> Chức vụ
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {configPositions.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, position: p })}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all border-2",
+                            editForm.position === p 
+                              ? (isDarkMode ? "bg-indigo-500/20 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-600 text-indigo-600")
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
                     </div>
+                    <input
+                      type="text"
+                      className={cn(
+                        "w-full px-4 py-2.5 border-2 rounded-xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-xs",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.position || ''}
+                      onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
+                      placeholder="Hoặc nhập khác..."
+                    />
+                  </div>
 
-                    <div>
-                      <label className={cn("block text-[10px] font-bold mb-3 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Chức vụ</label>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {configPositions.map((p) => (
-                          <button
-                            key={p}
-                            type="button"
-                            onClick={() => setEditForm({ ...editForm, position: p })}
-                            className={cn(
-                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
-                              editForm.position === p 
-                                ? (isDarkMode ? "bg-indigo-500/20 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-600 text-indigo-600")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
-                            )}
-                          >
-                            {p}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="text"
-                        className={cn(
-                          "w-full px-5 py-3.5 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                        )}
-                        value={editForm.position || ''}
-                        onChange={(e) => setEditForm({ ...editForm, position: e.target.value })}
-                        placeholder="Hoặc nhập chức vụ khác..."
-                      />
+                  {/* Chuyên môn */}
+                  <div className="space-y-3">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <GraduationCap size={12} /> Chuyên môn
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {configSpecialties.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, specialty: s })}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all border-2",
+                            editForm.specialty === s 
+                              ? (isDarkMode ? "bg-emerald-500/20 border-emerald-500 text-emerald-400" : "bg-emerald-50 border-emerald-600 text-emerald-600")
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
+                          )}
+                        >
+                          {s}
+                        </button>
+                      ))}
                     </div>
+                    <input
+                      type="text"
+                      className={cn(
+                        "w-full px-4 py-2.5 border-2 rounded-xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-xs",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.specialty || ''}
+                      onChange={(e) => setEditForm({ ...editForm, specialty: e.target.value })}
+                      placeholder="Hoặc nhập khác..."
+                    />
+                  </div>
 
-                    <div>
-                      <label className={cn("block text-[10px] font-bold mb-3 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Chuyên môn</label>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {configSpecialties.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => setEditForm({ ...editForm, specialty: s })}
-                            className={cn(
-                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
-                              editForm.specialty === s 
-                                ? (isDarkMode ? "bg-emerald-500/20 border-emerald-500 text-emerald-400" : "bg-emerald-50 border-emerald-600 text-emerald-600")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
-                            )}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="text"
-                        className={cn(
-                          "w-full px-5 py-3.5 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                        )}
-                        value={editForm.specialty || ''}
-                        onChange={(e) => setEditForm({ ...editForm, specialty: e.target.value })}
-                        placeholder="Hoặc nhập chuyên môn khác..."
-                      />
+                  {/* Khoa/Phòng */}
+                  <div className="space-y-3">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <Globe size={12} /> Khoa/Phòng
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {configDepartments.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, department: d })}
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase tracking-wider transition-all border-2",
+                            editForm.department === d 
+                              ? (isDarkMode ? "bg-teal-500/20 border-teal-500 text-teal-400" : "bg-teal-50 border-teal-600 text-teal-600")
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
+                          )}
+                        >
+                          {d}
+                        </button>
+                      ))}
                     </div>
-
-                    <div>
-                      <label className={cn("block text-[10px] font-bold mb-3 ml-1", isDarkMode ? "text-slate-400" : "text-slate-500")}>Khoa/Phòng</label>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {configDepartments.map((d) => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={() => setEditForm({ ...editForm, department: d })}
-                            className={cn(
-                              "px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
-                              editForm.department === d 
-                                ? (isDarkMode ? "bg-teal-500/20 border-teal-500 text-teal-400" : "bg-teal-50 border-teal-600 text-teal-600")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:bg-slate-700" : "bg-slate-50 border-slate-100 text-slate-400 hover:bg-slate-100")
-                            )}
-                          >
-                            {d}
-                          </button>
-                        ))}
-                      </div>
-                      <input
-                        type="text"
-                        className={cn(
-                          "w-full px-5 py-3.5 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-sm",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                        )}
-                        value={editForm.department || ''}
-                        onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                        placeholder="Hoặc nhập Khoa/Phòng khác..."
-                      />
-                    </div>
+                    <input
+                      type="text"
+                      className={cn(
+                        "w-full px-4 py-2.5 border-2 rounded-xl focus:ring-0 focus:border-indigo-500 transition-all font-bold outline-none text-xs",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                      )}
+                      value={editForm.department || ''}
+                      onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                      placeholder="Hoặc nhập khác..."
+                    />
                   </div>
                 </div>
               </div>
 
-              <div className={cn("p-8 lg:p-10 border-t flex gap-4 transition-colors shrink-0", isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50/50 border-slate-100")}>
+              <div className={cn("p-5 border-t flex gap-3 transition-colors shrink-0", isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50/50 border-slate-100")}>
                 <button
                   onClick={() => setEditingUser(null)}
                   className={cn(
-                    "flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2",
+                    "flex-1 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border-2",
                     isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
                   )}
                 >
-                  Hủy
+                  Hủy bỏ
                 </button>
                 <button
                   onClick={saveEdit}
-                  className="flex-2 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                  className="flex-[2] py-3.5 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-500/10 hover:opacity-90 transition-all flex items-center justify-center gap-2"
                 >
-                  <Save size={18} />
+                  <Save size={16} />
                   Cập nhật hồ sơ
                 </button>
               </div>

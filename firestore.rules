@@ -584,7 +584,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
       allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
-      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
     match /notifications/{notificationId} {
@@ -593,7 +593,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && 
                     isValidNotification(request.resource.data) &&
                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /system_settings/{docId} {
@@ -631,7 +631,7 @@ service cloud.firestore {
     match /social_likes/{likeId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidSocialLike(request.resource.data);
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /social_comments/{commentId} {
@@ -645,7 +645,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
       allow create: if isAuthenticated() && isValidTodo(request.resource.data);
       allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && isValidTodo(request.resource.data);
-      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
     match /welcome_slides/{slideId} {

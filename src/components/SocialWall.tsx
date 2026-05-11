@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search } from 'lucide-react';
+import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
@@ -294,9 +294,11 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [editPosition, setEditPosition] = useState(userProfile.position || '');
   const [editSpecialty, setEditSpecialty] = useState(userProfile.specialty || '');
   const [editDepartment, setEditDepartment] = useState(userProfile.department || '');
+  const [editZalo, setEditZalo] = useState(userProfile.zalo || '');
   const [hideEmail, setHideEmail] = useState(userProfile.hideEmail || false);
+  const [hideZalo, setHideZalo] = useState(userProfile.hideZalo || false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [privacyConfirm, setPrivacyConfirm] = useState<{ open: boolean; type: 'email' }>({ open: false, type: 'email' });
+  const [privacyConfirm, setPrivacyConfirm] = useState<{ open: boolean; type: 'email' | 'zalo' }>({ open: false, type: 'email' });
   const [saveLoading, setSaveLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -338,7 +340,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       setEditPosition(userProfile.position || '');
       setEditSpecialty(userProfile.specialty || '');
       setEditDepartment(userProfile.department || '');
+      setEditZalo(userProfile.zalo || '');
       setHideEmail(userProfile.hideEmail || false);
+      setHideZalo(userProfile.hideZalo || false);
     }
   }, [userProfile, isEditingProfile]);
 
@@ -348,6 +352,12 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       setSelectedProfile(userProfile);
     }
   }, [userProfile, selectedProfile.uid]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('social-profile-changed', { 
+      detail: { uid: selectedProfile.uid } 
+    }));
+  }, [selectedProfile.uid]);
 
   useEffect(() => {
     const q = query(collection(db, 'social_posts'), orderBy('createdAt', 'desc'));
@@ -403,6 +413,26 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       unsubDepartments();
     };
   }, [userProfile.uid]);
+  useEffect(() => {
+    if (selectedProfile.uid !== userProfile.uid) {
+      const currentInAll = allUsers.find(u => u.uid === selectedProfile.uid);
+      if (currentInAll?.isHidden) {
+        setSelectedProfile(userProfile);
+        setActiveSubTab('feed');
+      }
+    }
+  }, [allUsers, selectedProfile.uid, userProfile]);
+
+
+  useEffect(() => {
+    const handleReset = () => {
+      setSelectedProfile(userProfile);
+      setActiveSubTab('profile');
+      setIsEditingProfile(false);
+    };
+    window.addEventListener('reset-profile-view', handleReset);
+    return () => window.removeEventListener('reset-profile-view', handleReset);
+  }, [userProfile]);
 
   const handleSavePost = async () => {
     if (!newPostContent.trim()) return;
@@ -511,7 +541,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         position: editPosition,
         specialty: editSpecialty,
         department: editDepartment,
+        zalo: editZalo,
         hideEmail: hideEmail,
+        hideZalo: hideZalo,
       };
       await setDoc(userRef, updatedProfile);
       setUserProfile(updatedProfile);
@@ -823,10 +855,13 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 {/* Posts List */}
                 <div className="space-y-6">
                   {posts
-                    .filter(post => 
-                      post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      post.authorName.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
+                    .filter(post => {
+                      const author = allUsers.find(u => u.uid === post.authorUid);
+                      const isVisible = !author?.isHidden || post.authorUid === userProfile.uid;
+                      const matchesSearch = post.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                           post.authorName.toLowerCase().includes(searchTerm.toLowerCase());
+                      return isVisible && matchesSearch;
+                    })
                     .map(renderPost)}
                 </div>
               </motion.div>
@@ -920,156 +955,248 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           </button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Họ và tên</label>
-                          <input 
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                          />
+                      <div className="space-y-8">
+                        {/* Section: Basic Info */}
+                        <div className="space-y-4">
+                          <h4 className={cn("text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                            <User size={12} /> Thông tin cơ bản
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Họ và tên</label>
+                              <div className="relative group">
+                                <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
+                                <input 
+                                  type="text" 
+                                  placeholder="Nhập họ và tên..."
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Số Zalo liên hệ</label>
+                              <div className="relative group">
+                                <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
+                                <input 
+                                  type="tel"
+                                  placeholder="09xxx..."
+                                  value={editZalo}
+                                  onChange={(e) => setEditZalo(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chức danh</label>
-                          <select 
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                          >
-                            <option value="">Chọn chức danh...</option>
-                            {availableTitles.map(t => (
-                              <option key={t.id} value={t.name}>{t.name}</option>
-                            ))}
-                          </select>
+
+                        {/* Section: Professional Info */}
+                        <div className="space-y-4">
+                          <h4 className={cn("text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                            <Briefcase size={12} /> Thông tin chuyên môn
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Chức danh</label>
+                              <div className="relative group">
+                                <Award size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-primary transition-colors" />
+                                <select 
+                                  value={editTitle}
+                                  onChange={(e) => setEditTitle(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                >
+                                  <option value="">Chọn chức danh...</option>
+                                  {availableTitles.map(t => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Khoa/Phòng</label>
+                              <div className="relative group">
+                                <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-primary transition-colors" />
+                                <select 
+                                  value={editDepartment}
+                                  onChange={(e) => setEditDepartment(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                >
+                                  <option value="">Chọn khoa/phòng...</option>
+                                  {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map(d => (
+                                    <option key={d.id} value={d.name}>{d.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Chức vụ</label>
+                              <div className="relative group">
+                                <ShieldCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-primary transition-colors" />
+                                <select 
+                                  value={editPosition}
+                                  onChange={(e) => setEditPosition(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                >
+                                  <option value="">Chọn chức vụ...</option>
+                                  {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map(p => (
+                                    <option key={p.id} value={p.name}>{p.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500 ml-1">Chuyên khoa</label>
+                              <div className="relative group">
+                                <GraduationCap size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none group-focus-within:text-primary transition-colors" />
+                                <select 
+                                  value={editSpecialty}
+                                  onChange={(e) => setEditSpecialty(e.target.value)}
+                                  className={cn(
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                  )}
+                                >
+                                  <option value="">Chọn chuyên khoa...</option>
+                                  {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Khoa/Phòng</label>
-                          <select 
-                            value={editDepartment}
-                            onChange={(e) => setEditDepartment(e.target.value)}
-                            className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                          >
-                            <option value="">Chọn khoa/phòng...</option>
-                            {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map(d => (
-                              <option key={d.id} value={d.name}>{d.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chức vụ</label>
-                          <select 
-                            value={editPosition}
-                            onChange={(e) => setEditPosition(e.target.value)}
-                            className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                          >
-                            <option value="">Chọn chức vụ...</option>
-                            {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map(p => (
-                              <option key={p.id} value={p.name}>{p.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Chuyên khoa</label>
-                          <select 
-                            value={editSpecialty}
-                            onChange={(e) => setEditSpecialty(e.target.value)}
-                            className={cn(
-                              "w-full px-4 py-3 rounded-2xl border font-bold focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                          >
-                            <option value="">Chọn chuyên khoa...</option>
-                            {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
-                              <option key={s.id} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
+
+                        {/* Section: Privacy */}
+                        <div className="space-y-4">
+                          <h4 className={cn("text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                            <Lock size={12} /> Cài đặt riêng tư
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label className={cn(
+                              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
+                              !hideEmail 
+                                ? "border-primary bg-primary/5 shadow-sm" 
+                                : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
+                            )}>
+                               <div className="flex items-center gap-3">
+                                 <div className={cn(
+                                   "p-2 rounded-xl transition-all shadow-sm", 
+                                   !hideEmail ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                 )}>
+                                   {!hideEmail ? <Globe size={14} /> : <Lock size={14} />}
+                                 </div>
+                                 <div>
+                                   <p className="text-[11px] font-black uppercase tracking-wider">Email liên hệ</p>
+                                   <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideEmail ? "text-primary/70" : "text-slate-500")}>
+                                     {!hideEmail ? 'Đang công khai' : 'Đang ẩn với mọi người'}
+                                   </p>
+                                 </div>
+                               </div>
+                               <input 
+                                 type="checkbox"
+                                 checked={!hideEmail}
+                                 onChange={(e) => {
+                                   const isPublic = e.target.checked;
+                                   if (isPublic) {
+                                     setPrivacyConfirm({ open: true, type: 'email' });
+                                   } else {
+                                     setHideEmail(true);
+                                   }
+                                 }}
+                                 className="sr-only"
+                               />
+                               <div className={cn(
+                                 "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                 !hideEmail 
+                                   ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
+                                   : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
+                               )}>
+                                 {!hideEmail && <Check size={14} className="text-white" />}
+                               </div>
+                            </label>
+
+                            <label className={cn(
+                              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
+                              !hideZalo 
+                                ? "border-primary bg-primary/5 shadow-sm" 
+                                : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
+                            )}>
+                               <div className="flex items-center gap-3">
+                                 <div className={cn(
+                                   "p-2 rounded-xl transition-all shadow-sm", 
+                                   !hideZalo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                 )}>
+                                   {!hideZalo ? <Globe size={14} /> : <Lock size={14} />}
+                                 </div>
+                                 <div>
+                                   <p className="text-[11px] font-black uppercase tracking-wider">Số Zalo</p>
+                                   <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideZalo ? "text-primary/70" : "text-slate-500")}>
+                                     {!hideZalo ? 'Đang công khai' : 'Đang ẩn với mọi người'}
+                                   </p>
+                                 </div>
+                               </div>
+                               <input 
+                                 type="checkbox"
+                                 checked={!hideZalo}
+                                 onChange={(e) => {
+                                   const isPublic = e.target.checked;
+                                   if (isPublic) {
+                                     setPrivacyConfirm({ open: true, type: 'zalo' });
+                                   } else {
+                                     setHideZalo(true);
+                                   }
+                                 }}
+                                 className="sr-only"
+                               />
+                               <div className={cn(
+                                 "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                 !hideZalo 
+                                   ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
+                                   : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
+                               )}>
+                                 {!hideZalo && <Check size={14} className="text-white" />}
+                               </div>
+                            </label>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800 space-y-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cài đặt riêng tư</h4>
-                            <p className="text-[9px] text-slate-500 font-bold mt-1">Lựa chọn thông tin bạn muốn hiển thị công khai</p>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <label className={cn(
-                            "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
-                            !hideEmail 
-                              ? "border-primary bg-primary/5 shadow-sm" 
-                              : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
-                          )}>
-                             <div className="flex items-center gap-3">
-                               <div className={cn(
-                                 "p-2 rounded-lg transition-colors", 
-                                 !hideEmail ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
-                               )}>
-                                 {!hideEmail ? <Globe size={14} /> : <Lock size={14} />}
-                               </div>
-                               <div>
-                                 <p className="text-[11px] font-black uppercase tracking-wider">Email liên hệ</p>
-                                 <p className="text-[9px] font-bold text-slate-500 mt-0.5">
-                                   {!hideEmail ? 'Đang công khai' : 'Đang ẩn với mọi người'}
-                                 </p>
-                               </div>
-                             </div>
-                             <input 
-                               type="checkbox"
-                               checked={!hideEmail}
-                               onChange={(e) => {
-                                 const isPublic = e.target.checked;
-                                 if (isPublic) { // Switching to PUBLIC
-                                   setPrivacyConfirm({ open: true, type: 'email' });
-                                 } else {
-                                   setHideEmail(true); // Switch to HIDDEN
-                                 }
-                               }}
-                               className="sr-only"
-                             />
-                             <div className={cn(
-                               "w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all",
-                               !hideEmail 
-                                 ? "bg-primary border-primary" 
-                                 : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
-                             )}>
-                               {!hideEmail && <Check size={12} className="text-white" />}
-                             </div>
-                          </label>
-                        </div>
-                      </div>
-                      <div className="mt-10 flex items-center justify-end gap-4">
+                      <div className="mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">
                         <button
                           onClick={() => setIsEditingProfile(false)}
                           className={cn(
-                            "px-6 py-4 rounded-2xl font-black text-sm transition-all text-slate-500 hover:text-rose-500"
+                            "px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all",
+                            isDarkMode ? "text-slate-400 hover:bg-slate-800 hover:text-rose-500" : "text-slate-500 hover:bg-slate-100 hover:text-rose-600"
                           )}
                         >
-                          Hủy
+                          Hủy bỏ
                         </button>
                         <button
                           onClick={handleSaveProfile}
                           disabled={saveLoading}
                           className={cn(
-                            "px-8 py-4 rounded-2xl font-black text-sm flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-xl",
-                            isDarkMode ? "bg-primary text-white" : "bg-slate-900 text-white shadow-slate-200"
+                            "px-10 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-xl",
+                            isDarkMode ? "bg-primary text-white shadow-primary/20" : "bg-slate-900 text-white shadow-slate-900/20"
                           )}
                         >
-                          {saveLoading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                          Lưu
+                          {saveLoading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                          Lưu thay đổi
                         </button>
                       </div>
                     </div>
@@ -1146,6 +1273,28 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                 </p>
                               </div>
                             )}
+
+                            {selectedProfile.zalo && (!selectedProfile.hideZalo || selectedProfile.uid === userProfile.uid) && (
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                  Số Zalo liên hệ
+                                  {selectedProfile.hideZalo && selectedProfile.uid === userProfile.uid && (
+                                    <span className="text-[8px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 lowercase flex items-center gap-1">
+                                      <Lock size={8} /> Đang ẩn
+                                    </span>
+                                  )}
+                                </p>
+                                <a 
+                                  href={`https://zalo.me/${selectedProfile.zalo.replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={cn("text-sm font-black mt-1 flex items-center gap-2 hover:text-primary transition-colors", !selectedProfile.hideZalo ? "opacity-100" : "opacity-50", isDarkMode ? "text-slate-200" : "text-slate-900")}
+                                >
+                                  <MessageSquare size={14} className="text-primary" />
+                                  {selectedProfile.zalo}
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1181,10 +1330,13 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                     </div>
                     
                     <div className="space-y-6">
-                      {posts.filter(p => 
-                        p.authorUid === selectedProfile.uid && 
-                        p.content.toLowerCase().includes(searchTerm.toLowerCase())
-                      ).length === 0 ? (
+                      {posts.filter(p => {
+                        const author = allUsers.find(u => u.uid === p.authorUid);
+                        const isVisible = !author?.isHidden || p.authorUid === userProfile.uid;
+                        const isProfileMatch = p.authorUid === selectedProfile.uid;
+                        const matchesSearch = p.content.toLowerCase().includes(searchTerm.toLowerCase());
+                        return isVisible && isProfileMatch && matchesSearch;
+                      }).length === 0 ? (
                         <div className={cn(
                           "p-12 rounded-[32px] border border-dashed text-center",
                           isDarkMode ? "border-slate-800" : "border-slate-200"
@@ -1194,10 +1346,13 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           </p>
                         </div>
                       ) : (
-                        posts.filter(p => 
-                          p.authorUid === selectedProfile.uid && 
-                          p.content.toLowerCase().includes(searchTerm.toLowerCase())
-                        ).map(renderPost)
+                        posts.filter(p => {
+                          const author = allUsers.find(u => u.uid === p.authorUid);
+                          const isVisible = !author?.isHidden || p.authorUid === userProfile.uid;
+                          const isProfileMatch = p.authorUid === selectedProfile.uid;
+                          const matchesSearch = p.content.toLowerCase().includes(searchTerm.toLowerCase());
+                          return isVisible && isProfileMatch && matchesSearch;
+                        }).map(renderPost)
                       )}
                     </div>
                   </div>
@@ -1222,7 +1377,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
             </div>
             
             <div className="space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar pr-2">
-              {allUsers.map((user) => (
+              {allUsers.filter(u => !u.isHidden || u.uid === userProfile.uid).map((user) => (
                 <button 
                   key={user.uid} 
                   onClick={() => handleViewProfile(user)}
@@ -1308,10 +1463,14 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         onClose={() => setPrivacyConfirm({ ...privacyConfirm, open: false })}
         onConfirm={() => {
           if (privacyConfirm.type === 'email') setHideEmail(false);
+          if (privacyConfirm.type === 'zalo') setHideZalo(false);
           setPrivacyConfirm({ ...privacyConfirm, open: false });
         }}
         title="Cảnh báo quyền riêng tư"
-        message="Bạn có chắc chắn muốn công khai Email không? Mọi người sẽ có thể nhìn thấy email liên hệ của bạn."
+        message={privacyConfirm.type === 'email' 
+          ? "Bạn có chắc chắn muốn công khai Email không? Mọi người sẽ có thể nhìn thấy email liên hệ của bạn."
+          : "Bạn có chắc chắn muốn công khai Số Zalo không? Mọi người sẽ có thể nhìn thấy số Zalo liên hệ của bạn."
+        }
         confirmText="Công khai"
         cancelText="Hủy"
         type="warning"
@@ -1415,10 +1574,16 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
           <div className="flex justify-center p-4">
             <Loader2 size={20} className="animate-spin text-slate-400" />
           </div>
-        ) : comments.length === 0 ? (
+        ) : comments.filter(comment => {
+            const author = allUsers.find(u => u.uid === comment.authorUid);
+            return !author?.isHidden || comment.authorUid === userProfile.uid;
+          }).length === 0 ? (
           <p className="text-center py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Chưa có bình luận nào</p>
         ) : (
-          comments.map((comment) => {
+          comments.filter(comment => {
+            const author = allUsers.find(u => u.uid === comment.authorUid);
+            return !author?.isHidden || comment.authorUid === userProfile.uid;
+          }).map((comment) => {
             const commenterProfile = allUsers.find(u => u.uid === comment.authorUid);
             const commenterPhoto = getBustedPhotoURL(commenterProfile?.photoURL || comment.authorPhoto, commenterProfile?.photoSyncToken);
             const commenterName = commenterProfile?.displayName || comment.authorName;

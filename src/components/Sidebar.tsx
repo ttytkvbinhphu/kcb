@@ -60,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
   const [tooltip, setTooltip] = useState<{ label: string; y: number; isMaintenance?: boolean; isClosed?: boolean } | null>(null);
+  const [viewedProfileUid, setViewedProfileUid] = useState<string | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -166,6 +167,24 @@ const Sidebar: React.FC<SidebarProps> = ({
       } else { setPharmacyItems(pharmacyOnly); }
     }
   }, [userRole, title, allowedTabs, isAdminMode, featureSettings, featureStates]);
+
+  useEffect(() => {
+    const handleProfileChange = (e: any) => {
+      if (e.detail && e.detail.uid) {
+        setViewedProfileUid(e.detail.uid);
+      }
+    };
+    window.addEventListener('social-profile-changed', handleProfileChange);
+    return () => window.removeEventListener('social-profile-changed', handleProfileChange);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'view_profile') {
+      setViewedProfileUid(null);
+    }
+  }, [activeTab]);
+
+  const isOwnProfileActive = activeTab === 'view_profile' && (!viewedProfileUid || viewedProfileUid === uid);
 
   const handleReorder = (newOrder: SidebarItem[]) => {
     setItems(newOrder);
@@ -381,11 +400,14 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           <button 
-            onClick={() => setActiveTab('view_profile')}
+            onClick={() => {
+              setActiveTab('view_profile');
+              window.dispatchEvent(new CustomEvent('reset-profile-view'));
+            }}
             className={cn(
               "w-full p-2 rounded-lg border flex items-center gap-2 transition-all group/profile mb-2",
               isCollapsed ? "justify-center" : "",
-              activeTab === 'view_profile'
+              isOwnProfileActive
                 ? (isDarkMode ? "bg-primary/20 border-primary/50" : "bg-primary/5 border-primary/20")
                 : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 shadow-sm hover:border-slate-200")
             )}
@@ -409,7 +431,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên')}
                 </p>
                 <p className={cn("text-[14px] font-bold truncate transition-colors", 
-                  activeTab === 'view_profile' ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")
+                  isOwnProfileActive ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")
                 )}>
                   {displayName}
                 </p>
