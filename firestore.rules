@@ -168,21 +168,23 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return hasRequiredFields(['uid', 'email', 'role', 'displayName']) &&
-             data.uid is string && data.uid.size() > 0 &&
-             data.displayName is string && data.displayName.size() > 0 &&
-             data.displayName.size() < 100 &&
-             isValidEmail(data.email) &&
-             data.role in ['admin', 'operator', 'member', 'operator_doctor', 'operator_pharmacist'] &&
+      return data.get('uid', null) != null &&
+             (!('email' in data) || data.email is string) &&
+             (!('role' in data) || data.role is string) &&
              (!('isApproved' in data) || data.isApproved is bool) &&
-             (!('title' in data) || (data.title is string && data.title.size() < 100)) &&
-             (!('position' in data) || (data.position is string && data.position.size() < 100)) &&
-             (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 100)) &&
-             (!('department' in data) || (data.department is string && data.department.size() < 200)) &&
-             (!('photoURL' in data) || data.photoURL is string) &&
-             (!('photoSyncToken' in data) || data.photoSyncToken is number) &&
-             (!('isOnline' in data) || data.isOnline is bool) &&
-             (!('lastActive' in data) || data.lastActive is string);
+             (!('photoURL' in data) || (data.photoURL == null || data.photoURL is string)) &&
+             (!('displayName' in data) || data.displayName is string) &&
+             (!('title' in data) || data.title is string) &&
+             (!('position' in data) || data.position is string) &&
+             (!('specialty' in data) || data.specialty is string) &&
+             (!('department' in data) || data.department is string) &&
+             (!('zalo' in data) || data.zalo is string) &&
+             (!('hideEmail' in data) || data.hideEmail is bool) &&
+             (!('hideZalo' in data) || data.hideZalo is bool) &&
+             (!('hasSeenWelcome' in data) || data.hasSeenWelcome is bool) &&
+             (!('photoSyncToken' in data) || data.photoSyncToken is string) &&
+             (!('isHidden' in data) || data.isHidden is bool) &&
+             (!('updatedAt' in data) || isValidDateString(data.updatedAt));
     }
 
     function isValidICD10(data) {
@@ -314,7 +316,8 @@ service cloud.firestore {
              (!('loginPrimaryColor' in data) || (data.loginPrimaryColor is string)) &&
              (!('loginCardGlassMode' in data) || (data.loginCardGlassMode is bool)) &&
              (!('termsOfUse' in data) || (data.termsOfUse is string && data.termsOfUse.size() < 10000)) &&
-             (!('termsUpdateDate' in data) || (data.termsUpdateDate is string));
+             (!('termsUpdateDate' in data) || (data.termsUpdateDate is string)) &&
+             (!('showWelcomeSlider' in data) || (data.showWelcomeSlider is bool));
     }
 
     function isValidSocialPost(data) {
@@ -485,7 +488,6 @@ service cloud.firestore {
       allow delete: if isOperator() && (resource.data.doctorUid == request.auth.uid || isAdmin());
     }
 
-    // Users: All authenticated users can read profiles for Social Wall. Admins manage all.
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
@@ -493,7 +495,8 @@ service cloud.firestore {
         isAdmin() || 
         (isOwner(userId) && 
          isValidUser(request.resource.data) && 
-         (request.resource.data.role == resource.data.role || (resource.data.role == 'operator' && request.resource.data.role in ['operator_doctor', 'operator_pharmacist'])) && 
+         (request.resource.data.get('role', 'member') == resource.data.get('role', 'member') || 
+          (resource.data.get('role', 'member') == 'operator' && request.resource.data.get('role', 'member') in ['operator_doctor', 'operator_pharmacist'])) && 
          request.resource.data.get('isApproved', false) == resource.data.get('isApproved', false))
       );
       allow delete: if isAdmin();

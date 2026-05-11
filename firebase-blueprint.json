@@ -111,8 +111,21 @@
         "title": { "type": "string", "description": "Chức danh (Bác sĩ, Dược sĩ...)" },
         "position": { "type": "string", "description": "Chức vụ (Giám đốc, Nhân viên...)" },
         "specialty": { "type": "string", "description": "Chuyên môn (Tiến sĩ, Thạc sĩ...)" },
-        "role": { "type": "string", "enum": ["admin", "operator", "member"], "description": "Vai trò trong hệ thống" },
-        "isApproved": { "type": "boolean", "description": "Trạng thái phê duyệt tài khoản" }
+        "department": { "type": "string", "description": "Khoa/Phòng" },
+        "role": { "type": "string", "enum": ["admin", "operator", "member", "operator_doctor", "operator_pharmacist"], "description": "Vai trò trong hệ thống" },
+        "isApproved": { "type": "boolean", "description": "Trạng thái phê duyệt tài khoản" },
+        "photoURL": { "type": "string" },
+        "photoSyncToken": { "type": "string" },
+        "hideEmail": { "type": "boolean" },
+        "hiddenQuickActions": { "type": "array", "items": { "type": "string" } },
+        "zalo": { "type": "string" },
+        "hideZalo": { "type": "boolean" },
+        "hasSeenWelcome": { "type": "boolean" },
+        "isHidden": { "type": "boolean" },
+        "pinnedIcdCodes": { "type": "array", "items": { "type": "string" } },
+        "workspaceIcdCodes": { "type": "array", "items": { "type": "string" } },
+        "lastActive": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "role"]
     },
@@ -358,7 +371,16 @@
         "loginTitle": { "type": "string", "description": "Tiêu đề chính ở trang đăng nhập" },
         "loginSubtitle": { "type": "string", "description": "Tiêu đề phụ ở trang đăng nhập" },
         "appDescription": { "type": "string", "description": "Mô tả ứng dụng ở trang đăng nhập" },
-        "defaultTheme": { "type": "string", "enum": ["light", "dark"], "description": "Giao diện mặc định cho người dùng mới" }
+        "defaultTheme": { "type": "string", "enum": ["light", "dark"], "description": "Giao diện mặc định cho người dùng mới" },
+        "loginLogoUrl": { "type": "string" },
+        "loginBgUrl": { "type": "string" },
+        "loginBgBlur": { "type": "number" },
+        "loginBgOpacity": { "type": "number" },
+        "loginPrimaryColor": { "type": "string" },
+        "loginCardGlassMode": { "type": "boolean" },
+        "termsOfUse": { "type": "string" },
+        "termsUpdateDate": { "type": "string" },
+        "showWelcomeSlider": { "type": "boolean" }
       }
     },
     "SocialPost": {

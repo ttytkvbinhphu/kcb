@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, Globe, GraduationCap, Eye, EyeOff } from 'lucide-react';
-import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
+import { db, collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
 import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
@@ -192,14 +192,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const saveEdit = async () => {
     if (!editingUser) return;
     try {
-      await setDoc(doc(db, 'users', editingUser.uid), {
-        ...editingUser,
+      await updateDoc(doc(db, 'users', editingUser.uid), {
         displayName: editForm.displayName,
         title: editForm.title,
         position: editForm.position,
         specialty: editForm.specialty,
         department: editForm.department,
-        zalo: editForm.zalo
+        zalo: editForm.zalo,
+        updatedAt: new Date().toISOString()
       });
       setEditingUser(null);
     } catch (error) {

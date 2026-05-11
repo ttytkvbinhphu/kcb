@@ -136,6 +136,8 @@ export interface UserProfile {
   isHidden?: boolean;
   pinnedIcdCodes?: string[];
   workspaceIcdCodes?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ICD10 {

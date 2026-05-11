@@ -4,7 +4,7 @@ import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
-import { db, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc, increment, where, addDoc } from '../firebase';
+import { db, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc, increment, where, addDoc, handleFirestoreError, OperationType } from '../firebase';
 import ConfirmModal from './ConfirmModal';
 
 interface Comment {
@@ -534,8 +534,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     setSaveLoading(true);
     try {
       const userRef = doc(db, 'users', userProfile.uid);
-      const updatedProfile: UserProfile = {
-        ...userProfile,
+      const updateData = {
         displayName: editName,
         title: editTitle,
         position: editPosition,
@@ -544,14 +543,17 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         zalo: editZalo,
         hideEmail: hideEmail,
         hideZalo: hideZalo,
+        updatedAt: new Date().toISOString()
       };
-      await setDoc(userRef, updatedProfile);
+      await updateDoc(userRef, updateData);
+      
+      const updatedProfile = { ...userProfile, ...updateData };
       setUserProfile(updatedProfile);
       setShowSuccess(true);
       setIsEditingProfile(false);
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (error) {
-      console.error("Save profile error:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${userProfile.uid}`);
     } finally {
       setSaveLoading(false);
     }

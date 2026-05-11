@@ -16,7 +16,7 @@ const SystemConfig = lazy(() => import('./components/SystemConfig'));
 const SocialWall = lazy(() => import('./components/SocialWall'));
 const PatientManagement = lazy(() => import('./components/PatientManagement'));
 const StaffManagement = lazy(() => import('./components/StaffManagement'));
-import WelcomeSlider from './components/WelcomeSlider';
+const WelcomeSlider = lazy(() => import('./components/WelcomeSlider'));
 import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -190,7 +190,8 @@ export default function App() {
     loginSubtitle: 'Ứng dụng hỗ trợ Khám Chữa Bệnh',
     appDescription: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
     loginLogoUrl: '/icon-512.png',
-    defaultTheme: 'light'
+    defaultTheme: 'light',
+    showWelcomeSlider: false
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileAppsMenuRef = useRef<HTMLDivElement>(null);
@@ -306,13 +307,20 @@ export default function App() {
   }, [theme, isDarkMode]);
 
   useEffect(() => {
-    if (isAuthReady && welcomeSlides.length > 0 && systemSettings.showWelcomeSlider !== false) {
-      const hasSeen = sessionStorage.getItem('hasSeenWelcome_v2');
-      if (!hasSeen) {
-        setShowWelcomeSlider(true);
+    if (isAuthReady && welcomeSlides.length > 0) {
+      if (systemSettings.showWelcomeSlider === false) {
+        setShowWelcomeSlider(false);
+      } else {
+        const hasSeen = sessionStorage.getItem('hasSeenWelcome_v2');
+        if (!hasSeen) {
+          setShowWelcomeSlider(true);
+        }
       }
+    } else if (isAuthReady && showWelcomeSlider) {
+      // If auth is ready but no slides or disabled, hide it
+      setShowWelcomeSlider(false);
     }
-  }, [user, isAuthReady, welcomeSlides, systemSettings.showWelcomeSlider]);
+  }, [isAuthReady, welcomeSlides, systemSettings.showWelcomeSlider]);
   
   useEffect(() => {
     if (systemSettings.appName) {
@@ -328,6 +336,14 @@ export default function App() {
         ...profileEditData,
         updatedAt: new Date().toISOString()
       };
+      
+      // Clean undefined values to prevent Firestore errors
+      Object.keys(updatedData).forEach(key => {
+        if (updatedData[key as keyof UserProfile] === undefined) {
+          delete updatedData[key as keyof UserProfile];
+        }
+      });
+
       await updateDoc(doc(db, 'users', user.uid), updatedData);
       setUserProfile(updatedData);
       setIsEditingProfile(false);
@@ -639,17 +655,15 @@ export default function App() {
             
             // Force approval and admin role for the master admin email
             if (isAdminEmail && (!profile.isApproved || profile.role !== 'admin')) {
-              const updatedProfile = {
-                ...profile,
-                isApproved: true,
-                role: 'admin' as const
-              };
               try {
-                await setDoc(userRef, updatedProfile);
-                profile = updatedProfile;
+                await updateDoc(userRef, {
+                  isApproved: true,
+                  role: 'admin' as const,
+                  updatedAt: new Date().toISOString()
+                });
+                profile = { ...profile, isApproved: true, role: 'admin' };
               } catch (e) {
                 console.warn("Admin auto-upgrade failed", e);
-                profile = updatedProfile; // Set locally anyway
               }
             }
 
@@ -660,18 +674,18 @@ export default function App() {
 
             const isPlaceholderName = !profile.displayName || profile.displayName === 'Quản trị viên' || profile.displayName === 'Thành viên mới';
             if (profile.photoURL !== googlePhoto || (googleName && profile.displayName !== googleName && (isPlaceholderName || !profile.displayName))) {
-              const updatedProfile = {
-                ...profile,
+              const profileUpdates = {
                 title: profile.title || 'Chưa cập nhật',
                 position: profile.position || 'Chưa cập nhật',
                 specialty: profile.specialty || 'Không',
                 photoURL: googlePhoto || profile.photoURL || '',
                 displayName: googleName || profile.displayName,
-                photoSyncToken: Date.now().toString()
+                photoSyncToken: Date.now().toString(),
+                updatedAt: new Date().toISOString()
               };
               try {
-                await setDoc(userRef, updatedProfile);
-                profile = updatedProfile;
+                await updateDoc(userRef, profileUpdates);
+                profile = { ...profile, ...profileUpdates };
               } catch (e) {
                 console.warn("Google sync failed", e);
               }
@@ -683,13 +697,14 @@ export default function App() {
               if ((profile.title || '').toLowerCase().includes('dược')) {
                 newRole = 'operator_pharmacist';
               }
-              const migratedProfile = { ...profile, role: newRole };
               try {
-                await setDoc(userRef, migratedProfile);
-                profile = migratedProfile;
+                await updateDoc(userRef, { 
+                  role: newRole,
+                  updatedAt: new Date().toISOString()
+                });
+                profile = { ...profile, role: newRole };
               } catch (e) {
                 console.warn("Operator migration failed", e);
-                profile = migratedProfile; // Set locally anyway
               }
             }
             
@@ -706,7 +721,9 @@ export default function App() {
               isApproved: isAdmin, // Only auto-approve the admin
               title: isAdmin ? 'Bác sĩ' : 'Chưa cập nhật',
               position: isAdmin ? 'Giám đốc' : 'Chưa cập nhật',
-              specialty: 'Không'
+              specialty: 'Không',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             };
             
             // Set profile locally first so UI transitions immediately
@@ -1628,18 +1645,22 @@ export default function App() {
 
   return (
     <>
-      {showWelcomeSlider && welcomeSlides.length > 0 && (
-        <WelcomeSlider 
-          key="app-welcome-slider"
-          onComplete={() => {
-            setShowWelcomeSlider(false);
-            sessionStorage.setItem('hasSeenWelcome_v2', 'true');
-          }} 
-          isDarkMode={isDarkMode}
-          userName={user?.displayName || userProfile?.displayName || undefined}
-          slides={welcomeSlides}
-        />
-      )}
+          <AnimatePresence>
+            {showWelcomeSlider && welcomeSlides.length > 0 && (
+              <Suspense fallback={null}>
+                <WelcomeSlider 
+                  key="app-welcome-slider"
+                  onComplete={() => {
+                    setShowWelcomeSlider(false);
+                    sessionStorage.setItem('hasSeenWelcome_v2', 'true');
+                  }} 
+                  isDarkMode={isDarkMode}
+                  userName={user?.displayName || userProfile?.displayName || undefined}
+                  slides={welcomeSlides}
+                />
+              </Suspense>
+            )}
+          </AnimatePresence>
 
       <div className={cn(
       "min-h-screen font-sans transition-colors duration-300 flex",
@@ -2458,23 +2479,26 @@ export default function App() {
         )}
 
         <div className="p-0 sm:p-3 lg:px-6 lg:pb-6 lg:pt-0">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <Suspense fallback={
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-primary" />
-                <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                  Đang tải giao diện...
-                </p>
-              </div>
-            }>
-              {renderContent()}
-            </Suspense>
-          </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Suspense fallback={
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                  <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                    Đang tải giao diện...
+                  </p>
+                </div>
+              }>
+                {renderContent()}
+              </Suspense>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Profile Modal */}

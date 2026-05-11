@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Pin, LayoutDashboard, MessageSquarePlus } from 'lucide-react';
-import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth } from '../firebase';
+import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth, handleFirestoreError, OperationType } from '../firebase';
 import * as XLSX from 'xlsx';
 import { ICD10, Drug, UserProfile } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import DrugDetailModal from './DrugDetailModal';
+import ICDDetailModal from './ICDDetailModal';
 
 interface ICD10ManagementProps {
   canManage: boolean;
@@ -49,9 +50,18 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const [detailDrug, setDetailDrug] = useState<Drug | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // ICD Detail Modal State
+  const [selectedIcdForDetail, setSelectedIcdForDetail] = useState<ICD10 | null>(null);
+  const [isIcdDetailModalOpen, setIsIcdDetailModalOpen] = useState(false);
+
   const handleShowDrugDetail = (drug: Drug) => {
     setDetailDrug(drug);
     setIsDetailModalOpen(true);
+  };
+
+  const handleShowIcdDetail = (icd: ICD10) => {
+    setSelectedIcdForDetail(icd);
+    setIsIcdDetailModalOpen(true);
   };
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -200,7 +210,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       if (!a.isPinned && b.isPinned) return 1;
       return (a.code || '').localeCompare(b.code || '');
     });
-  }, [icdList, searchTerm, filterStatus, icdChapterFilter, drugsByIcd, canManage, userProfile]);
+  }, [icdList, searchTerm, filterStatus, icdChapterFilter, icdCategoryFilter, drugsByIcd, canManage, userProfile]);
 
   // Reset to page 1 when search term or filter changes
   useEffect(() => {
@@ -316,11 +326,12 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         ? pinnedIcdCodes.filter(c => c !== icd.code)
         : [...pinnedIcdCodes, icd.code];
       
-      await updateDoc(doc(db, 'userProfiles', auth.currentUser.uid), {
-        pinnedIcdCodes: newPinnedIcdCodes
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        pinnedIcdCodes: newPinnedIcdCodes,
+        updatedAt: new Date().toISOString()
       });
     } catch (error) {
-      console.error("Error toggling pin:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 
@@ -353,11 +364,12 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         ? workspaceIcdCodes.filter(c => c !== icd.code)
         : [...workspaceIcdCodes, icd.code];
       
-      await updateDoc(doc(db, 'userProfiles', auth.currentUser.uid), {
-        workspaceIcdCodes: newWorkspaceIcdCodes
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        workspaceIcdCodes: newWorkspaceIcdCodes,
+        updatedAt: new Date().toISOString()
       });
     } catch (error) {
-      console.error("Error toggling workspace visibility:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
     }
   };
 
@@ -849,8 +861,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
             paginatedList.map((icd) => (
               <div 
                 key={icd.code}
+                onClick={() => handleShowIcdDetail(icd)}
                 className={cn(
-                  "p-4 transition-colors relative",
+                  "p-4 transition-colors relative cursor-pointer",
                   icd.isPinned && !canManage
                     ? (isDarkMode ? "bg-indigo-900/20 border-l-4 border-l-indigo-500" : "bg-indigo-50/50 border-l-4 border-l-indigo-500") 
                     : (isDarkMode ? "bg-slate-900/50" : "bg-white border-l-4 border-l-transparent")
@@ -880,7 +893,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   {canManage && (
                     <div className="shrink-0 flex gap-1">
                       <button 
-                        onClick={() => handleToggleAppendixA2(icd)} 
+                        onClick={(e) => { e.stopPropagation(); handleToggleAppendixA2(icd); }} 
                         className={cn(
                           "p-1.5 rounded-lg transition-colors",
                           icd.isAppendixA2
@@ -891,24 +904,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       >
                         <AlertTriangle size={16} className={icd.isAppendixA2 ? "fill-indigo-500/20" : ""} />
                       </button>
-                      <button 
-                        onClick={() => handleOpenModal(icd)} 
-                        className={cn(
-                          "p-1.5 rounded-lg transition-colors",
-                          isDarkMode ? "text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/30" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
-                        )}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button 
-                        onClick={() => confirmDelete(icd.code)} 
-                        className={cn(
-                          "p-1.5 rounded-lg transition-colors",
-                          isDarkMode ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                        )}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleOpenModal(icd); }} 
+                          className={cn(
+                            "p-1.5 rounded-lg transition-colors",
+                            isDarkMode ? "text-slate-500 hover:text-emerald-400 hover:bg-emerald-900/30" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+                          )}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); confirmDelete(icd.code); }} 
+                          className={cn(
+                            "p-1.5 rounded-lg transition-colors",
+                            isDarkMode ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                          )}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                     </div>
                   )}
                 </div>
@@ -939,7 +952,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drugName, idx) => (
                           <button 
                             key={idx} 
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const drugObj = drugList.find(d => d.name === drugName);
                               if (drugObj) {
                                 handleShowDrugDetail(drugObj);
@@ -969,7 +983,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleTogglePin(icd)}
+                        onClick={(e) => { e.stopPropagation(); handleTogglePin(icd); }}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                           icd.isPinned 
@@ -981,7 +995,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         {icd.isPinned ? "Đã ghim" : "Ghim"}
                       </button>
                       <button
-                        onClick={() => handleAddToNotes(icd)}
+                        onClick={(e) => { e.stopPropagation(); handleAddToNotes(icd); }}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                           isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-slate-50 border-slate-100 text-slate-500"
@@ -991,7 +1005,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         Ghi chú
                       </button>
                       <button
-                        onClick={() => handleToggleWorkspace(icd)}
+                        onClick={(e) => { e.stopPropagation(); handleToggleWorkspace(icd); }}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                           icd.showOnWorkspace 
@@ -1000,7 +1014,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         )}
                       >
                         <LayoutDashboard size={12} />
-                        {icd.showOnWorkspace ? "Workspace" : "Workspace"}
+                        {icd.showOnWorkspace ? "Đang hiện" : "Workspace"}
                       </button>
                     </div>
                   </div>
@@ -1040,8 +1054,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               {paginatedList.map((icd) => (
                 <tr 
                   key={icd.code} 
+                  onClick={() => handleShowIcdDetail(icd)}
                   className={cn(
-                    "transition-colors group",
+                    "transition-colors group cursor-pointer",
                     icd.isPinned && !canManage
                       ? (isDarkMode ? "bg-indigo-900/10 hover:bg-indigo-900/20" : "bg-indigo-50/40 hover:bg-indigo-50/60") 
                       : (isDarkMode ? "hover:bg-slate-800/50" : "hover:bg-slate-50/80")
@@ -1127,7 +1142,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <td className="px-4 sm:px-6 lg:px-8 py-4">
                       <div className="grid grid-cols-2 gap-1.5 w-fit">
                         <button
-                          onClick={() => handleTogglePin(icd)}
+                          onClick={(e) => { e.stopPropagation(); handleTogglePin(icd); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             icd.isPinned 
@@ -1139,7 +1154,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           <Pin size={14} className={icd.isPinned ? "fill-amber-500" : ""} />
                         </button>
                         <button
-                          onClick={() => handleAddToNotes(icd)}
+                          onClick={(e) => { e.stopPropagation(); handleAddToNotes(icd); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"
@@ -1149,7 +1164,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           <MessageSquarePlus size={14} />
                         </button>
                         <button
-                          onClick={() => handleToggleWorkspace(icd)}
+                          onClick={(e) => { e.stopPropagation(); handleToggleWorkspace(icd); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             icd.showOnWorkspace 
@@ -1167,7 +1182,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <td className="px-4 sm:px-6 lg:px-8 py-4 text-right">
                       <div className="flex justify-end gap-1 lg:gap-2">
                         <button
-                          onClick={() => handleToggleAppendixA2(icd)}
+                          onClick={(e) => { e.stopPropagation(); handleToggleAppendixA2(icd); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             icd.isAppendixA2
@@ -1179,7 +1194,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           <AlertTriangle size={16} className={icd.isAppendixA2 ? "fill-indigo-500/20" : ""} />
                         </button>
                         <button
-                          onClick={() => handleOpenModal(icd)}
+                          onClick={(e) => { e.stopPropagation(); handleOpenModal(icd); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             isDarkMode 
@@ -1191,7 +1206,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           <Edit2 size={16} />
                         </button>
                         <button
-                          onClick={() => confirmDelete(icd.code)}
+                          onClick={(e) => { e.stopPropagation(); confirmDelete(icd.code); }}
                           className={cn(
                             "p-2 rounded-lg transition-all",
                             isDarkMode 
@@ -1510,6 +1525,20 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         onClose={() => setIsDetailModalOpen(false)} 
         drug={detailDrug} 
         isDarkMode={isDarkMode} 
+      />
+
+      <ICDDetailModal
+        isOpen={isIcdDetailModalOpen}
+        onClose={() => setIsIcdDetailModalOpen(false)}
+        icd={selectedIcdForDetail}
+        suggestions={selectedIcdForDetail ? (drugsByIcd[(selectedIcdForDetail.code || '').trim().toUpperCase()] || []) : []}
+        isDarkMode={isDarkMode}
+        onShowDrugDetail={(drugName) => {
+          const drugObj = drugList.find(d => d.name === drugName);
+          if (drugObj) {
+            handleShowDrugDetail(drugObj);
+          }
+        }}
       />
     </div>
   );
