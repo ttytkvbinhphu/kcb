@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Pin, LayoutDashboard, MessageSquarePlus } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Pin, LayoutDashboard } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth, handleFirestoreError, OperationType } from '../firebase';
 import * as XLSX from 'xlsx';
 import { ICD10, Drug, UserProfile } from '../types';
@@ -333,26 +333,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     }
   };
 
-  const handleAddToNotes = async (icd: ICD10) => {
-    if (!auth.currentUser) return;
-    try {
-      const id = doc(collection(db, 'notes')).id;
-      const now = new Date().toISOString();
-      await setDoc(doc(db, 'notes', id), {
-        id,
-        title: `Ghi chú ICD-10: ${icd.code}`,
-        content: `Bệnh lý: ${icd.description}\n${icd.notes ? `Ghi chú: ${icd.notes}\n` : ''}`,
-        createdAt: now,
-        updatedAt: now,
-        createdBy: auth.currentUser.uid,
-        color: 'blue',
-        isPinned: false
-      });
-      alert('Đã thêm vào mục Ghi chú!');
-    } catch (error) {
-      console.error("Error adding to notes:", error);
-    }
-  };
 
   const handleToggleWorkspace = async (icd: ICD10) => {
     if (canManage || !userProfile || !auth.currentUser) return;
@@ -996,16 +976,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         {icd.isPinned ? "Đã ghim" : "Ghim"}
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleAddToNotes(icd); }}
-                        className={cn(
-                          "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500" : "bg-slate-50 border-slate-100 text-slate-500"
-                        )}
-                      >
-                        <MessageSquarePlus size={12} />
-                        Ghi chú
-                      </button>
-                      <button
                         onClick={(e) => { e.stopPropagation(); handleToggleWorkspace(icd); }}
                         className={cn(
                           "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
@@ -1153,16 +1123,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           title={icd.isPinned ? "Bỏ ghim" : "Ghim lên đầu"}
                         >
                           <Pin size={14} className={icd.isPinned ? "fill-amber-500" : ""} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleAddToNotes(icd); }}
-                          className={cn(
-                            "p-2 rounded-lg transition-all",
-                            isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/30" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"
-                          )}
-                          title="Thêm vào ghi chú"
-                        >
-                          <MessageSquarePlus size={14} />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleToggleWorkspace(icd); }}

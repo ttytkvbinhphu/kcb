@@ -55,6 +55,7 @@ const ALL_TABS = [
   { id: 'admin_positions', label: 'Quản lý Chức vụ', icon: ShieldCheck },
   { id: 'admin_specialties', label: 'Quản lý Chuyên khoa', icon: GraduationCap },
   { id: 'admin_roles', label: 'Quản lý Nhóm quyền', icon: Lock },
+  { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users },
   { id: 'admin_permissions', label: 'Phân quyền hệ thống', icon: ShieldCheck },
 ];
 
@@ -199,6 +200,12 @@ export default function App() {
     loginLogoUrl: '/icon-512.png',
     defaultTheme: 'light',
     showWelcomeSlider: false
+  });
+  const [regSettings, setRegSettings] = useState<RegistrationSettings>({
+    allowNewRegistration: true,
+    autoApprove: false,
+    defaultRoleId: 'unapproved',
+    defaultTitleId: ''
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
   const mobileAppsMenuRef = useRef<HTMLDivElement>(null);
@@ -412,6 +419,14 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'system_settings/main');
     });
 
+    const unsubReg = onSnapshot(doc(db, 'system_config', 'registration'), (snapshot) => {
+      if (snapshot.exists()) {
+        setRegSettings(snapshot.data() as RegistrationSettings);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_config/registration');
+    });
+
     const unsubFeatures = onSnapshot(doc(db, 'system_config', 'features'), (snapshot) => {
       if (snapshot.exists()) {
         setFeatureStates(snapshot.data() as any);
@@ -441,8 +456,10 @@ export default function App() {
       setConfigRoles([]);
       return () => {
         unsubSettings();
+        unsubReg();
         unsubFeatures();
         unsubFeatureSettings();
+        unsubSlides();
       };
     }
 
@@ -540,6 +557,7 @@ export default function App() {
       unsubNotifications();
       unsubAnnouncements();
       unsubSettings();
+      unsubReg();
       unsubFeatures();
       unsubFeatureSettings();
       unsubSlides();
@@ -741,14 +759,14 @@ export default function App() {
           } else {
             // New user logic
             const isAdmin = currentUser.email === 'ttytkvbinhphu@gmail.com';
-            const newProfile: UserProfile = {
+            const freshProfile: UserProfile = {
               uid: currentUser.uid,
               email: currentUser.email!,
               displayName: currentUser.displayName || (isAdmin ? 'Quản trị viên' : 'Thành viên mới'),
               photoURL: currentUser.photoURL || '',
-              role: isAdmin ? 'admin' : 'member',
-              isApproved: isAdmin, // Only auto-approve the admin
-              title: isAdmin ? 'Bác sĩ' : 'Chưa cập nhật',
+              role: isAdmin ? 'admin' : (regSettings.defaultRoleId || 'unapproved'),
+              isApproved: isAdmin || regSettings.autoApprove, // Auto-approve admin or if setting is on
+              title: isAdmin ? 'Bác sĩ' : (regSettings.defaultTitleId || 'Chưa cập nhật'),
               position: isAdmin ? 'Giám đốc' : 'Chưa cập nhật',
               specialty: 'Không',
               createdAt: new Date().toISOString(),
@@ -756,18 +774,21 @@ export default function App() {
             };
 
             // Set profile locally first so UI transitions immediately
-            setUserProfile(newProfile);
+            setUserProfile(freshProfile);
 
             // Then persist to Firestore
             try {
-              await setDoc(userRef, newProfile);
+              await setDoc(userRef, freshProfile);
             } catch (error) {
               console.error("Critical: Failed to persist new user profile:", error);
             }
           }
 
-          // Seed initial data non-blockingly
-          seedInitialData();
+          // Seed initial data non-blockingly only for admins
+          const isUserAdmin = (userSnap.exists() && (userSnap.data() as UserProfile).role === 'admin') || currentUser.email === 'ttytkvbinhphu@gmail.com';
+          if (isUserAdmin) {
+            seedInitialData(currentUser.uid);
+          }
         } catch (error: any) {
           if (error?.code?.startsWith('auth/')) {
             console.warn("Auth-related error during profile fetch (may be network issue):", error);
@@ -1088,24 +1109,47 @@ export default function App() {
             </div>
 
             <div className="space-y-6">
-              <button
-                onClick={handleLogin}
-                disabled={loginLoading}
-                className={cn(
-                  "w-full py-5 text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-[0.98]",
-                  (isDarkMode || systemSettings.loginCardGlassMode)
-                    ? "bg-primary hover:bg-primary/90 shadow-none disabled:bg-slate-800"
-                    : "bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200 disabled:bg-slate-300"
-                )}
-              >
-                {loginLoading ? (
-                  <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    Đăng nhập với Google <LogIn size={20} />
-                  </>
-                )}
-              </button>
+              {regSettings.allowNewRegistration ? (
+                <button
+                  onClick={handleLogin}
+                  disabled={loginLoading}
+                  className={cn(
+                    "w-full py-5 text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-[0.98]",
+                    (isDarkMode || systemSettings.loginCardGlassMode)
+                      ? "bg-primary hover:bg-primary/90 shadow-none disabled:bg-slate-800"
+                      : "bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200 disabled:bg-slate-300"
+                  )}
+                >
+                  {loginLoading ? (
+                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      Đăng nhập với Google <LogIn size={20} />
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className={cn(
+                  "p-6 rounded-3xl border-2 border-dashed flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in duration-500",
+                  (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-rose-500/5 border-rose-500/20" : "bg-rose-50 border-rose-100"
+                )}>
+                  <div className="w-16 h-16 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-lg shadow-rose-500/10">
+                    <AlertOctagon size={32} />
+                  </div>
+                  <div>
+                    <h3 className={cn("text-lg font-black tracking-tight mb-2", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
+                      Tạm dừng đăng ký mới
+                    </h3>
+                    <p className={cn("text-xs font-bold leading-relaxed", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-400" : "text-slate-500")}>
+                      {regSettings.registrationDisabledReason || "Hệ thống hiện đang tạm dừng tiếp nhận thành viên mới. Vui lòng liên hệ Quản trị viên để biết thêm chi tiết."}
+                    </p>
+                  </div>
+                  <div className="w-full h-px bg-rose-500/10" />
+                  <p className="text-[9px] font-black uppercase tracking-widest text-rose-500/60 flex items-center gap-2">
+                    <ShieldCheck size={12} /> Protected by System Administrator
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-4 py-2">
                 <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/20" : "bg-slate-100")} />
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Bảo mật bởi Google</span>
@@ -1398,9 +1442,13 @@ export default function App() {
   // CRITICAL: Restrict access for unapproved users but allow specifically configured features
   if (!userProfile.isApproved) {
     const unapprovedAllowed = ALL_TABS.filter(t => {
+      // Hard block management and admin features for unapproved users
+      if (t.id.startsWith('manage_') || t.id.startsWith('admin_')) return false;
+      
       const settings = featureSettings[t.id] || {};
       const allowedRoles = settings.allowedRoles || [];
-      return allowedRoles.includes('unapproved') || allowedRoles.includes('guest');
+      // Allow if explicitly allowed for 'unapproved' or 'guest', OR if no restrictions (public)
+      return allowedRoles.length === 0 || allowedRoles.includes('unapproved') || allowedRoles.includes('guest');
     }).map(t => t.id);
     allowedTabs = Array.from(new Set(['dashboard', ...unapprovedAllowed]));
   }
@@ -1430,7 +1478,10 @@ export default function App() {
       const settings = featureSettings[activeTab] || {};
       const isBanned = settings.bannedUsers?.includes(userProfile.uid);
       const allowedRoles = settings.allowedRoles || [];
-      const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile.role);
+      
+      // If user is not approved, treat their role as 'unapproved' for the sake of role check
+      const checkRole = userProfile.isApproved ? userProfile.role : 'unapproved';
+      const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(checkRole);
 
       const hasAccess = (allowedTabs.includes(activeTab) || (activeTab.startsWith('admin_') && userProfile.role === 'admin')) && !isBanned && roleAllowed;
       if (!hasAccess) {
@@ -1740,6 +1791,7 @@ export default function App() {
             featureStates={featureStates}
             featureSettings={featureSettings}
             uid={user?.uid || ''}
+            isApproved={userProfile.isApproved}
           />
 
           <main ref={(el) => { mainScrollRef.current = el; }} className={cn(
@@ -2149,7 +2201,7 @@ export default function App() {
                   title="Trở về Workspace"
                 >
                   <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
-                  <span className="font-bold text-sm">{systemSettings.appName}</span>
+                  <span className="font-bold text-sm hidden xl:inline-block">{systemSettings.appName}</span>
                 </button>
               </div>
 
@@ -2218,15 +2270,15 @@ export default function App() {
                                   : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
                               )}
                             >
-                          <div className={cn(
-                            "p-1.5 rounded-lg",
-                            activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
-                          )}>
-                            <item.icon size={14} className={activeTab === item.id ? "text-white" : "text-primary"} />
-                          </div>
-                          <span className="font-bold text-xs">{item.label}</span>
-                        </button>
-                      ));
+                              <div className={cn(
+                                "p-1.5 rounded-lg",
+                                activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
+                                )}>
+                                <item.icon size={14} className={activeTab === item.id ? "text-white" : "text-primary"} />
+                              </div>
+                              <span className="font-bold text-xs">{item.label}</span>
+                            </button>
+                          ));
                     })()}
                     </div>
                 </motion.div>
@@ -2234,87 +2286,87 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {hasUtilities && (
-              <div className="relative" ref={desktopAppsMenuRef}>
-                <button 
-                  onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
-                  className={cn(
-                    "p-2 rounded-xl transition-all relative group",
-                    isAppsMenuOpen 
-                      ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                  )}
-                  title="Tiện ích"
-                >
-                  <LayoutGrid size={18} />
-                </button>
+            <div className="flex items-center gap-3">
+              {hasUtilities && (
+                <div className="relative" ref={desktopAppsMenuRef}>
+                  <button 
+                    onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
+                    className={cn(
+                      "p-2 rounded-xl transition-all relative group",
+                      isAppsMenuOpen 
+                        ? "bg-primary text-white shadow-lg shadow-primary/20" 
+                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
+                    )}
+                    title="Tiện ích"
+                  >
+                    <LayoutGrid size={18} />
+                  </button>
 
-                <AnimatePresence>
-                  {isAppsMenuOpen && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className={cn(
-                        "absolute right-0 top-full mt-2 w-80 z-[110] p-4 rounded-2xl border shadow-2xl",
-                        isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-4 px-1">
-                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tiện ích</h3>
-                        <button 
-                          onClick={() => setIsAppsMenuOpen(false)} 
-                          className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
-                        >
-                          <X size={14} className="text-slate-400" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 p-1">
-                        {(() => {
-                          const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                          return ALL_TABS.filter(t => {
-                            const status = featureStates[t.id];
-                            const settings = featureSettings[t.id];
-                            const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
-                            const allowedRoles = settings?.allowedRoles || [];
-                            const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
-                            const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                            const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
-                            return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
-                          }).map(item => (
-                            <button 
-                              key={item.id}
-                              onClick={() => {
-                                setActiveTab(item.id);
-                                setIsAppsMenuOpen(false);
-                              }}
-                              className={cn(
-                                "flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all border group",
-                                activeTab === item.id
-                                  ? (isDarkMode ? "bg-primary/20 border-primary/50 text-primary" : "bg-primary/5 border-primary/20 text-primary")
-                                  : (isDarkMode ? "bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-600")
-                              )}
-                            >
-                              <div className={cn(
-                                "p-2 rounded-lg shadow-sm transition-transform group-hover:scale-110",
-                                activeTab === item.id ? "bg-primary text-white" : (isDarkMode ? "bg-slate-700" : "bg-white")
-                              )}>
-                                <item.icon size={16} />
-                              </div>
-                              <span className="text-[9px] font-bold text-center leading-tight">
-                                {featureSettings[item.id]?.customTitle || item.label}
-                              </span>
-                            </button>
-                          ));
-                        })()}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+                  <AnimatePresence>
+                    {isAppsMenuOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className={cn(
+                          "absolute right-0 top-full mt-2 w-80 z-[110] p-4 rounded-2xl border shadow-2xl",
+                          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-4 px-1">
+                          <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tiện ích</h3>
+                          <button 
+                            onClick={() => setIsAppsMenuOpen(false)} 
+                            className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
+                          >
+                            <X size={14} className="text-slate-400" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 p-1">
+                          {(() => {
+                            const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
+                            return ALL_TABS.filter(t => {
+                              const status = featureStates[t.id];
+                              const settings = featureSettings[t.id];
+                              const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
+                              const allowedRoles = settings?.allowedRoles || [];
+                              const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
+                              const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
+                              const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
+                              return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
+                            }).map(item => (
+                              <button 
+                                key={item.id}
+                                onClick={() => {
+                                  setActiveTab(item.id);
+                                  setIsAppsMenuOpen(false);
+                                }}
+                                className={cn(
+                                  "flex flex-col items-center gap-1.5 p-2.5 rounded-xl transition-all border group",
+                                  activeTab === item.id
+                                    ? (isDarkMode ? "bg-primary/20 border-primary/50 text-primary" : "bg-primary/5 border-primary/20 text-primary")
+                                    : (isDarkMode ? "bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-600")
+                                )}
+                              >
+                                <div className={cn(
+                                  "p-2 rounded-lg shadow-sm transition-transform group-hover:scale-110",
+                                  activeTab === item.id ? "bg-primary text-white" : (isDarkMode ? "bg-slate-700" : "bg-white")
+                                )}>
+                                  <item.icon size={16} />
+                                </div>
+                                <span className="text-[9px] font-bold text-center leading-tight">
+                                  {featureSettings[item.id]?.customTitle || item.label}
+                                </span>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
-            <div className="flex items-center gap-2 mr-2">
               <div className="relative" ref={notificationsMenuRef}>
                 <button 
                   onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
@@ -2381,10 +2433,7 @@ export default function App() {
                         
                         <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-2">
                           {(() => {
-                            let displayList = [];
-                            
                             if (notificationTab === 'unread') {
-                              // New announcements (within 3 days) + Unread notifications
                               const recentAnnouncements = announcements.filter(a => (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
                               const unreadNotifs = notifications.filter(n => !n.isRead);
                               
@@ -2469,22 +2518,22 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </div>
+                <button 
+                  onClick={() => {
+                    setIsProfileModalOpen(true);
+                  }}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all relative group",
+                    isProfileModalOpen 
+                      ? "bg-primary text-white shadow-lg shadow-primary/20" 
+                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
+                  )}
+                  title="Cài đặt"
+                >
+                  <Settings size={20} className="group-hover:rotate-90 transition-transform duration-500" />
+                </button>
+              </div>
             </div>
-            <button 
-              onClick={() => {
-                setIsProfileModalOpen(true);
-              }}
-              className={cn(
-                "p-2.5 rounded-xl transition-all relative group",
-                isProfileModalOpen 
-                  ? "bg-primary text-white shadow-lg shadow-primary/20" 
-                  : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-              )}
-              title="Cài đặt"
-            >
-              <Settings size={20} className="group-hover:rotate-90 transition-transform duration-500" />
-            </button>
-          </div>
 
     {/* Sub Header */ }
   {

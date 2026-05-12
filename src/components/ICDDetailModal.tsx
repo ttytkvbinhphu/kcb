@@ -234,7 +234,7 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
 
             {/* Footer */}
             <div className={cn(
-              "p-6 border-t shrink-0 flex justify-end gap-3",
+              "p-6 border-t shrink-0 flex justify-end gap-3 transition-colors",
               isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50/50 border-slate-100"
             )}>
               <button

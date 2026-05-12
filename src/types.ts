@@ -494,6 +494,14 @@ export interface AuthLog {
   timestamp: string;
 }
 
+export interface RegistrationSettings {
+  allowNewRegistration: boolean;
+  autoApprove: boolean;
+  defaultRoleId: string;
+  defaultTitleId: string;
+  registrationDisabledReason?: string;
+}
+
 export interface SystemSettings {
   appName: string;
   loginTitle: string;
@@ -510,3 +518,4 @@ export interface SystemSettings {
   termsUpdateDate?: string;
   showWelcomeSlider?: boolean;
 }
+

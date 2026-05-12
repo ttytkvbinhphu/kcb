@@ -25,6 +25,7 @@ interface SidebarProps {
   featureStates?: Record<string, 'open' | 'closed' | 'maintenance'>;
   featureSettings?: Record<string, any>;
   uid?: string;
+  isApproved?: boolean;
 }
 
 interface SidebarItem {
@@ -55,7 +56,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   appName,
   featureStates = {},
   featureSettings = {},
-  uid
+  uid,
+  isApproved = true
 }) => {
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
@@ -102,7 +104,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       // Hide if restricted role
       const allowedRoles = settings?.allowedRoles || [];
-      if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) return false;
+      const checkRole = isApproved ? userRole : 'unapproved';
+      if (allowedRoles.length > 0 && !allowedRoles.includes(checkRole)) return false;
       
       // Hide if restricted location
       // manage_interaction follows view_interaction's sidebar setting (linked features)
@@ -117,6 +120,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       if (status === 'closed') return false;
       if (status === 'maintenance' && !isPrivileged) return false;
+      
+      // Strict block for unapproved users on admin/manage tabs
+      if (!isApproved && (item.id.startsWith('admin_') || item.id.startsWith('manage_'))) return false;
+
       return allowedTabs.includes(item.id) || item.id.startsWith('admin_');
     });
 
@@ -428,7 +435,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && (
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider truncate">
-                  {title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên')}
+                  {!isApproved ? 'Đang chờ duyệt' : (title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên'))}
                 </p>
                 <p className={cn("text-[14px] font-bold truncate transition-colors", 
                   isOwnProfileActive ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")

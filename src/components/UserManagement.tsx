@@ -80,9 +80,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
   const toggleApproval = async (user: UserProfile) => {
     try {
+      const newApprovedStatus = !user.isApproved;
       await setDoc(doc(db, 'users', user.uid), {
         ...user,
-        isApproved: !user.isApproved
+        isApproved: newApprovedStatus,
+        // If unapproving, force role back to 'unapproved'
+        role: !newApprovedStatus ? 'unapproved' : user.role
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
@@ -215,6 +218,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     (u.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
     (u.displayName || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
+  
+  const getPositionColor = (pos: string) => {
+    const p = (pos || '').toLowerCase();
+    if (p.includes('giám đốc')) return isDarkMode ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200';
+    if (p.includes('trưởng khoa') || p.includes('trưởng phòng')) return isDarkMode ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (p.includes('phó khoa') || p.includes('phó phòng')) return isDarkMode ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' : 'bg-teal-50 text-teal-700 border-teal-200';
+    if (p.includes('điều dưỡng trưởng')) return isDarkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-50 text-rose-700 border-rose-200';
+    if (p.includes('nhân viên') || !pos) return isDarkMode ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-50 text-slate-500 border-slate-100';
+    
+    // Default for other positions
+    return isDarkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100';
+  };
 
   const unapprovedUsers = users.filter(u => !u.isApproved);
 
@@ -286,6 +301,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     "w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0 overflow-hidden",
                     !user.photoURL && (
                       user.role === 'admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600" : 
+                      user.role === 'unapproved' ? "bg-gradient-to-br from-amber-500 to-rose-600" :
                       user.role === 'operator_doctor' ? "bg-gradient-to-br from-emerald-500 to-teal-600" :
                       user.role === 'operator_pharmacist' ? "bg-gradient-to-br from-teal-500 to-cyan-600" :
                       "bg-gradient-to-br from-slate-500 to-slate-600"
@@ -334,17 +350,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         : (isDarkMode ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-rose-50 border-rose-100 text-rose-600")
                     )}
                   >
-                    {user.isApproved ? 'Đã duyệt' : 'Chờ duyệt'}
+                    {user.isApproved ? 'Đã duyệt' : 'Đang chờ duyệt'}
                   </button>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <div className={cn(
-                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
-                    isDarkMode ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                  )}>
-                    {user.position || 'Nhân viên'}
-                  </div>
                   <div className={cn(
                     "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
                     isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-100"
@@ -356,6 +366,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     isDarkMode ? "bg-teal-500/10 text-teal-400 border-teal-500/20" : "bg-teal-50 text-teal-700 border-teal-100"
                   )}>
                     {user.department || 'Chưa phân khoa'}
+                  </div>
+                  <div className={cn(
+                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
+                    getPositionColor(user.position || '')
+                  )}>
+                    {user.position || 'Nhân viên'}
                   </div>
                 </div>
 
@@ -369,7 +385,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     disabled={isMasterAdmin(user.email)}
                     className={cn(
                       "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border transition-all outline-none",
-                      isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"
+                      user.role === 'admin' ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") :
+                      user.role === 'unapproved' ? (isDarkMode ? "bg-amber-900/40 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700") :
+                      (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
                     )}
                   >
                     {configRoles.map(role => (
@@ -436,6 +454,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                 <th className={cn(
                   "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
                   isDarkMode ? "text-slate-500" : "text-slate-400"
+                )}>Chức danh</th>
+                <th className={cn(
+                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
+                  isDarkMode ? "text-slate-500" : "text-slate-400"
                 )}>Chuyên môn</th>
                 <th className={cn(
                   "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
@@ -487,10 +509,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                           <div className={cn(
                             "w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0 transition-all group-hover:scale-105 overflow-hidden",
                             !user.photoURL && (
-                              user.role === 'admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20" : 
-                              user.role === 'operator_doctor' ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20" :
-                              user.role === 'operator_pharmacist' ? "bg-gradient-to-br from-teal-500 to-cyan-600 shadow-lg shadow-teal-500/20" :
-                              "bg-gradient-to-br from-slate-500 to-slate-600 shadow-lg shadow-slate-500/20"
+                            user.role === 'admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20" : 
+                            user.role === 'unapproved' ? "bg-gradient-to-br from-amber-500 to-rose-600 shadow-lg shadow-amber-500/20" :
+                            user.role === 'operator_doctor' ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20" :
+                            user.role === 'operator_pharmacist' ? "bg-gradient-to-br from-teal-500 to-cyan-600 shadow-lg shadow-teal-500/20" :
+                            "bg-gradient-to-br from-slate-500 to-slate-600 shadow-lg shadow-slate-500/20"
                             )
                           )}>
                             {user.photoURL ? (
@@ -510,14 +533,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                                 "font-black text-sm transition-colors truncate",
                                 isDarkMode ? "text-white" : "text-slate-900"
                               )}>{user.displayName}</p>
-                              {user.title && (
-                                <span className={cn(
-                                  "px-1.5 py-0.5 text-[8px] font-black uppercase rounded",
-                                  isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500"
-                                )}>
-                                  {user.title}
-                                </span>
-                              )}
                             </div>
                             <div className="flex items-center gap-3 mt-1">
                               <p className={cn("text-[10px] font-bold opacity-60 truncate", isDarkMode ? "text-slate-400" : "text-slate-500")}>
@@ -544,17 +559,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <td className="px-6 py-4">
                         <span className={cn(
                           "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                          isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-50 text-slate-500 border-slate-100"
                         )}>
-                          {user.specialty || 'Không'}
+                          {user.title || 'Chưa có'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={cn(
                           "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          isDarkMode ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                          isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-100"
                         )}>
-                          {user.position || 'Nhân viên'}
+                          {user.specialty || 'Không'}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -566,6 +581,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         </span>
                       </td>
                       <td className="px-6 py-4">
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
+                          getPositionColor(user.position || '')
+                        )}>
+                          {user.position || 'Nhân viên'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
                         <select 
                           value={user.role || 'member'}
                           onChange={(e) => changeRole(user, e.target.value as any)}
@@ -574,9 +597,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                             "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border-2 focus:ring-0 transition-all cursor-pointer outline-none",
                             user.role === 'admin' 
                               ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") 
-                              : (['operator', 'operator_doctor', 'operator_pharmacist'].includes(user.role || ''))
-                                ? (isDarkMode ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-700") 
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
+                              : user.role === 'unapproved'
+                                ? (isDarkMode ? "bg-amber-900/40 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700")
+                                : (['operator', 'operator_doctor', 'operator_pharmacist'].includes(user.role || ''))
+                                  ? (isDarkMode ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-700") 
+                                  : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
                           )}
                         >
                           {configRoles.map(role => (
@@ -596,7 +621,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                           )}
                         >
                           {user.isApproved ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                          {user.isApproved ? 'Đã duyệt' : 'Chờ duyệt'}
+                          {user.isApproved ? 'Đã duyệt' : 'Đang chờ duyệt'}
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right">

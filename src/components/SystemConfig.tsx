@@ -205,7 +205,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [regSettings, setRegSettings] = useState<any>({
     allowNewRegistration: true,
     autoApprove: false,
-    defaultRoleId: 'member',
+    defaultRoleId: 'unapproved',
     defaultTitleId: ''
   });
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -1202,7 +1202,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     {(() => {
                       const allOptions = [
                         ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'unapproved', name: 'Đang chờ duyệt' },
                         { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                       ];
                       return allOptions.map(role => {
@@ -1249,7 +1249,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     {(() => {
                       const allOptions = [
                         ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'unapproved', name: 'Đang chờ duyệt' },
                         { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                       ];
                       return allOptions.map(role => {
@@ -1296,7 +1296,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     {(() => {
                       const allOptions = [
                         ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'unapproved', name: 'Đang chờ duyệt' },
                         { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                       ];
                       return allOptions.map(role => {
@@ -1345,7 +1345,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     {(() => {
                       const allOptions = [
                         ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'unapproved', name: 'Đang chờ duyệt' },
                         { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                       ];
                       return allOptions.map(role => {
@@ -1390,7 +1390,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     {(() => {
                       const allOptions = [
                         ...roles,
-                        { id: 'unapproved', name: 'Chờ xác minh' },
+                        { id: 'unapproved', name: 'Đang chờ duyệt' },
                         { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                       ];
                       return allOptions.map(role => {
@@ -1465,7 +1465,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               {(() => {
                 const allOptions = [
                   ...roles,
-                  { id: 'unapproved', name: 'Chờ xác minh' },
                   { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                 ];
                 return allOptions.map(role => {
@@ -1709,7 +1708,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               {(() => {
                 const allOptions = [
                   ...roles,
-                  { id: 'unapproved', name: 'Chờ xác minh' },
+                  { id: 'unapproved', name: 'Đang chờ duyệt' },
                   { id: 'guest', name: 'Khách' }
                 ];
                 const allowedRoles = settings.allowedRoles || [];
@@ -2278,33 +2277,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       Sử dụng mẫu chuẩn
                     </button>
                   </div>
-                  <ConfirmModal
-                    isOpen={isTermsConfirmOpen}
-                    onClose={() => setIsTermsConfirmOpen(false)}
-                    onConfirm={() => {
-                      setEditSettings({ ...editSettings, termsOfUse: SAMPLE_TERMS });
-                    }}
-                    title="Xác nhận chèn mẫu"
-                    message="Bạn có muốn chèn mẫu Điều khoản sử dụng chuẩn? Nội dung hiện tại sẽ bị ghi đè."
-                    confirmText="Đồng ý chèn"
-                    cancelText="Hủy bỏ"
-                    type="warning"
-                    isDarkMode={isDarkMode}
-                  />
-                  <ConfirmModal
-                    isOpen={isRegConfirmOpen}
-                    onClose={() => setIsRegConfirmOpen(false)}
-                    onConfirm={() => {
-                      updateRegSettings({ ...regSettings, allowNewRegistration: true });
-                      setIsRegConfirmOpen(false);
-                    }}
-                    title="Xác nhận mở đăng ký"
-                    message="Khi bật tính năng này, bất kỳ ai cũng có thể đăng ký tài khoản trên hệ thống. Bạn có chắc chắn muốn công khai việc đăng ký không?"
-                    confirmText="Bật Công khai"
-                    cancelText="Hủy"
-                    type="warning"
-                    isDarkMode={isDarkMode}
-                  />
                   <AutoExpandingTextarea
                     rows={8}
                     className={cn(
@@ -2697,6 +2669,25 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             <div className={cn("w-4 h-4 rounded-full bg-white transition-all transform", regSettings.allowNewRegistration ? "translate-x-6" : "translate-x-0")} />
                           </button>
                         </div>
+
+                        {!regSettings.allowNewRegistration && (
+                          <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-rose-500 ml-1 flex items-center gap-2">
+                              <AlertTriangle size={12} /> Lí do tạm dừng đăng ký
+                            </label>
+                            <AutoExpandingTextarea
+                              className={cn(
+                                "w-full px-4 py-3 rounded-xl border-2 outline-none font-medium text-sm transition-all resize-none",
+                                isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-rose-500" : "bg-white border-slate-100 text-slate-900 focus:border-rose-500 shadow-sm"
+                              )}
+                              placeholder="Nhập lí do thông báo cho người dùng (Ví dụ: Hệ thống đang bảo trì, hoặc đã đủ số lượng nhân sự...)"
+                              value={regSettings.registrationDisabledReason || ''}
+                              onChange={(e) => setRegSettings({ ...regSettings, registrationDisabledReason: (e.target as HTMLTextAreaElement).value })}
+                              onBlur={() => updateRegSettings(regSettings)}
+                            />
+                            <p className="text-[9px] text-slate-400 font-bold italic ml-1">Thông báo này sẽ hiển thị thay thế nút Đăng nhập khi đăng ký bị khóa.</p>
+                          </div>
+                        )}
 
                         <div className={cn(
                           "flex items-center justify-between p-4 rounded-2xl transition-colors",
@@ -3520,16 +3511,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         isDarkMode={isDarkMode}
       />
 
-      {showPreviewSlider && (
-        <WelcomeSlider
-          key="preview-slider"
-          onComplete={() => setShowPreviewSlider(false)}
-          isDarkMode={isDarkMode}
-          userName="Quản trị viên"
-          slides={welcomeSlides}
-          initialSlide={previewInitialSlide}
-        />
-      )}
 
       {/* Designer Preview Modal */}
       <AnimatePresence>
@@ -3604,6 +3585,47 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={isTermsConfirmOpen}
+        onClose={() => setIsTermsConfirmOpen(false)}
+        onConfirm={() => {
+          setEditSettings({ ...editSettings, termsOfUse: SAMPLE_TERMS });
+          setIsTermsConfirmOpen(false);
+        }}
+        title="Xác nhận chèn mẫu"
+        message="Bạn có muốn chèn mẫu Điều khoản sử dụng chuẩn? Nội dung hiện tại sẽ bị ghi đè."
+        confirmText="Đồng ý chèn"
+        cancelText="Hủy bỏ"
+        type="warning"
+        isDarkMode={isDarkMode}
+      />
+
+      <ConfirmModal
+        isOpen={isRegConfirmOpen}
+        onClose={() => setIsRegConfirmOpen(false)}
+        onConfirm={() => {
+          updateRegSettings({ ...regSettings, allowNewRegistration: true });
+          setIsRegConfirmOpen(false);
+        }}
+        title="Xác nhận mở đăng ký"
+        message="Khi bật tính năng này, bất kỳ ai cũng có thể đăng ký tài khoản trên hệ thống. Bạn có chắc chắn muốn công khai việc đăng ký không?"
+        confirmText="Bật Công khai"
+        cancelText="Hủy"
+        type="warning"
+        isDarkMode={isDarkMode}
+      />
+
+      {showPreviewSlider && (
+        <WelcomeSlider
+          key="preview-slider"
+          onComplete={() => setShowPreviewSlider(false)}
+          isDarkMode={isDarkMode}
+          userName="Quản trị viên"
+          slides={welcomeSlides}
+          initialSlide={previewInitialSlide}
+        />
+      )}
     </div>
   );
 };

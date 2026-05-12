@@ -219,12 +219,19 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       // Hide if restricted role
       const allowedRoles = settings?.allowedRoles || [];
-      if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) return false;
+      const checkRole = isApproved ? userRole : 'unapproved';
+      
+      // Allow if no role restrictions, OR if the effective role is allowed
+      const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(checkRole);
+      if (!roleAllowed) return false;
 
       // Hide if restricted location
       if (settings?.hiddenLocations?.includes('home_grid')) return false;
 
       const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged);
+      const isManageTab = action.id.startsWith('manage_');
+      if (!isApproved && isManageTab) return false;
+      
       return isVisible && allowedTabs.includes(action.id);
     });
 
@@ -445,7 +452,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     else if (hour >= 14 && hour < 18) greeting = 'Chào buổi chiều';
     else if (hour >= 18 || hour < 4) greeting = 'Chào buổi tối';
 
-    const title = userProfile?.title || (userRole === 'admin' ? 'Quản trị viên' : (userRole === 'operator_doctor' ? 'Bác sĩ' : (userRole === 'operator_pharmacist' ? 'Dược sĩ' : 'Thành viên')));
+    const title = !isApproved ? 'Đang chờ duyệt' : (userProfile?.title || (userRole === 'admin' ? 'Quản trị viên' : (userRole === 'operator_doctor' ? 'Bác sĩ' : (userRole === 'operator_pharmacist' ? 'Dược sĩ' : 'Thành viên'))));
     const name = userProfile?.displayName || auth.currentUser?.displayName || '';
 
     return `${greeting}, ${title}. ${name}`;

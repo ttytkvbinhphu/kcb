@@ -90,7 +90,7 @@ const MOCK_ADR_CATALOG = [
   }
 ];
 
-export const seedInitialData = async () => {
+export const seedInitialData = async (userId?: string) => {
   try {
     // Seed drugs
     const drugsRef = collection(db, 'drugs');
@@ -113,11 +113,11 @@ export const seedInitialData = async () => {
     // Seed ADR Reports and migration
     const adrReportsRef = collection(db, 'adr_reports');
     const adrReportsSnap = await getDocs(adrReportsRef);
-    if (adrReportsSnap.empty) {
+    if (adrReportsSnap.empty && userId) {
       const mockReports = [
         {
           id: 'adr_report_1',
-          patientInitials: 'NGUYỄN VĂN A',
+          patientInitials: 'NVA', // Short initials to match rule size < 10
           patientAge: 45,
           patientGender: 'Nam',
           drugId: '2',
@@ -125,8 +125,8 @@ export const seedInitialData = async () => {
           reactionDescription: 'Nổi mẩn đỏ toàn thân sau khi uống thuốc 30 phút, ngứa nhiều.',
           severity: 'Trung bình',
           outcome: 'Hồi phục',
-          reporterName: 'Admin',
-          reporterUid: 'system',
+          reporterName: 'Hệ thống',
+          reporterUid: userId, // Must match current user for rules
           reportedAt: new Date().toISOString(),
           status: 'Đã hoàn thành',
           notes: 'Đã xử trí bằng kháng histamin, bệnh nhân ổn định.'
@@ -136,6 +136,7 @@ export const seedInitialData = async () => {
         await setDoc(doc(db, 'adr_reports', report.id), report);
       }
     }
+
 
     // Seed system config if empty
     const titlesRef = collection(db, 'config_titles');
@@ -172,7 +173,8 @@ export const seedInitialData = async () => {
         { id: 'admin', name: 'Quản trị viên' },
         { id: 'operator_doctor', name: 'Điều hành (Bác sĩ)' },
         { id: 'operator_pharmacist', name: 'Điều hành (Dược sĩ)' },
-        { id: 'member', name: 'Thành viên' }
+        { id: 'member', name: 'Thành viên' },
+        { id: 'unapproved', name: 'Đang chờ duyệt' }
       ];
       for (let i = 0; i < defaultRoles.length; i++) {
         await setDoc(doc(db, 'config_roles', defaultRoles[i].id), { name: defaultRoles[i].name, order: i });
@@ -187,7 +189,8 @@ export const seedInitialData = async () => {
       { roleId: 'admin', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_users', 'manage_staff', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'manage_config'] },
       { roleId: 'operator_doctor', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients'] },
       { roleId: 'operator_pharmacist', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients'] },
-      { roleId: 'member', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_patients'] }
+      { roleId: 'member', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_patients'] },
+      { roleId: 'unapproved', allowedTabs: [] }
     ];
 
     for (const perm of requiredRolePerms) {
@@ -331,6 +334,30 @@ export const seedInitialData = async () => {
 
         await setDoc(featureSettingsRef, nextFeatureSettings);
       }
+    }
+
+    // Ensure 'unapproved' role exists in config_roles for existing systems
+    const unapprovedRoleDoc = doc(db, 'config_roles', 'unapproved');
+    const unapprovedRoleSnap = await getDoc(unapprovedRoleDoc);
+    if (!unapprovedRoleSnap.exists()) {
+      await setDoc(unapprovedRoleDoc, { name: 'Đang chờ duyệt', order: 99 });
+    }
+
+    // Update default registration settings to use 'unapproved' as default role
+    const regConfigRef = doc(db, 'system_config', 'registration');
+    const regConfigSnap = await getDoc(regConfigRef);
+    if (regConfigSnap.exists()) {
+      const regData = regConfigSnap.data();
+      if (regData.defaultRoleId === 'member' || !regData.defaultRoleId) {
+        await updateDoc(regConfigRef, { defaultRoleId: 'unapproved' });
+      }
+    } else {
+      await setDoc(regConfigRef, {
+        allowNewRegistration: true,
+        autoApprove: false,
+        defaultRoleId: 'unapproved',
+        defaultTitleId: ''
+      });
     }
   } catch (e) {
     console.warn("Could not seed initial data:", e);
