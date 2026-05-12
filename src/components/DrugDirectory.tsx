@@ -325,18 +325,14 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (subHeaderPortalId) {
-      const node = document.getElementById(subHeaderPortalId);
-      setPortalNode(node);
-    }
-    return () => {
-      // Dọn portal khi component unmount để tránh inject sau khi navigate đi
-      setPortalNode(null);
-    };
-  }, [subHeaderPortalId]);
+  // Live lookup: always find the current portal node at render time.
+  // This prevents stale-reference bugs where DrugDirectory holds onto a detached
+  // DOM node after App.tsx destroys and recreates the portal div on tab change.
+  const getPortalNode = () =>
+    subHeaderPortalId ? document.getElementById(subHeaderPortalId) : null;
+
+
 
   useEffect(() => {
     if (initialSelectedDrugId && drugs.length > 0) {
@@ -1470,13 +1466,17 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       "p-0 sm:p-1.5 lg:px-8 lg:pb-8 lg:pt-8 max-w-full mx-auto min-h-screen transition-colors text-slate-900 dark:text-slate-200",
       isDarkMode ? "lg:bg-slate-950/30" : "lg:bg-slate-50/50"
     )}>
-      {/* Mobile Subheader Portal */}
-      {portalNode && createPortal(
-        <div className="flex items-center justify-end w-full">
-          {viewModeToggle}
-        </div>,
-        portalNode
-      )}
+      {/* Mobile Subheader Portal - live lookup prevents stale node references */}
+      {(() => {
+        const portalNode = getPortalNode();
+        return portalNode ? createPortal(
+          <div className="flex items-center justify-end w-full">
+            {viewModeToggle}
+          </div>,
+          portalNode
+        ) : null;
+      })()}
+
 
       <div className="mb-2 lg:mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-6">
         <div className="hidden lg:block">

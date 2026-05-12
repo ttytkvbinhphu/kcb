@@ -12,6 +12,10 @@ interface UserManagementProps {
 
 const ADMIN_EMAILS = ['ttytkvbinhphu@gmail.com'];
 
+const isMasterAdmin = (email: string | undefined) => {
+  return ADMIN_EMAILS.includes(email || '');
+};
+
 const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -322,7 +326,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   </div>
                   <button
                     onClick={() => toggleApproval(user)}
-                    disabled={user.email === 'ttytkvbinhphu@gmail.com'}
+                    disabled={isMasterAdmin(user.email)}
                     className={cn(
                       "px-2 py-1 rounded-lg font-black text-[8px] uppercase tracking-wider border transition-all",
                       user.isApproved 
@@ -362,7 +366,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   <select 
                     value={user.role || 'member'}
                     onChange={(e) => changeRole(user, e.target.value as any)}
-                    disabled={user.email === 'ttytkvbinhphu@gmail.com'}
+                    disabled={isMasterAdmin(user.email)}
                     className={cn(
                       "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border transition-all outline-none",
                       isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"
@@ -397,7 +401,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     </button>
                     <button
                       onClick={() => deleteUser(user.uid, user.displayName || user.email)}
-                      disabled={user.email === 'ttytkvbinhphu@gmail.com'}
+                      disabled={isMasterAdmin(user.email)}
                       className={cn(
                         "p-2 rounded-lg border transition-all disabled:opacity-0",
                         isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400"
@@ -565,7 +569,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         <select 
                           value={user.role || 'member'}
                           onChange={(e) => changeRole(user, e.target.value as any)}
-                          disabled={ADMIN_EMAILS.includes(user.email)}
+                          disabled={isMasterAdmin(user.email)}
                           className={cn(
                             "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border-2 focus:ring-0 transition-all cursor-pointer outline-none",
                             user.role === 'admin' 
@@ -583,7 +587,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <td className="px-6 py-4">
                         <button
                           onClick={() => toggleApproval(user)}
-                          disabled={ADMIN_EMAILS.includes(user.email)}
+                          disabled={isMasterAdmin(user.email)}
                           className={cn(
                             "flex items-center gap-2 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all border-2",
                             user.isApproved 
@@ -622,7 +626,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                           </button>
                           <button
                             onClick={() => deleteUser(user.uid, user.displayName || user.email)}
-                            disabled={ADMIN_EMAILS.includes(user.email)}
+                            disabled={isMasterAdmin(user.email)}
                             className={cn(
                               "p-2 rounded-lg transition-all border-2 disabled:opacity-0",
                               isDarkMode 

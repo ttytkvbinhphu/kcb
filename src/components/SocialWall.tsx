@@ -310,14 +310,11 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (subHeaderPortalId) {
-      setPortalNode(document.getElementById(subHeaderPortalId));
-    }
-    return () => setPortalNode(null);
-  }, [subHeaderPortalId]);
+  // Live lookup: prevents stale-reference ghost injections after tab change
+  const getPortalNode = () =>
+    subHeaderPortalId ? document.getElementById(subHeaderPortalId) : null;
+
   
   const isBanned = (featureSettings.bannedUsers || []).includes(userProfile.uid);
   const canPost = !isBanned && (
@@ -793,53 +790,56 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         </div>
       </div>
 
-      {/* Mobile Search Portal → Sub Header */}
-      {portalNode && createPortal(
-        <div className="flex items-center gap-2 w-full justify-end">
-          <AnimatePresence>
-            {isMobileSearchOpen && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
-                  <input
-                    autoFocus
-                    type="text"
-                    placeholder="Tìm kiếm..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className={cn(
-                      "pl-8 pr-3 py-1.5 rounded-xl border-none focus:ring-1 focus:ring-primary text-[11px] font-bold w-36 sm:w-48 outline-none",
-                      isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+      {/* Mobile Search Portal → Sub Header - live lookup prevents stale node references */}
+      {(() => {
+        const portalNode = getPortalNode();
+        return portalNode ? createPortal(
+          <div className="flex items-center gap-2 w-full justify-end">
+            <AnimatePresence>
+              {isMobileSearchOpen && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Tìm kiếm..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className={cn(
+                        "pl-8 pr-3 py-1.5 rounded-xl border-none focus:ring-1 focus:ring-primary text-[11px] font-bold w-36 sm:w-48 outline-none",
+                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+                      )}
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                        <X size={12} />
+                      </button>
                     )}
-                  />
-                  {searchTerm && (
-                    <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <button
-            onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-            className={cn(
-              "p-2 rounded-xl transition-all shrink-0",
-              isMobileSearchOpen
-                ? "bg-primary text-white shadow-lg shadow-primary/20"
-                : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500 border border-slate-100")
-            )}
-          >
-            <Search size={16} className={cn("transition-transform duration-300", isMobileSearchOpen && "rotate-90")} />
-          </button>
-        </div>,
-        portalNode
-      )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <button
+              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+              className={cn(
+                "p-2 rounded-xl transition-all shrink-0",
+                isMobileSearchOpen
+                  ? "bg-primary text-white shadow-lg shadow-primary/20"
+                  : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500 border border-slate-100")
+              )}
+            >
+              <Search size={16} className={cn("transition-transform duration-300", isMobileSearchOpen && "rotate-90")} />
+            </button>
+          </div>,
+          portalNode
+        ) : null;
+      })()}
 
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

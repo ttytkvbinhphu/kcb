@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight } from 'lucide-react';
+import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
@@ -70,9 +70,9 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, children, isEditMode, i
   };
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
+    <div
+      ref={setNodeRef}
+      style={style}
       className={cn(
         "relative group",
         isEditMode && "cursor-default",
@@ -80,8 +80,8 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, children, isEditMode, i
       )}
     >
       {isEditMode && (
-        <div 
-          {...attributes} 
+        <div
+          {...attributes}
           {...listeners}
           className={cn(
             "absolute top-2 right-2 p-1.5 rounded-lg shadow-sm border cursor-grab active:cursor-grabbing z-20 opacity-0 group-hover:opacity-100 transition-opacity",
@@ -100,14 +100,14 @@ const CalculatorWidget = lazy(() => import('./Calculator'));
 const TodoWidget = lazy(() => import('./TodoList'));
 
 // Dashboard for clinical workspace
-const Dashboard: React.FC<DashboardProps> = ({ 
-  setActiveTab, 
-  userRole, 
-  isApproved, 
-  isDarkMode, 
-  allowedTabs, 
-  isEditMode, 
-  setIsEditMode, 
+const Dashboard: React.FC<DashboardProps> = ({
+  setActiveTab,
+  userRole,
+  isApproved,
+  isDarkMode,
+  allowedTabs,
+  isEditMode,
+  setIsEditMode,
   userProfile,
   notifications = [],
   onMarkAsRead,
@@ -128,7 +128,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, desc: 'Tra cứu mã bệnh quốc tế', color: 'bg-cyan-600', group: 'clinical' },
     { id: 'view_patients', label: featureSettings['view_patients']?.customTitle || 'Tra cứu bệnh nhân', icon: Users, desc: 'Hồ sơ và quản lý dữ liệu bệnh nhân', color: 'bg-emerald-600', group: 'clinical' },
     { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Báo cáo ADR', icon: AlertTriangle, desc: 'Báo cáo phản ứng có hại', color: 'bg-rose-600', group: 'clinical' },
-    
+
     { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, desc: 'Quản lý lịch trực, hội chẩn', color: 'bg-blue-600', group: 'management' },
     { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, desc: 'Ghi chú lâm sàng cá nhân', color: 'bg-violet-600', group: 'management' },
     { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, desc: 'Danh sách công việc cần làm', color: 'bg-emerald-500', group: 'utility' },
@@ -148,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       snapshot.docs.forEach(doc => {
         const drug = doc.data();
         const codes = new Set<string>();
-        
+
         // Check indications for ICD-10 codes
         if (drug.indications && Array.isArray(drug.indications)) {
           drug.indications.forEach((ind: any) => {
@@ -189,13 +189,13 @@ const Dashboard: React.FC<DashboardProps> = ({
       setWorkspaceIcds([]);
       return;
     }
-    
+
     // Fetch the actual ICD-10 details for the codes in userProfile.workspaceIcdCodes
     const q = query(
-      collection(db, 'icd10'), 
+      collection(db, 'icd10'),
       where('code', 'in', userProfile.workspaceIcdCodes.slice(0, 10)) // Firestore 'in' limit is 10
     );
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(doc => doc.data() as ICD10);
       setWorkspaceIcds(list);
@@ -213,14 +213,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     const filtered = allActions.filter(action => {
       const status = featureStates[action.id];
       const settings = featureSettings[action.id];
-      
+
       // Hide if banned
       if (uid && settings?.bannedUsers?.includes(uid)) return false;
-      
+
       // Hide if restricted role
       const allowedRoles = settings?.allowedRoles || [];
       if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) return false;
-      
+
       // Hide if restricted location
       if (settings?.hiddenLocations?.includes('home_grid')) return false;
 
@@ -292,7 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       const newHidden = currentHidden.includes(actionId)
         ? currentHidden.filter(id => id !== actionId)
         : [...currentHidden, actionId];
-      
+
       await updateDoc(doc(db, 'users', uid), {
         hiddenQuickActions: newHidden
       });
@@ -303,7 +303,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const hiddenActions = userProfile?.hiddenQuickActions || [];
   const activeActions = quickActions.filter(a => !hiddenActions.includes(a.id));
-  
+
   // Separate actions based on their configuration in Admin settings
   const mainActions = activeActions.filter(a => !(featureSettings[a.id]?.hiddenLocations || []).includes('home_grid'));
   const utilityWidgets = activeActions.filter(a => (featureSettings[a.id]?.hiddenLocations || []).includes('utilities_box'));
@@ -323,7 +323,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         "min-h-[calc(100vh-80px)] flex items-center justify-center p-4 lg:p-8 transition-colors",
         isDarkMode ? "bg-slate-950" : "bg-slate-50/50"
       )}>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className={cn(
@@ -342,7 +342,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           )} />
 
           <div className="relative z-10 text-center">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
@@ -358,12 +358,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               "text-2xl lg:text-4xl font-black tracking-tight mb-4 transition-colors",
               isDarkMode ? "text-white" : "text-slate-900"
             )}>Tài khoản đang chờ phê duyệt</h2>
-            
+
             <p className={cn(
               "text-sm lg:text-lg font-medium max-w-lg mx-auto leading-relaxed transition-colors mb-10",
               isDarkMode ? "text-slate-400" : "text-slate-500"
             )}>
-              Chào mừng <strong>{auth.currentUser?.displayName}</strong>! Tài khoản của bạn đã được đăng ký thành công. 
+              Chào mừng <strong>{auth.currentUser?.displayName}</strong>! Tài khoản của bạn đã được đăng ký thành công.
               Vui lòng liên hệ Quản trị viên để được phê duyệt và cấp quyền truy cập.
             </p>
 
@@ -408,9 +408,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <p className={cn("text-xs font-black uppercase tracking-[0.2em] transition-colors", isDarkMode ? "text-primary" : "text-primary")}>
                   Liên hệ phê duyệt nhanh
                 </p>
-                <a 
-                  href="https://zalo.me/0932621028" 
-                  target="_blank" 
+                <a
+                  href="https://zalo.me/0932621028"
+                  target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
                     "w-full py-4 rounded-2xl text-sm font-black transition-all shadow-xl flex items-center justify-center gap-3 group",
@@ -422,7 +422,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </a>
               </div>
 
-              <button 
+              <button
                 onClick={onLogout || (() => auth.signOut())}
                 className={cn(
                   "w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border-2",
@@ -444,10 +444,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (hour >= 11 && hour < 14) greeting = 'Chào buổi trưa';
     else if (hour >= 14 && hour < 18) greeting = 'Chào buổi chiều';
     else if (hour >= 18 || hour < 4) greeting = 'Chào buổi tối';
-    
+
     const title = userProfile?.title || (userRole === 'admin' ? 'Quản trị viên' : (userRole === 'operator_doctor' ? 'Bác sĩ' : (userRole === 'operator_pharmacist' ? 'Dược sĩ' : 'Thành viên')));
     const name = userProfile?.displayName || auth.currentUser?.displayName || '';
-    
+
     return `${greeting}, ${title}. ${name}`;
   };
 
@@ -472,7 +472,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               exit={{ x: '100%', opacity: 0.5 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className={cn(
-                "fixed top-0 right-0 h-full w-[300px] z-[101] lg:hidden p-6 shadow-2xl flex flex-col gap-6",
+                "fixed top-0 right-0 h-full w-full z-[101] lg:hidden p-6 shadow-2xl flex flex-col gap-6",
                 isDarkMode ? "bg-slate-900 border-l border-slate-800" : "bg-white border-l border-slate-100"
               )}
             >
@@ -486,14 +486,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                     isDarkMode ? "text-white" : "text-slate-800"
                   )}>Tiện ích</h3>
                 </div>
-                <button 
+                <button
                   onClick={() => setShowUtilityDrawer(false)}
                   className={cn(
                     "p-2 rounded-xl transition-all",
                     isDarkMode ? "bg-slate-800 text-slate-400 hover:text-white" : "bg-slate-100 text-slate-500 hover:text-slate-900"
                   )}
                 >
-                  <RotateCcw size={16} className="rotate-45" />
+                  <X size={20} />
                 </button>
               </div>
 
@@ -515,9 +515,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                               "rounded-[24px] overflow-hidden border transition-all",
                               isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
                             )}>
-                              <CalculatorWidget isDarkMode={isDarkMode} inline={true} />
+                              <Suspense fallback={<div className="h-40 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+                                <CalculatorWidget isDarkMode={isDarkMode} inline={true} />
+                              </Suspense>
                               <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex justify-center pb-4">
-                                <button 
+                                <button
                                   onClick={() => setActiveTab('view_calculator')}
                                   className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm"
                                 >Chi tiết</button>
@@ -529,10 +531,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                               isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
                             )}>
                               <div className="scale-[0.9] origin-top">
-                                <TodoWidget isDarkMode={isDarkMode} inline={true} />
+                                <Suspense fallback={<div className="h-40 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}>
+                                  <TodoWidget isDarkMode={isDarkMode} inline={true} />
+                                </Suspense>
                               </div>
                               <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex justify-center -mt-8 pb-4 relative z-10">
-                                <button 
+                                <button
                                   onClick={() => setActiveTab('view_todo')}
                                   className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm"
                                 >Chi tiết</button>
@@ -565,17 +569,19 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
       </AnimatePresence>
 
-      <button
-        onClick={() => setShowUtilityDrawer(true)}
-        className="fixed bottom-32 right-0 w-12 h-14 rounded-l-2xl bg-primary text-white shadow-[-10px_0_20px_rgba(79,70,229,0.2)] lg:hidden z-[90] flex items-center justify-center transition-all active:scale-90"
-      >
-        <div className="relative">
-          <Calculator size={20} />
-          <div className="absolute -top-3 -right-2 bg-rose-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-primary">
-            {utilityWidgets.length}
-          </div>
-        </div>
-      </button>
+      {/* Drawer toggle tab — ChevronLeft (đóng) khi drawer ẩn, ChevronRight khi đang mở */}
+      {utilityWidgets.length > 0 && (
+        <button
+          onClick={() => setShowUtilityDrawer(prev => !prev)}
+          className={cn(
+            "fixed top-1/2 -translate-y-1/2 right-0 w-7 h-16 rounded-l-2xl bg-primary text-white shadow-[-6px_0_16px_rgba(79,70,229,0.25)] lg:hidden z-[90] flex items-center justify-center transition-all active:scale-90",
+            showUtilityDrawer && "opacity-0 pointer-events-none"
+          )}
+        >
+          <ChevronLeft size={16} />
+        </button>
+      )}
+
 
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-2 lg:gap-4">
         <div>
@@ -594,25 +600,25 @@ const Dashboard: React.FC<DashboardProps> = ({
             <span className="font-mono font-bold text-primary">{format(currentTime, 'HH:mm:ss')}</span>
           </p>
         </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsCustomizing(!isCustomizing)}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm",
-                isCustomizing 
-                  ? "bg-indigo-500 text-white shadow-indigo-200" 
-                  : (isDarkMode ? "bg-slate-800 text-slate-300 border border-slate-700" : "bg-white text-slate-700 border border-slate-100")
-              )}
-            >
-              {isCustomizing ? <Eye size={14} /> : <Settings size={14} />}
-              {isCustomizing ? "Hoàn tất tùy chỉnh" : "Tùy chỉnh nút"}
-            </button>
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsCustomizing(!isCustomizing)}
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm",
-              isEditMode 
-                ? "bg-primary text-white shadow-primary/20" 
+              isCustomizing
+                ? "bg-indigo-500 text-white shadow-indigo-200"
+                : (isDarkMode ? "bg-slate-800 text-slate-300 border border-slate-700" : "bg-white text-slate-700 border border-slate-100")
+            )}
+          >
+            {isCustomizing ? <Eye size={14} /> : <Settings size={14} />}
+            {isCustomizing ? "Hoàn tất tùy chỉnh" : "Tùy chỉnh nút"}
+          </button>
+          <button
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm",
+              isEditMode
+                ? "bg-primary text-white shadow-primary/20"
                 : (isDarkMode ? "bg-slate-800 text-slate-300 border border-slate-700" : "bg-white text-slate-700 border border-slate-100")
             )}
           >
@@ -668,7 +674,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           onClick={() => handleToggleActionVisibility(action.id)}
                           className={cn(
                             "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group",
-                            isHidden 
+                            isHidden
                               ? (isDarkMode ? "bg-slate-950 border-slate-800/50 opacity-40" : "bg-slate-50 border-slate-100 opacity-40")
                               : (isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm")
                           )}
@@ -858,8 +864,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                           onClick={() => !isEditMode && setActiveTab(action.id)}
                           className={cn(
                             "w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group h-full",
-                            isDarkMode 
-                              ? "bg-slate-900 border-slate-800 hover:bg-slate-800/80" 
+                            isDarkMode
+                              ? "bg-slate-900 border-slate-800 hover:bg-slate-800/80"
                               : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:shadow-primary/5",
                             isEditMode && "border-primary/50 ring-2 ring-primary/10 cursor-default"
                           )}
@@ -913,7 +919,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   </thead>
                   <tbody>
                     {workspaceIcds.map((icd) => (
-                      <tr 
+                      <tr
                         key={icd.code}
                         className={cn(
                           "group transition-all",
@@ -939,14 +945,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                               const icdCode = (icd.code || '').trim().toUpperCase();
                               const drugsFromMapping = drugsByIcd[icdCode] || [];
                               const commonDrugs = icd.commonDrugs || [];
-                              
+
                               // Combine and remove duplicates
                               const allDrugs = Array.from(new Set([...commonDrugs, ...drugsFromMapping]));
-                              
+
                               if (allDrugs.length === 0) {
                                 return <span className="text-[9px] font-bold text-slate-400 italic">Chưa có thuốc</span>;
                               }
-                              
+
                               return (
                                 <>
                                   {allDrugs.slice(0, 3).map((drugName, idx) => (
@@ -972,7 +978,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </td>
                         <td className="py-2 pr-4 rounded-r-xl border-y border-transparent text-right group-hover:border-primary/20">
                           <div className="flex items-center justify-end gap-2">
-                            <button 
+                            <button
                               onClick={() => {
                                 setExternalIcdSearchQuery?.(icd.code);
                                 setActiveTab('view_icd10');
@@ -985,7 +991,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             >
                               <Search size={14} />
                             </button>
-                            <button 
+                            <button
                               onClick={() => {
                                 const newWorkspaceBy = (icd.workspaceBy || []).filter(id => id !== uid);
                                 updateDoc(doc(db, 'icd10', icd.code), { workspaceBy: newWorkspaceBy });
@@ -1009,12 +1015,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               {/* Mobile Mobile Layout */}
               <div className="sm:hidden grid grid-cols-1 gap-4">
                 {workspaceIcds.map((icd) => (
-                  <div 
+                  <div
                     key={icd.code}
                     className={cn(
                       "p-5 rounded-3xl border transition-all space-y-4",
-                      isDarkMode 
-                        ? "bg-slate-900 border-slate-800 hover:border-indigo-500/30 shadow-2xl shadow-indigo-500/5" 
+                      isDarkMode
+                        ? "bg-slate-900 border-slate-800 hover:border-indigo-500/30 shadow-2xl shadow-indigo-500/5"
                         : "bg-white border-slate-100 shadow-xl shadow-slate-200/50 hover:border-indigo-200"
                     )}
                   >
@@ -1037,29 +1043,29 @@ const Dashboard: React.FC<DashboardProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button 
+                        <button
                           onClick={() => {
                             setExternalIcdSearchQuery?.(icd.code);
                             setActiveTab('view_icd10');
                           }}
                           className={cn(
                             "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all",
-                            isDarkMode 
-                              ? "bg-slate-800 border-slate-700 text-primary" 
+                            isDarkMode
+                              ? "bg-slate-800 border-slate-700 text-primary"
                               : "bg-slate-50 border-slate-200 text-primary"
                           )}
                         >
                           <Search size={16} />
                         </button>
-                        <button 
+                        <button
                           onClick={() => {
                             const newWorkspaceBy = (icd.workspaceBy || []).filter(id => id !== uid);
                             updateDoc(doc(db, 'icd10', icd.code), { workspaceBy: newWorkspaceBy });
                           }}
                           className={cn(
                             "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all text-rose-500",
-                            isDarkMode 
-                              ? "bg-rose-500/10 border-rose-500/20 hover:bg-rose-500 hover:text-white" 
+                            isDarkMode
+                              ? "bg-rose-500/10 border-rose-500/20 hover:bg-rose-500 hover:text-white"
                               : "bg-rose-50 border-rose-100 hover:bg-rose-500 hover:text-white"
                           )}
                         >
@@ -1072,23 +1078,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <p className="text-[10px] font-black uppercase tracking-widest text-[#0ea5e9] mb-3">Thuốc gợi ý:</p>
                       <div className="flex flex-wrap gap-2">
                         {(() => {
-                           const icdCode = (icd.code || '').trim().toUpperCase();
-                           const drugsFromMapping = drugsByIcd[icdCode] || [];
-                           const commonDrugs = icd.commonDrugs || [];
-                           const allDrugs = Array.from(new Set([...commonDrugs, ...drugsFromMapping]));
-                           
-                           if (allDrugs.length === 0) {
-                             return <span className="text-xs font-bold text-slate-400 italic">Chưa có thuốc</span>;
-                           }
-                           
-                           return allDrugs.map((drugName, idx) => (
-                             <span key={idx} className={cn(
-                               "text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-tight",
-                               isDarkMode ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50" : "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm"
-                             )}>
-                               {drugName}
-                             </span>
-                           ));
+                          const icdCode = (icd.code || '').trim().toUpperCase();
+                          const drugsFromMapping = drugsByIcd[icdCode] || [];
+                          const commonDrugs = icd.commonDrugs || [];
+                          const allDrugs = Array.from(new Set([...commonDrugs, ...drugsFromMapping]));
+
+                          if (allDrugs.length === 0) {
+                            return <span className="text-xs font-bold text-slate-400 italic">Chưa có thuốc</span>;
+                          }
+
+                          return allDrugs.map((drugName, idx) => (
+                            <span key={idx} className={cn(
+                              "text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-tight",
+                              isDarkMode ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50" : "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm"
+                            )}>
+                              {drugName}
+                            </span>
+                          ));
                         })()}
                       </div>
                     </div>
@@ -1135,7 +1141,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </Suspense>
                             </div>
                             <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex justify-center pb-4 relative z-10">
-                              <button 
+                              <button
                                 onClick={() => setActiveTab('view_calculator')}
                                 className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm"
                               >
@@ -1154,7 +1160,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </Suspense>
                             </div>
                             <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex justify-center -mt-10 pb-4 relative z-10">
-                              <button 
+                              <button
                                 onClick={() => setActiveTab('view_todo')}
                                 className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-white transition-all shadow-sm"
                               >
@@ -1167,8 +1173,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             onClick={() => !isEditMode && setActiveTab(widget.id)}
                             className={cn(
                               "w-full flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group h-full",
-                              isDarkMode 
-                                ? "bg-slate-900 border-slate-800 hover:bg-slate-800" 
+                              isDarkMode
+                                ? "bg-slate-900 border-slate-800 hover:bg-slate-800"
                                 : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:shadow-primary/5",
                               isEditMode && "cursor-default"
                             )}
@@ -1210,7 +1216,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             </h3>
             <div className="space-y-3">
               {notifications.filter(n => !n.isRead).slice(0, 3).map(notification => (
-                <div 
+                <div
                   key={notification.id}
                   className={cn(
                     "p-4 rounded-2xl border transition-all relative group shadow-sm",
@@ -1221,14 +1227,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className={cn(
                       "p-2 rounded-xl shrink-0 h-fit",
                       notification.type === 'info' ? "bg-blue-500/10 text-blue-500" :
-                      notification.type === 'success' ? "bg-emerald-500/10 text-emerald-500" :
-                      notification.type === 'warning' ? "bg-amber-500/10 text-amber-500" :
-                      "bg-rose-500/10 text-rose-500"
+                        notification.type === 'success' ? "bg-emerald-500/10 text-emerald-500" :
+                          notification.type === 'warning' ? "bg-amber-500/10 text-amber-500" :
+                            "bg-rose-500/10 text-rose-500"
                     )}>
                       {notification.type === 'info' ? <AlertCircle size={18} /> :
-                       notification.type === 'success' ? <ShieldCheck size={18} /> :
-                       notification.type === 'warning' ? <AlertTriangle size={18} /> :
-                       <AlertCircle size={18} />}
+                        notification.type === 'success' ? <ShieldCheck size={18} /> :
+                          notification.type === 'warning' ? <AlertTriangle size={18} /> :
+                            <AlertCircle size={18} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className={cn("font-black text-xs truncate mb-1", isDarkMode ? "text-white" : "text-slate-900")}>
@@ -1238,14 +1244,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {notification.message}
                       </p>
                       <div className="flex items-center gap-3">
-                        <button 
+                        <button
                           onClick={() => onMarkAsRead?.(notification.id)}
                           className="text-[9px] font-black text-primary hover:underline flex items-center gap-1 uppercase tracking-widest"
                         >
                           Đã đọc
                         </button>
                         {notification.link && (
-                          <button 
+                          <button
                             onClick={() => setActiveTab(notification.link!)}
                             className="text-[9px] font-black text-indigo-500 hover:underline flex items-center gap-1 uppercase tracking-widest"
                           >
@@ -1279,8 +1285,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             </h3>
             <div className={cn(
               "rounded-2xl p-5 relative overflow-hidden transition-all duration-300",
-              isDarkMode 
-                ? "bg-slate-900 border border-slate-800 text-white" 
+              isDarkMode
+                ? "bg-slate-900 border border-slate-800 text-white"
                 : "bg-white text-slate-900 border border-slate-100 shadow-md shadow-slate-200/40"
             )}>
               <div className="bg-primary/20 w-10 h-10 rounded-xl flex items-center justify-center mb-4">
@@ -1290,14 +1296,14 @@ const Dashboard: React.FC<DashboardProps> = ({
               <p className={cn("text-[10px] font-bold leading-relaxed mb-4 transition-colors opacity-60", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                 Mọi thắc mắc kỹ thuật vui lòng liên hệ DS. Bảo qua Zalo.
               </p>
-              <a 
-                href="https://zalo.me/0932621028" 
-                target="_blank" 
+              <a
+                href="https://zalo.me/0932621028"
+                target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
                   "w-full py-2.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest",
-                  isDarkMode 
-                    ? "bg-primary text-white hover:bg-primary/90" 
+                  isDarkMode
+                    ? "bg-primary text-white hover:bg-primary/90"
                     : "bg-primary text-white hover:bg-primary-dark shadow-lg shadow-primary/20"
                 )}
               >

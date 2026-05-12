@@ -77,13 +77,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     isAppendixA2: false
   });
 
-  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
-  useEffect(() => {
-    // Look for the portal target in App.tsx
-    const target = document.getElementById('mobile-subheader-portal');
-    if (target) setPortalTarget(target);
-  }, []);
+  // Live lookup: prevents stale-reference ghost injections after tab change.
+  // App.tsx uses key={activeTab} on the portal div, destroying and recreating it
+  // on each navigation. A live lookup here always finds the current node.
+  const getPortalTarget = () => document.getElementById('mobile-subheader-portal');
 
   useEffect(() => {
     if (initialSearchTerm) {
@@ -396,48 +394,51 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       "p-1 sm:p-4 lg:p-6 max-w-full mx-auto min-h-screen transition-colors",
       isDarkMode ? "bg-slate-950/30" : "bg-white"
     )}>
-      {/* Mobile Sub-Header Portal Search */}
-      {portalTarget && createPortal(
-        <div className="flex items-center gap-2 w-full lg:hidden pr-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input
-              type="text"
-              placeholder="Tìm ICD-10..."
-              className={cn(
-                "w-full pl-8 pr-16 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
-                isDarkMode 
-                  ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
-                  : "bg-white border-slate-200 text-slate-900 shadow-sm"
-              )}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm('')}
-                  className="p-1 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={12} />
-                </button>
-              )}
-              <button
-                onClick={() => setShowFilters(!showFilters)}
+      {/* Mobile Sub-Header Portal Search - live lookup prevents stale node references */}
+      {(() => {
+        const portalTarget = getPortalTarget();
+        return portalTarget ? createPortal(
+          <div className="flex items-center gap-2 w-full lg:hidden pr-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="text"
+                placeholder="Tìm ICD-10..."
                 className={cn(
-                  "p-1 rounded-md transition-all",
-                  showFilters 
-                    ? "bg-emerald-600 text-white shadow-sm" 
-                    : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
+                  "w-full pl-8 pr-16 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
+                  isDarkMode 
+                    ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
+                    : "bg-white border-slate-200 text-slate-900 shadow-sm"
                 )}
-              >
-                <Filter size={14} />
-              </button>
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchTerm && (
+                  <button 
+                    onClick={() => setSearchTerm('')}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={cn(
+                    "p-1 rounded-md transition-all",
+                    showFilters 
+                      ? "bg-emerald-600 text-white shadow-sm" 
+                      : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
+                  )}
+                >
+                  <Filter size={14} />
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        portalTarget
-      )}
+          </div>,
+          portalTarget
+        ) : null;
+      })()}
 
       <div className="mb-2 lg:mb-10 space-y-6">
         {/* Guest Search Bar for Mobile (since portal subheader is missing in guest modal) */}

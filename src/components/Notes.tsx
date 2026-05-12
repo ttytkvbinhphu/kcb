@@ -30,14 +30,11 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
     isPinned: false
   });
 
-  const [portalNode, setPortalNode] = useState<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (subHeaderPortalId) {
-      setPortalNode(document.getElementById(subHeaderPortalId));
-    }
-    return () => setPortalNode(null);
-  }, [subHeaderPortalId]);
+  // Live lookup: prevents stale-reference ghost injections after tab change
+  const getPortalNode = () =>
+    subHeaderPortalId ? document.getElementById(subHeaderPortalId) : null;
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -188,25 +185,28 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
       "pt-2 px-4 lg:p-8 max-w-7xl mx-auto pb-24 lg:pb-12 transition-colors min-h-screen",
       isDarkMode ? "bg-slate-950/30" : "bg-white"
     )}>
-      {/* Mobile Portal for Search */}
-      {portalNode && createPortal(
-        <div className="flex-1 flex items-center max-w-[200px] sm:max-w-none">
-          <div className="relative w-full">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input
-              type="text"
-              placeholder="Tìm..."
-              className={cn(
-                "w-full pl-8 pr-3 py-1.5 border-none rounded-lg focus:ring-1 focus:ring-indigo-500 transition-all outline-none font-bold text-[10px]",
-                isDarkMode ? "bg-slate-800 text-white" : "bg-white text-slate-900 shadow-sm"
-              )}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </div>,
-        portalNode
-      )}
+      {/* Mobile Portal for Search - live lookup prevents stale node references */}
+      {(() => {
+        const portalNode = getPortalNode();
+        return portalNode ? createPortal(
+          <div className="flex-1 flex items-center max-w-[200px] sm:max-w-none">
+            <div className="relative w-full">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                type="text"
+                placeholder="Tìm..."
+                className={cn(
+                  "w-full pl-8 pr-3 py-1.5 border-none rounded-lg focus:ring-1 focus:ring-indigo-500 transition-all outline-none font-bold text-[10px]",
+                  isDarkMode ? "bg-slate-800 text-white" : "bg-white text-slate-900 shadow-sm"
+                )}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>,
+          portalNode
+        ) : null;
+      })()}
 
       <div className="hidden lg:flex mb-8 flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="hidden lg:block space-y-2">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { Reorder } from 'motion/react';
 
@@ -393,7 +393,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               title={isCollapsed ? "Thoát AdminCP" : undefined}
             >
               <div className="p-1.5 bg-rose-500 text-white rounded-md shadow-sm group-hover/back:scale-110 transition-transform shrink-0">
-                <LogOut size={12} />
+                <ArrowLeftCircle size={12} />
               </div>
               {!isCollapsed && <span className="text-[14px] font-black uppercase tracking-widest text-rose-500 truncate">Thoát AdminCP</span>}
             </button>
@@ -490,7 +490,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        <div className={cn("p-2 border-t", isDarkMode ? "border-slate-800" : "border-slate-100")}>
+        <div className={cn("p-2 border-t space-y-2", isDarkMode ? "border-slate-800" : "border-slate-100")}>
           <div className={cn(
             "px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all",
             isCollapsed ? "justify-center" : "",
