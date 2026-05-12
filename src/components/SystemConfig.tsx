@@ -201,7 +201,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isSavingFeature, setIsSavingFeature] = useState(false);
-  const [homeSubTab, setHomeSubTab] = useState<'overview' | 'features_main' | 'utilities' | 'registration' | 'notifications'>('overview');
+  const [homeSubTab, setHomeSubTab] = useState<'features_main' | 'utilities' | 'registration' | 'notifications'>('features_main');
   const [regSettings, setRegSettings] = useState<any>({
     allowNewRegistration: true,
     autoApprove: false,
@@ -1751,6 +1751,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   };
 
   return (
+    <>
     <div className="space-y-6">
       <div className={cn(
         "mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6",
@@ -1816,7 +1817,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 isDarkMode ? "bg-slate-800" : "bg-slate-100"
               )}>
                 {[
-                  { id: 'overview', label: 'Cài đặt chung' },
                   { id: 'features_main', label: 'Tính năng' },
                   { id: 'utilities', label: 'Tiện ích' },
                   { id: 'notifications', label: 'Thông báo' }
@@ -1836,142 +1836,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 ))}
               </div>
 
-              {homeSubTab === 'overview' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className={cn(
-                    "p-6 rounded-[32px] border-2 transition-all",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                  )}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Thông tin hệ thống</h3>
-                    <div className="space-y-4">
-                      <div className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl",
-                        isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                      )}>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-indigo-500 text-white rounded-lg">
-                            <Info size={16} />
-                          </div>
-                          <span className="text-xs font-bold text-slate-500">Phiên bản</span>
-                        </div>
-                        <span className="font-black text-xs">v1.2.0-stable</span>
-                      </div>
-                      <div className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl",
-                        isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                      )}>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-500 text-white rounded-lg">
-                            <Cpu size={16} />
-                          </div>
-                          <span className="text-xs font-bold text-slate-500">Nền tảng AI</span>
-                        </div>
-                        <span className="font-black text-xs">Gemini 1.5 Pro</span>
-                      </div>
-                      <div className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl",
-                        isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                      )}>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-amber-500 text-white rounded-lg">
-                            <Database size={16} />
-                          </div>
-                          <span className="text-xs font-bold text-slate-500">Cơ sở dữ liệu</span>
-                        </div>
-                        <span className="font-black text-xs">Google Firestore</span>
-                      </div>
-                      <div className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl",
-                        isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                      )}>
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-rose-500 text-white rounded-lg">
-                            <Activity size={16} />
-                          </div>
-                          <span className="text-xs font-bold text-slate-500">Kích thước dữ liệu</span>
-                        </div>
-                        <span className="font-black text-xs">{stats.dbSize}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={cn(
-                    "p-6 rounded-[32px] border-2 transition-all",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                  )}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Thống kê người dùng</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className={cn(
-                        "p-4 rounded-2xl border",
-                        isDarkMode ? "bg-blue-900/20 border-blue-800" : "bg-blue-50 border-blue-100"
-                      )}>
-                        <p className="text-[10px] font-black uppercase text-blue-500 mb-1">Bác sĩ</p>
-                        <p className="text-2xl font-black">{stats.doctors}</p>
-                      </div>
-                      <div className={cn(
-                        "p-4 rounded-2xl border",
-                        isDarkMode ? "bg-emerald-900/20 border-emerald-800" : "bg-emerald-50 border-emerald-100"
-                      )}>
-                        <p className="text-[10px] font-black uppercase text-emerald-500 mb-1">Dược sĩ</p>
-                        <p className="text-2xl font-black">{stats.pharmacists}</p>
-                      </div>
-                      <div className={cn(
-                        "p-4 rounded-2xl border",
-                        isDarkMode ? "bg-rose-900/20 border-rose-800" : "bg-rose-50 border-rose-100"
-                      )}>
-                        <p className="text-[10px] font-black uppercase text-rose-500 mb-1">Điều dưỡng</p>
-                        <p className="text-2xl font-black">{stats.nurses}</p>
-                      </div>
-                      <div className={cn(
-                        "p-4 rounded-2xl border",
-                        isDarkMode ? "bg-amber-900/20 border-amber-800" : "bg-amber-50 border-amber-100"
-                      )}>
-                        <p className="text-[10px] font-black uppercase text-amber-500 mb-1">Đang Online</p>
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                          <p className="text-2xl font-black">{stats.online}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={cn(
-                    "p-6 rounded-[32px] border-2 transition-all md:col-span-2",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                  )}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
-                      <History size={18} />
-                      Hoạt động đăng nhập gần đây
-                    </h3>
-                    <div className="space-y-4">
-                      {authLogs.slice(0, 5).map((log, idx) => (
-                        <div key={idx} className={cn(
-                          "flex items-center justify-between p-4 rounded-2xl border",
-                          isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-50 border-slate-100"
-                        )}>
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-lg flex items-center justify-center text-white",
-                              log.type === 'login' ? "bg-emerald-500" : "bg-rose-500"
-                            )}>
-                              {log.type === 'login' ? <LogIn size={14} /> : <LogOut size={14} />}
-                            </div>
-                            <div>
-                              <p className={cn("text-xs font-bold", isDarkMode ? "text-white" : "text-slate-900")}>{log.userName}</p>
-                              <p className="text-[10px] text-slate-500">{new Date(log.timestamp).toLocaleTimeString('vi-VN')}</p>
-                            </div>
-                          </div>
-                          <span className={cn(
-                            "px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest",
-                            log.type === 'login' ? "text-emerald-500 bg-emerald-500/10" : "text-rose-500 bg-rose-500/10"
-                          )}>
-                            {log.type === 'login' ? 'Vào' : 'Ra'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (homeSubTab === 'features_main' || homeSubTab === 'utilities') ? (
+              { (homeSubTab === 'features_main' || homeSubTab === 'utilities') ? (
                 <AnimatePresence mode="wait">
                   {selectedFeatureForDetail ? (
                     <div key="detail">
@@ -2213,10 +2078,110 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               )}
             </div>
           ) : activeCategory === 'general' ? (
-            <div className={cn(
-              "p-8 rounded-[32px] border transition-all space-y-8",
-              isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-            )}>
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className={cn(
+                  "p-6 rounded-[32px] border transition-all",
+                  isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                )}>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Thông tin hệ thống</h3>
+                  <div className="space-y-4">
+                    <div className={cn(
+                      "flex items-center justify-between p-4 rounded-2xl",
+                      isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-500 text-white rounded-lg">
+                          <Info size={16} />
+                        </div>
+                        <span className="text-xs font-bold text-slate-500">Phiên bản</span>
+                      </div>
+                      <span className="font-black text-xs">v1.2.0-stable</span>
+                    </div>
+                    <div className={cn(
+                      "flex items-center justify-between p-4 rounded-2xl",
+                      isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500 text-white rounded-lg">
+                          <Cpu size={16} />
+                        </div>
+                        <span className="text-xs font-bold text-slate-500">Nền tảng AI</span>
+                      </div>
+                      <span className="font-black text-xs">Gemini 1.5 Pro</span>
+                    </div>
+                    <div className={cn(
+                      "flex items-center justify-between p-4 rounded-2xl",
+                      isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-amber-500 text-white rounded-lg">
+                          <Database size={16} />
+                        </div>
+                        <span className="text-xs font-bold text-slate-500">Cơ sở dữ liệu</span>
+                      </div>
+                      <span className="font-black text-xs">Google Firestore</span>
+                    </div>
+                    <div className={cn(
+                      "flex items-center justify-between p-4 rounded-2xl",
+                      isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                    )}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-rose-500 text-white rounded-lg">
+                          <Activity size={16} />
+                        </div>
+                        <span className="text-xs font-bold text-slate-500">Kích thước dữ liệu</span>
+                      </div>
+                      <span className="font-black text-xs">{stats.dbSize}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-6 rounded-[32px] border transition-all",
+                  isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                )}>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Thống kê người dùng</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className={cn(
+                      "p-4 rounded-2xl border",
+                      isDarkMode ? "bg-blue-900/20 border-blue-800" : "bg-blue-50 border-blue-100"
+                    )}>
+                      <p className="text-[10px] font-black uppercase text-blue-500 mb-1">Bác sĩ</p>
+                      <p className="text-2xl font-black">{stats.doctors}</p>
+                    </div>
+                    <div className={cn(
+                      "p-4 rounded-2xl border",
+                      isDarkMode ? "bg-emerald-900/20 border-emerald-800" : "bg-emerald-50 border-emerald-100"
+                    )}>
+                      <p className="text-[10px] font-black uppercase text-emerald-500 mb-1">Dược sĩ</p>
+                      <p className="text-2xl font-black">{stats.pharmacists}</p>
+                    </div>
+                    <div className={cn(
+                      "p-4 rounded-2xl border",
+                      isDarkMode ? "bg-rose-900/20 border-rose-800" : "bg-rose-50 border-rose-100"
+                    )}>
+                      <p className="text-[10px] font-black uppercase text-rose-500 mb-1">Điều dưỡng</p>
+                      <p className="text-2xl font-black">{stats.nurses}</p>
+                    </div>
+                    <div className={cn(
+                      "p-4 rounded-2xl border",
+                      isDarkMode ? "bg-amber-900/20 border-amber-800" : "bg-amber-50 border-amber-100"
+                    )}>
+                      <p className="text-[10px] font-black uppercase text-amber-500 mb-1">Đang Online</p>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                        <p className="text-2xl font-black">{stats.online}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-8 rounded-[32px] border transition-all space-y-8",
+                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+              )}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-2">
                   <label className={cn("text-xs font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>Tên ứng dụng</label>
@@ -2447,6 +2412,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               </div>
             </div>
+          </div>
           ) : activeCategory === 'theme' ? (
             <ThemeSettings
               isDarkMode={isDarkMode}
@@ -3627,6 +3593,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         />
       )}
     </div>
+    </>
   );
 };
 

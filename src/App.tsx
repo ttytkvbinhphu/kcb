@@ -47,9 +47,9 @@ const ALL_TABS = [
   { id: 'manage_adr', label: 'Quản lý ADR', icon: AlertTriangle },
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
-  { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutDashboard },
-  { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
+  { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck },
+  { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutDashboard },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
   { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award },
   { id: 'admin_positions', label: 'Quản lý Chức vụ', icon: ShieldCheck },
@@ -2690,29 +2690,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Personal Info Edit Section */}
+            {/* Personal Info Edit Section - REMOVED AS REQUESTED (ALREADY IN PROFILE PAGE) */}
             <div className="space-y-6">
-              <div className="space-y-3">
-                <label className={cn(
-                  "block text-xs font-black uppercase tracking-widest transition-colors",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Thông tin cá nhân</label>
-                <div className="relative group">
-                  <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
-                  <input
-                    type="tel"
-                    value={userProfile.zalo || ''}
-                    onChange={(e) => handleSaveProfileField({ zalo: e.target.value })}
-                    placeholder="Nhập số Zalo liên hệ..."
-                    className={cn(
-                      "w-full pl-11 pr-4 py-3 rounded-2xl border-2 outline-none font-bold text-sm transition-all shadow-sm",
-                      isDarkMode
-                        ? "bg-slate-800 border-slate-700 text-white focus:border-primary placeholder:text-slate-600"
-                        : "bg-white border-slate-100 text-slate-900 focus:border-primary placeholder:text-slate-400"
-                    )}
-                  />
-                </div>
-              </div>
 
               <div className="space-y-4">
                 <label className={cn(
