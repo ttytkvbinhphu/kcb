@@ -68,11 +68,25 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
 
-    // Reset scroll and overflow on main container when switching tabs
-    // This fixes the bug where components (like DrugDirectory) might leave the container locked
+    // Reset scroll and overflow on main container when switching tabs.
+    // This fixes the bug where components (like DrugDirectory) might leave the container locked.
     if (mainScrollRef.current) {
       mainScrollRef.current.style.overflow = 'auto';
       mainScrollRef.current.scrollTo(0, 0);
+    }
+
+    // GHOST-INTERACTION FIX: Briefly disable pointer-events on the main content area
+    // during tab transitions. This prevents "zombie" portal nodes left behind by the
+    // outgoing module (e.g. DrugDirectory filter buttons) from receiving touch events
+    // and causing the "white page + stuck controls" bug on mobile.
+    if (mainScrollRef.current) {
+      mainScrollRef.current.style.pointerEvents = 'none';
+      const timer = setTimeout(() => {
+        if (mainScrollRef.current) {
+          mainScrollRef.current.style.pointerEvents = '';
+        }
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [activeTab]);
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -344,13 +358,13 @@ export default function App() {
 
   useEffect(() => {
     if (isAuthReady && welcomeSlides.length > 0) {
-      if (systemSettings.showWelcomeSlider === false) {
-        setShowWelcomeSlider(false);
-      } else {
+      if (systemSettings.showWelcomeSlider === true) {
         const hasSeen = sessionStorage.getItem('hasSeenWelcome_v2');
         if (!hasSeen) {
           setShowWelcomeSlider(true);
         }
+      } else {
+        setShowWelcomeSlider(false);
       }
     } else if (isAuthReady && showWelcomeSlider) {
       // If auth is ready but no slides or disabled, hide it

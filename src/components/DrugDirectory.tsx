@@ -126,6 +126,28 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
     return () => observer.disconnect();
   }, []);
+
+  // CRITICAL: Force-clear the subheader portal node when DrugDirectory unmounts.
+  // Without this, the filter buttons remain in the DOM as "zombie" nodes that
+  // block pointer events on whichever module is rendered next.
+  useEffect(() => {
+    return () => {
+      const portalNode = subHeaderPortalId
+        ? document.getElementById(subHeaderPortalId)
+        : null;
+      if (portalNode) {
+        while (portalNode.firstChild) {
+          portalNode.removeChild(portalNode.firstChild);
+        }
+      }
+      // Force a GPU repaint so any composited layers left by this module are flushed.
+      document.documentElement.style.transform = 'translateZ(0)';
+      requestAnimationFrame(() => {
+        document.documentElement.style.transform = '';
+      });
+    };
+  }, [subHeaderPortalId]);
+
   const [searchMode, setSearchMode] = useState<'all' | 'name' | 'ingredient'>('all');
   const [selectedIngredient, setSelectedIngredient] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1444,13 +1466,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             )}
           >
             {isActive && (
-              <motion.div
-                layoutId="activeViewTab"
+              <div
                 className={cn(
-                  "absolute inset-0 z-0",
+                  "absolute inset-0 z-0 rounded-xl",
                   isDarkMode ? "bg-blue-500/10 border border-blue-500/20" : "bg-blue-50 border border-blue-100"
                 )}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
               />
             )}
             <span className="relative z-10 shrink-0">{mode.icon}</span>
