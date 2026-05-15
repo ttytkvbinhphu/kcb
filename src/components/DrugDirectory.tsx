@@ -23,6 +23,7 @@ interface DrugDirectoryProps {
   isApproved?: boolean;
   userPowerPoints?: number;
   initialSelectedDrugId?: string | null;
+  initialSelectedDrugName?: string | null;
   onClearInitialDrug?: () => void;
   currentUserName?: string;
 }
@@ -60,6 +61,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   isApproved = false,
   userPowerPoints = 0,
   initialSelectedDrugId,
+  initialSelectedDrugName,
   onClearInitialDrug,
   currentUserName = 'Dược sĩ'
 }) => {
@@ -360,20 +362,33 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     if (initialSelectedDrugId && drugs.length > 0) {
       const drug = drugs.find(d => d.id === initialSelectedDrugId);
       if (drug) {
-        // Enforce visibility rules for direct links
         const canSeeThisDrug = !drug.isClosed || (canManage && canSeeClosedDrugs);
-
         if (canSeeThisDrug) {
           setSelectedDrug(drug);
           setViewMode('drugs');
         }
-
-        if (onClearInitialDrug) {
-          onClearInitialDrug();
-        }
+        if (onClearInitialDrug) onClearInitialDrug();
       }
     }
   }, [initialSelectedDrugId, drugs, onClearInitialDrug, canManage, canSeeClosedDrugs]);
+
+  useEffect(() => {
+    if (initialSelectedDrugName && drugs.length > 0) {
+      const nameLower = initialSelectedDrugName.toLowerCase().trim();
+      const drug = drugs.find(d => (d.name || '').toLowerCase().trim() === nameLower);
+      if (drug) {
+        const canSeeThisDrug = !drug.isClosed || (canManage && canSeeClosedDrugs);
+        if (canSeeThisDrug) {
+          setSelectedDrug(drug);
+          setViewMode('drugs');
+        }
+      } else {
+        // Fallback: set search term so user sees filtered results
+        setSearchTerm(initialSelectedDrugName);
+      }
+      if (onClearInitialDrug) onClearInitialDrug();
+    }
+  }, [initialSelectedDrugName, drugs, onClearInitialDrug, canManage, canSeeClosedDrugs]);
 
   useEffect(() => {
     const q = query(collection(db, 'drugs'), orderBy('name'));
@@ -1473,7 +1488,13 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 )}
               />
             )}
-            <span className="relative z-10 shrink-0">{mode.icon}</span>
+            <span className="relative z-10 shrink-0">
+              {isMobile && isActive && ['drugs', 'groups', 'ingredients'].includes(mode.id) ? (
+                <span className="text-[11px] font-black tracking-tighter">
+                  {mode.id === 'drugs' ? 'Biệt dược' : mode.id === 'groups' ? 'Nhóm thuốc' : 'Hoạt chất'}
+                </span>
+              ) : mode.icon}
+            </span>
             <span className="relative z-10 hidden sm:inline-block">{mode.label}</span>
           </button>
         );
@@ -1610,7 +1631,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     }}
                     className={cn(
                       "w-auto min-w-[160px] sm:min-w-[200px] pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl flex items-center cursor-pointer transition-all h-full min-h-[40px] lg:min-h-[56px]",
-                      isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
+                      groupFilter !== 'Tất cả'
+                        ? (isDarkMode ? "bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/50" : "bg-blue-50 text-blue-600 ring-1 ring-blue-200")
+                        : (isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600")
                     )}
                   >
                     <Folder className={cn("absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 transition-colors", isGroupFilterOpen ? "text-blue-500" : "text-slate-400")} size={14} />
@@ -1702,26 +1725,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                   </AnimatePresence>
                 </div>
 
-                {canSeeStatusColumn && (
-                  <div className="relative flex-1 sm:flex-none min-w-[140px] group">
-                    <Database className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
-                    <select
-                      className={cn(
-                        "w-full pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
-                        isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
-                      )}
-                      value={stockFilter}
-                      onChange={(e) => setStockFilter(e.target.value)}
-                    >
-                      <option value="all">Tất cả tình trạng</option>
-                      <option value="available">Còn hàng</option>
-                      <option value="low">Sắp hết</option>
-                      <option value="out">Hết hàng</option>
-                    </select>
-                    <ChevronRight className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={14} />
-                  </div>
-                )}
-
                 <div className="relative flex-1 sm:flex-none min-w-[140px] group" ref={dosageFormFilterRef}>
                   <div
                     onClick={() => {
@@ -1737,7 +1740,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     }}
                     className={cn(
                       "w-auto min-w-[160px] pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl flex items-center cursor-pointer transition-all h-full min-h-[40px] lg:min-h-[56px]",
-                      isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600"
+                      dosageFormFilter !== 'all'
+                        ? (isDarkMode ? "bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/50" : "bg-blue-50 text-blue-600 ring-1 ring-blue-200")
+                        : (isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600")
                     )}
                   >
                     <Pill className={cn("absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 transition-colors", isDosageFormFilterOpen ? "text-blue-500" : "text-slate-400")} size={14} />
@@ -1825,6 +1830,28 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     )}
                   </AnimatePresence>
                 </div>
+
+                {canSeeStatusColumn && (
+                  <div className="relative flex-1 sm:flex-none min-w-[140px] group">
+                    <Database className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={14} />
+                    <select
+                      className={cn(
+                        "w-full pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
+                        stockFilter !== 'all'
+                          ? (isDarkMode ? "bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/50" : "bg-blue-50 text-blue-600 ring-1 ring-blue-200")
+                          : (isDarkMode ? "bg-slate-800/50 text-slate-300" : "bg-slate-50 text-slate-600")
+                      )}
+                      value={stockFilter}
+                      onChange={(e) => setStockFilter(e.target.value)}
+                    >
+                      <option value="all">Tất cả tình trạng</option>
+                      <option value="available">Còn hàng</option>
+                      <option value="low">Sắp hết</option>
+                      <option value="out">Hết hàng</option>
+                    </select>
+                    <ChevronRight className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={14} />
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2095,12 +2122,21 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 type="text"
                 placeholder="Tìm nhóm thuốc..."
                 className={cn(
-                  "w-full pl-9 pr-4 py-2 rounded-xl border-none focus:ring-2 focus:ring-blue-500 transition-all text-xs font-medium",
+                  "w-full pl-9 pr-10 py-2 rounded-xl border-none focus:ring-2 focus:ring-blue-500 transition-all text-xs font-medium",
                   isDarkMode ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-900"
                 )}
                 value={groupSearchTerm}
                 onChange={(e) => setGroupSearchTerm(e.target.value)}
               />
+              {groupSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setGroupSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-all text-slate-400 hover:text-rose-500"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           </div>
 

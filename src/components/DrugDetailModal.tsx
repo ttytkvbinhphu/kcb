@@ -23,6 +23,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   canSeeCommonIndications = true
 }) => {
   const [activeDetailTab, setActiveDetailTab] = useState<'indications' | 'contraindications' | 'dosage' | 'interactions' | 'warnings' | 'side_effects' | 'pharmacology' | 'info'>('indications');
+  const [direction, setDirection] = useState(0);
   const [icdList, setIcdList] = useState<ICD10[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
@@ -48,6 +49,66 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  // Use ref for onClose to avoid effect re-runs when parent re-renders
+  const onCloseRef = React.useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Handle mobile back button
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const modalHash = '#drug-detail';
+    
+    // Only push if we're not already on this hash (prevents double push)
+    if (window.location.hash !== modalHash) {
+      window.history.pushState({ modal: 'drug-detail' }, '', modalHash);
+    }
+
+    const handlePopState = () => {
+      // If the hash is no longer #drug-detail, it means back was pressed
+      if (window.location.hash !== modalHash) {
+        onCloseRef.current();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      // Clean up hash if closed via X button or Esc instead of back button
+      // We use a small check to ensure we only go back if the modal is actually closing
+      if (!isOpen && window.location.hash === modalHash) {
+        // This part is tricky because isOpen is from closure. 
+        // But if this effect is cleaning up because isOpen changed to false, it works.
+      }
+    };
+  }, [isOpen]);
+
+  // Separate cleanup effect for the hash when closing
+  useEffect(() => {
+    if (!isOpen && window.location.hash === '#drug-detail') {
+      window.history.back();
+    }
+  }, [isOpen]);
+
   if (!drug) return null;
 
   const detailTabs = [
@@ -61,10 +122,40 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     { id: 'info', label: 'Thông tin', icon: <UserCheck size={14} /> }
   ];
 
+  const currentIndex = detailTabs.findIndex(t => t.id === activeDetailTab);
+
+  const paginate = (newDirection: number) => {
+    const newIndex = currentIndex + newDirection;
+    if (newIndex >= 0 && newIndex < detailTabs.length) {
+      setDirection(newDirection);
+      setActiveDetailTab(detailTabs[newIndex].id as any);
+    }
+  };
+
+  const slideVariants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? '100%' : '-100%',
+      opacity: 0,
+      scale: 0.98
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1,
+      scale: 1
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? '100%' : '-100%',
+      opacity: 0,
+      scale: 0.98
+    })
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[190] flex items-center justify-center">
+        <div className="fixed inset-0 z-[190] flex items-center justify-center p-0 lg:p-8 xl:p-12">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -74,15 +165,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
           />
           
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
+            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: 10 }}
             transition={{ 
-              duration: 0.2, 
+              duration: 0.3, 
               ease: [0.4, 0, 0.2, 1] 
             }}
             className={cn(
-              "relative w-full h-full overflow-hidden shadow-2xl flex flex-col transition-all",
+              "relative w-full h-full lg:w-[92vw] lg:max-w-7xl lg:h-[88vh] lg:rounded-[48px] overflow-hidden shadow-2xl flex flex-col transition-all border-t lg:border border-white/10",
               isDarkMode ? "bg-slate-900 text-white" : "bg-white text-slate-900"
             )}
           >
@@ -132,6 +223,20 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 lg:gap-3 mb-1 flex-wrap">
                         <h3 className="text-xl lg:text-4xl font-black tracking-tight leading-tight">{drug.name}</h3>
+                        {drug.pdfUrl && (
+                          <a 
+                            href={drug.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(
+                              "shrink-0 p-1.5 lg:p-2 rounded-xl transition-all hover:scale-110 flex items-center justify-center",
+                              isDarkMode ? "bg-rose-500/10 text-rose-400 hover:bg-rose-500/20" : "bg-rose-50 text-rose-600 hover:bg-rose-100 shadow-sm"
+                            )}
+                            title="Xem tờ hướng dẫn (PDF)"
+                          >
+                            <FileText size={18} className="lg:w-6 lg:h-6" />
+                          </a>
+                        )}
                         {drug.isRx && (
                           <span className="shrink-0 px-2 py-0.5 bg-rose-500/20 text-rose-500 rounded-lg text-[10px] font-black border border-rose-500/30">Rx</span>
                         )}
@@ -205,11 +310,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                 <div className="flex overflow-x-auto gap-0.5 p-0.5 custom-scrollbar">
                   {detailTabs.map((tab) => {
                     const isActive = activeDetailTab === tab.id;
+                    const tabIndex = detailTabs.findIndex(t => t.id === tab.id);
                     return (
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setActiveDetailTab(tab.id as any)}
+                        onClick={() => {
+                          setDirection(tabIndex > currentIndex ? 1 : -1);
+                          setActiveDetailTab(tab.id as any);
+                        }}
                         className={cn(
                           "flex items-center gap-2 py-2.5 rounded-xl text-[10px] font-black transition-all whitespace-nowrap",
                           isActive ? "px-4" : "px-3",
@@ -229,19 +338,36 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Scrollable Content */}
               <div className={cn(
-                "flex-1 overflow-y-auto p-6 lg:p-10 custom-scrollbar",
+                "flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar",
                 isDarkMode ? "bg-slate-900 font-bold" : "bg-slate-50/30 font-bold"
               )}>
-                <AnimatePresence mode="wait">
+                <AnimatePresence initial={false} custom={direction} mode="popLayout">
                   <motion.div
                     key={activeDetailTab}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.2 }}
-                    className="min-h-full"
+                    custom={direction}
+                    variants={slideVariants as any}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{
+                      x: { type: "spring", stiffness: 300, damping: 30 },
+                      opacity: { duration: 0.2 }
+                    }}
+                    drag="x"
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={1}
+                    onDragEnd={(e, { offset, velocity }) => {
+                      const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 500;
+                      if (swipe) {
+                        if (offset.x < 0) {
+                          paginate(1);
+                        } else {
+                          paginate(-1);
+                        }
+                      }
+                    }}
+                    className="min-h-full p-6 lg:p-10 touch-pan-y"
                   >
                     {/* Indications Tab */}
                     {activeDetailTab === 'indications' && (
@@ -301,6 +427,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               </div>
                             </div>
                           ))}
+                          {(drug.indications || []).length === 0 && !drug.mechanismOfAction && (
+                            <div className="text-center py-20 opacity-40">
+                              <Info size={48} className="mx-auto mb-4" />
+                              <p className="font-black uppercase tracking-tighter">Thuốc này chưa cập nhật Chỉ định.</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -331,6 +463,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             </div>
                           </div>
                         ))}
+                        {(drug.contraindications || []).length === 0 && (
+                          <div className="text-center py-20 opacity-40">
+                            <ShieldAlert size={48} className="mx-auto mb-4" />
+                            <p className="font-black uppercase tracking-tighter">Thuốc này không có Chống chỉ định.</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -362,13 +500,19 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             </div>
                           ))}
                         </div>
+                        {(drug.dosageAndAdministration || []).length === 0 && !drug.generalAdministration && (
+                          <div className="text-center py-20 opacity-40">
+                            <Clock size={48} className="mx-auto mb-4" />
+                            <p className="font-black uppercase tracking-tighter">Thuốc này chưa cập nhật Liều lượng.</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
                     {/* Side Effects Tab */}
                     {activeDetailTab === 'side_effects' && (
                       <div className="space-y-4">
-                        {Array.isArray(drug.sideEffects) && (
+                        {Array.isArray(drug.sideEffects) && drug.sideEffects.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {(drug.sideEffects as any[]).map((se, i) => (
                               <div key={i} className={cn(
@@ -379,6 +523,11 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 <p className="text-sm leading-relaxed">{typeof se === 'string' ? se : se.content}</p>
                               </div>
                             ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-20 opacity-40">
+                            <AlertCircle size={48} className="mx-auto mb-4" />
+                            <p className="font-black uppercase tracking-tighter">Thuốc này chưa cập nhật Tác dụng phụ.</p>
                           </div>
                         )}
                       </div>
@@ -413,6 +562,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             </div>
                           )}
                         </div>
+                        {!drug.pharmacology && !drug.pharmacodynamics && !drug.pharmacokinetics && (
+                          <div className="text-center py-20 opacity-40">
+                            <Activity size={48} className="mx-auto mb-4" />
+                            <p className="font-black uppercase tracking-tighter">Thuốc này chưa cập nhật Dược lý.</p>
+                          </div>
+                        )}
                       </div>
                     )}
 

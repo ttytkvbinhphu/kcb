@@ -16,13 +16,13 @@ const SystemConfig = lazy(() => import('./components/SystemConfig'));
 const SocialWall = lazy(() => import('./components/SocialWall'));
 const PatientManagement = lazy(() => import('./components/PatientManagement'));
 const StaffManagement = lazy(() => import('./components/StaffManagement'));
-const WelcomeSlider = lazy(() => import('./components/WelcomeSlider'));
+
 import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType } from './firebase';
-import { UserProfile, Notification, SystemSettings, Announcement } from './types';
+import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings } from './types';
 import { seedInitialData } from './lib/seed';
 
 const ALL_TABS = [
@@ -104,8 +104,6 @@ export default function App() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [welcomeSlides, setWelcomeSlides] = useState<any[]>([]);
-  const [showWelcomeSlider, setShowWelcomeSlider] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationTab, setNotificationTab] = useState<'all' | 'unread' | 'read' | 'announcements'>('unread');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -212,8 +210,7 @@ export default function App() {
     loginSubtitle: 'Ứng dụng hỗ trợ Khám Chữa Bệnh',
     appDescription: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
     loginLogoUrl: '/icon-512.png',
-    defaultTheme: 'light',
-    showWelcomeSlider: false
+    defaultTheme: 'light'
   });
   const [regSettings, setRegSettings] = useState<RegistrationSettings>({
     allowNewRegistration: true,
@@ -266,8 +263,8 @@ export default function App() {
   // Handle mobile back button and history state
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      // If back button is pressed, revert to dashboard if we're in a utility view
-      if (activeTab !== 'dashboard') {
+      // If back button is pressed and we returned to the root (no hash), revert to dashboard
+      if (activeTab !== 'dashboard' && !window.location.hash) {
         setActiveTab('dashboard');
       }
     };
@@ -281,7 +278,7 @@ export default function App() {
     // Only push if we're not already on dashboard and the current hash doesn't match
     if (activeTab !== 'dashboard' && window.location.hash !== `#${activeTab}`) {
       window.history.pushState({ tab: activeTab }, '', `#${activeTab}`);
-    } else if (activeTab === 'dashboard' && window.location.hash !== '') {
+    } else if (activeTab === 'dashboard' && window.location.hash !== '' && window.location.hash !== '#drug-detail') {
       // If we returned to dashboard manually, clear the hash
       window.history.replaceState(null, '', window.location.pathname);
     }
@@ -355,22 +352,6 @@ export default function App() {
 
     localStorage.setItem('theme', theme);
   }, [theme, isDarkMode]);
-
-  useEffect(() => {
-    if (isAuthReady && welcomeSlides.length > 0) {
-      if (systemSettings.showWelcomeSlider === true) {
-        const hasSeen = sessionStorage.getItem('hasSeenWelcome_v2');
-        if (!hasSeen) {
-          setShowWelcomeSlider(true);
-        }
-      } else {
-        setShowWelcomeSlider(false);
-      }
-    } else if (isAuthReady && showWelcomeSlider) {
-      // If auth is ready but no slides or disabled, hide it
-      setShowWelcomeSlider(false);
-    }
-  }, [isAuthReady, welcomeSlides, systemSettings.showWelcomeSlider]);
 
   useEffect(() => {
     if (systemSettings.appName) {
@@ -457,12 +438,6 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
     });
 
-    const unsubSlides = onSnapshot(query(collection(db, 'welcome_slides'), orderBy('order', 'asc')), (snapshot) => {
-      setWelcomeSlides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'welcome_slides');
-    });
-
     if (!user) {
       setRolePermissions([]);
       setTitlePermissions([]);
@@ -473,7 +448,6 @@ export default function App() {
         unsubReg();
         unsubFeatures();
         unsubFeatureSettings();
-        unsubSlides();
       };
     }
 
@@ -574,7 +548,6 @@ export default function App() {
       unsubReg();
       unsubFeatures();
       unsubFeatureSettings();
-      unsubSlides();
     };
   }, [user, userProfile?.role, userProfile?.title, userProfile?.uid]);
 
@@ -778,7 +751,7 @@ export default function App() {
               email: currentUser.email!,
               displayName: currentUser.displayName || (isAdmin ? 'Quản trị viên' : 'Thành viên mới'),
               photoURL: currentUser.photoURL || '',
-              role: isAdmin ? 'admin' : (regSettings.defaultRoleId || 'unapproved'),
+              role: isAdmin ? 'admin' : (regSettings.defaultRoleId as any || 'unapproved'),
               isApproved: isAdmin || regSettings.autoApprove, // Auto-approve admin or if setting is on
               title: isAdmin ? 'Bác sĩ' : (regSettings.defaultTitleId || 'Chưa cập nhật'),
               position: isAdmin ? 'Giám đốc' : 'Chưa cập nhật',
@@ -1584,6 +1557,8 @@ export default function App() {
           systemSettings={systemSettings}
           activeCategory={activeTab.replace('admin_', '') as any}
           setActiveCategory={(cat) => setActiveTab(`admin_${cat}`)}
+          uid={user?.uid || ''}
+          userRole={userProfile.role}
         />
       );
     }
@@ -1622,7 +1597,9 @@ export default function App() {
           isApproved={userProfile.isApproved}
           userPowerPoints={userPowerPoints}
           initialSelectedDrugId={externalSelectedDrugId}
-          onClearInitialDrug={() => setExternalSelectedDrugId(null)}
+          onClearInitialDrug={() => {
+            setExternalSelectedDrugId(null);
+          }}
           currentUserName={userProfile.displayName}
         />;
       case 'interaction':
@@ -1669,6 +1646,8 @@ export default function App() {
             systemSettings={systemSettings}
             activeCategory="home"
             setActiveCategory={(cat) => setActiveTab(`admin_${cat}`)}
+            uid={user?.uid || ''}
+            userRole={userProfile.role}
           />
         );
       case 'adr':
@@ -1757,23 +1736,6 @@ export default function App() {
 
   return (
     <>
-      <AnimatePresence>
-        {showWelcomeSlider && welcomeSlides.length > 0 && (
-          <Suspense fallback={null}>
-            <WelcomeSlider
-              key="app-welcome-slider"
-              onComplete={() => {
-                setShowWelcomeSlider(false);
-                sessionStorage.setItem('hasSeenWelcome_v2', 'true');
-              }}
-              isDarkMode={isDarkMode}
-              userName={user?.displayName || userProfile?.displayName || undefined}
-              slides={welcomeSlides}
-            />
-          </Suspense>
-        )}
-      </AnimatePresence>
-
       <div className={cn(
         "min-h-screen font-sans transition-colors duration-300 flex",
         isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
@@ -2592,29 +2554,29 @@ export default function App() {
     )
   }
 
-  <div className="p-0 sm:p-3 lg:px-6 lg:pb-6 lg:pt-0">
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={activeTab}
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -6, pointerEvents: 'none' }}
-        transition={{ duration: 0.15 }}
-      >
 
-        <Suspense fallback={
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <Loader2 className="w-10 h-10 animate-spin text-primary" />
-            <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-              Đang tải giao diện...
-            </p>
-          </div>
-        }>
-          {renderContent()}
-        </Suspense>
-      </motion.div>
-    </AnimatePresence>
-  </div>
+  <AnimatePresence mode="wait">
+    <motion.div
+      key={activeTab}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6, pointerEvents: 'none' }}
+      transition={{ duration: 0.15 }}
+    >
+
+      <Suspense fallback={
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+          <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+            Đang tải giao diện...
+          </p>
+        </div>
+      }>
+        {renderContent()}
+      </Suspense>
+    </motion.div>
+  </AnimatePresence>
+
 
   {/* Profile Modal */ }
   <AnimatePresence>

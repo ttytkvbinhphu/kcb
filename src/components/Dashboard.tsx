@@ -5,7 +5,8 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc } from '../firebase';
-import { UserProfile, Notification, ICD10 } from '../types';
+import { UserProfile, Notification, ICD10, Drug } from '../types';
+import DrugDetailModal from './DrugDetailModal';
 
 import {
   DndContext,
@@ -115,11 +116,27 @@ const Dashboard: React.FC<DashboardProps> = ({
   featureSettings = {},
   uid,
   onLogout,
-  setExternalIcdSearchQuery
+  setExternalIcdSearchQuery,
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCustomizing, setIsCustomizing] = useState(false);
+  const [quickDrugModal, setQuickDrugModal] = useState<{ drug: Drug | null; isOpen: boolean }>({
+    drug: null,
+    isOpen: false,
+  });
 
+  const handleOpenDrugModal = async (drugName: string) => {
+    try {
+      const q = query(collection(db, 'drugs'), where('name', '==', drugName));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const data = snap.docs[0].data() as Drug;
+        setQuickDrugModal({ drug: data, isOpen: true });
+      }
+    } catch (e) {
+      console.error('Failed to load drug:', e);
+    }
+  };
 
   const allActions = [
     { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, desc: 'Tra cứu thông tin thuốc và tương tác', color: 'bg-indigo-500', group: 'clinical' },
@@ -459,7 +476,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className={cn(
+    <>
+      <div className={cn(
       "p-2 lg:p-4 max-w-full mx-auto space-y-4 lg:space-y-6 pb-24 lg:pb-12 transition-colors",
       isDarkMode ? "bg-slate-950/30" : "bg-white"
     )}>
@@ -908,7 +926,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 "text-base lg:text-lg font-black flex items-center gap-2 transition-colors mb-4 uppercase tracking-widest text-[#0ea5e9]",
               )}>
                 <div className="w-1.5 h-6 bg-[#0ea5e9] rounded-full" />
-                Mã bệnh ưu tiên
+                ICD-10 Nhanh
                 <span className="ml-auto px-2 py-0.5 rounded bg-[#0ea5e9]/10 text-[#0ea5e9] text-[10px] font-black border border-[#0ea5e9]/20">
                   {workspaceIcds.length}
                 </span>
@@ -962,17 +980,21 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                               return (
                                 <>
-                                  {allDrugs.slice(0, 3).map((drugName, idx) => (
-                                    <span key={idx} className={cn(
-                                      "text-[8px] font-black px-1.5 py-0.5 rounded-full border uppercase whitespace-normal break-words",
-                                      isDarkMode ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50" : "bg-indigo-50 text-indigo-600 border-indigo-100"
-                                    )}>
+                                  {allDrugs.map((drugName, idx) => (
+                                    <button
+                                      key={idx}
+                                      onClick={() => handleOpenDrugModal(drugName)}
+                                      className={cn(
+                                        "text-[8px] font-black px-1.5 py-0.5 rounded-full border uppercase whitespace-normal break-words transition-all hover:scale-105 cursor-pointer",
+                                        isDarkMode
+                                          ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50 hover:bg-indigo-500 hover:text-white hover:border-indigo-500"
+                                          : "bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white hover:border-indigo-600"
+                                      )}
+                                      title={`Xem thông tin: ${drugName}`}
+                                    >
                                       {drugName}
-                                    </span>
+                                    </button>
                                   ))}
-                                  {allDrugs.length > 3 && (
-                                    <span className="text-[9px] font-black text-slate-400">+{allDrugs.length - 3}</span>
-                                  )}
                                 </>
                               );
                             })()}
@@ -1095,12 +1117,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                           }
 
                           return allDrugs.map((drugName, idx) => (
-                            <span key={idx} className={cn(
-                              "text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-tight",
-                              isDarkMode ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50" : "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm"
-                            )}>
+                            <button
+                              key={idx}
+                              onClick={() => handleOpenDrugModal(drugName)}
+                              className={cn(
+                                "text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-tight transition-all active:scale-95 cursor-pointer",
+                                isDarkMode
+                                  ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50 active:bg-indigo-500 active:text-white active:border-indigo-500"
+                                  : "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm active:bg-indigo-600 active:text-white active:border-indigo-600"
+                              )}
+                            >
                               {drugName}
-                            </span>
+                            </button>
                           ));
                         })()}
                       </div>
@@ -1321,6 +1349,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         </aside>
       </div>
     </div>
+
+      <DrugDetailModal
+        drug={quickDrugModal.drug}
+        isOpen={quickDrugModal.isOpen}
+        onClose={() => setQuickDrugModal({ drug: null, isOpen: false })}
+        isDarkMode={isDarkMode ?? false}
+      />
+    </>
   );
 };
 

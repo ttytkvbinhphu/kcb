@@ -265,12 +265,21 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
             type="text"
             placeholder={type === 'company' ? "Tìm kiếm tên công ty..." : `Tìm kiếm ${label.toLowerCase()}...`}
             className={cn(
-              "w-full pl-10 pr-4 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
+              "w-full pl-10 pr-10 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
               isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
             )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-all text-slate-400 hover:text-rose-500"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
       </div>
 

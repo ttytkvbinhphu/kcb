@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square } from 'lucide-react';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -7,57 +7,7 @@ import { SystemSettings, UserProfile, AuthLog } from '../types';
 import ThemeSettings from './ThemeSettings';
 import ConfirmModal from './ConfirmModal';
 import StaffManagement from './StaffManagement';
-
-const PRESET_LAYOUTS = [
-  {
-    id: 'center-title',
-    name: 'Tiêu đề giữa',
-    icon: AlignCenter,
-    elements: [
-      { id: 't1', type: 'text', content: 'TIÊU ĐỀ CHÀO MỪNG', x: 50, y: 45, style: { fontSize: '48px', color: '#1e293b', fontWeight: '900', textAlign: 'center', fontFamily: 'Inter' } },
-      { id: 't2', type: 'text', content: 'Mô tả ngắn gọn về tính năng hoặc thông báo quan trọng tại đây', x: 50, y: 60, style: { fontSize: '18px', color: '#64748b', fontWeight: '500', textAlign: 'center', fontFamily: 'Inter' } }
-    ]
-  },
-  {
-    id: 'split-right',
-    name: 'Ảnh phải',
-    icon: Columns,
-    elements: [
-      { id: 't1', type: 'text', content: 'TÍNH NĂNG MỚI', x: 10, y: 40, style: { fontSize: '42px', color: '#4f46e5', fontWeight: '900', textAlign: 'left', fontFamily: 'Inter' } },
-      { id: 't2', type: 'text', content: 'Hệ thống đã cập nhật giao diện quản lý mới tối ưu hơn cho thiết bị di động.', x: 10, y: 55, style: { fontSize: '16px', color: '#475569', fontWeight: '500', textAlign: 'left', fontFamily: 'Inter' } },
-      { id: 'i1', type: 'image', content: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=1000', x: 75, y: 50, w: '450px' }
-    ]
-  },
-  {
-    id: 'split-left',
-    name: 'Ảnh trái',
-    icon: LayoutTemplate,
-    elements: [
-      { id: 'i1', type: 'image', content: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=1000', x: 25, y: 50, w: '450px' },
-      { id: 't1', type: 'text', content: 'KẾT QUẢ ĐIỀU TRỊ', x: 55, y: 40, style: { fontSize: '38px', color: '#059669', fontWeight: '900', textAlign: 'left', fontFamily: 'Inter' } },
-      { id: 't2', type: 'text', content: 'Theo dõi tiến độ và lịch sử khám bệnh của bệnh nhân một cách trực quan.', x: 55, y: 55, style: { fontSize: '16px', color: '#475569', fontWeight: '500', textAlign: 'left', fontFamily: 'Inter' } }
-    ]
-  },
-  {
-    id: 'hero-overlay',
-    name: 'Tràn viền',
-    icon: Maximize,
-    elements: [
-      { id: 'i1', type: 'image', content: 'https://images.unsplash.com/photo-1576091160550-2173bdb999ef?q=80&w=1200', x: 50, y: 50, w: '1280px' },
-      { id: 't1', type: 'text', content: 'CHÀO MỪNG BẠN QUAY LẠI', x: 50, y: 85, style: { fontSize: '32px', color: '#ffffff', fontWeight: '900', textAlign: 'center', fontFamily: 'Inter' } }
-    ]
-  }
-];
-
-// Helper to convert Google Drive links to direct image URLs
-const getDirectImageUrl = (url: string) => {
-  if (!url) return '';
-  const driveMatch = url.match(/\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/);
-  if (driveMatch && (url.includes('drive.google.com') || url.includes('docs.google.com'))) {
-    return `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
-  }
-  return url;
-};
+import VersionManagement from './VersionManagement';
 
 interface ConfigItem {
   id: string;
@@ -76,13 +26,13 @@ interface TitlePermission {
   allowedTabs: string[];
 }
 
-import WelcomeSlider from './WelcomeSlider';
-
 interface SystemConfigProps {
   isDarkMode?: boolean;
   systemSettings: SystemSettings;
   activeCategory: string;
   setActiveCategory: (cat: any) => void;
+  uid: string;
+  userRole: string;
 }
 
 const ROLE_TABS = [
@@ -168,7 +118,7 @@ const SAMPLE_TERMS = `# PHẦN A: QUY ĐỊNH CHUNG
 * Được sử dụng toàn bộ các tính năng hỗ trợ quyết định lâm sàng (CDSS) được cấu hình cho chức danh.
 * Dữ liệu thuốc và phác đồ được cập nhật liên tục từ các nguồn tin cậy.`;
 
-const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings, activeCategory, setActiveCategory }) => {
+const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings, activeCategory, setActiveCategory, uid, userRole }) => {
   const [titles, setTitles] = useState<ConfigItem[]>([]);
   const [positions, setPositions] = useState<ConfigItem[]>([]);
   const [specialties, setSpecialties] = useState<ConfigItem[]>([]);
@@ -219,166 +169,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
   const [hrSubTab, setHrSubTab] = useState<'staff' | 'titles' | 'positions' | 'specialties' | 'departments' | 'roles' | 'permissions'>('staff');
-  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings' | 'slides'>('pending');
-  const [welcomeSlides, setWelcomeSlides] = useState<any[]>([]);
-  const [isSavingSlide, setIsSavingSlide] = useState(false);
-  const [editingSlide, setEditingSlide] = useState<any>(null);
-  const [showSlideForm, setShowSlideForm] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
-
-  // --- New Presentation-style Slide Editor ---
-  const [newSlide, setNewSlide] = useState<any>({
-    elements: [],
-    bgColor: '#ffffff',
-    bgImage: '',
-    isActive: true,
-    order: 0
-  });
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-
-  const addElement = (type: 'text' | 'image') => {
-    const newElement = {
-      id: Math.random().toString(36).substr(2, 9),
-      type,
-      x: 10,
-      y: 10,
-      w: type === 'image' ? '200px' : 'auto',
-      h: 'auto',
-      content: type === 'text' ? 'Nhấp để nhập văn bản...' : '',
-      style: {
-        fontSize: '24px',
-        color: isDarkMode ? '#ffffff' : '#000000',
-        fontWeight: 'normal',
-        fontFamily: 'Inter',
-        textAlign: 'left'
-      }
-    };
-    setNewSlide({ ...newSlide, elements: [...newSlide.elements, newElement] });
-    setSelectedElementId(newElement.id);
-  };
-
-  // Keyboard navigation for selected elements
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedElementId) return;
-      
-      // Don't move if typing in an input or textarea
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-
-      const step = e.shiftKey ? 2.0 : 0.5;
-      const element = newSlide.elements.find((el: any) => el.id === selectedElementId);
-      if (!element) return;
-
-      let { x, y } = element;
-      let moved = false;
-
-      switch (e.key) {
-        case 'ArrowUp':
-          y = Math.max(0, y - step);
-          moved = true;
-          break;
-        case 'ArrowDown':
-          y = Math.min(100, y + step);
-          moved = true;
-          break;
-        case 'ArrowLeft':
-          x = Math.max(0, x - step);
-          moved = true;
-          break;
-        case 'ArrowRight':
-          x = Math.max(100, x + step); // Wait, should be Math.min(100, x + step)
-          x = Math.min(100, x + step);
-          moved = true;
-          break;
-        case 'Delete':
-        case 'Backspace':
-          // Only delete if not in input (handled above)
-          // But maybe Backspace is risky
-          if (e.key === 'Delete') {
-            removeElement(selectedElementId);
-            moved = false;
-          }
-          break;
-      }
-
-      if (moved) {
-        e.preventDefault(); // Prevent scrolling
-        updateElement(selectedElementId, { x, y });
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementId, newSlide.elements]);
-
-  const updateElement = (id: string, updates: any) => {
-    setNewSlide({
-      ...newSlide,
-      elements: newSlide.elements.map((el: any) => el.id === id ? { ...el, ...updates } : el)
-    });
-  };
-
-  const removeElement = (id: string) => {
-    setNewSlide({
-      ...newSlide,
-      elements: newSlide.elements.filter((el: any) => el.id !== id)
-    });
-    if (selectedElementId === id) setSelectedElementId(null);
-  };
-
-  const saveSlide = async () => {
-    if (isSavingSlide) return;
-
-    setIsSavingSlide(true);
-    console.log("Starting saveSlide process...");
-
-    try {
-      // Generate a clean title/desc from the first text element for backward compatibility or list display
-      const firstText = newSlide.elements.find((el: any) => el.type === 'text')?.content || '';
-      const slideId = editingSlide ? editingSlide.id : `slide_${Date.now()}`;
-
-      const slideData = {
-        id: slideId,
-        elements: newSlide.elements || [],
-        bgColor: newSlide.bgColor || '#ffffff',
-        isActive: newSlide.isActive ?? true,
-        order: Number(newSlide.order) || (welcomeSlides.length + 1),
-        title: firstText.substring(0, 50) || 'Slide mới',
-        description: firstText.substring(0, 100) || '',
-        updatedAt: new Date().toISOString(),
-        createdAt: editingSlide ? editingSlide.createdAt : new Date().toISOString()
-      };
-
-      console.log("Saving slide data:", slideData);
-      await setDoc(doc(db, 'welcome_slides', slideId), slideData);
-
-      setShowSlideForm(false);
-      setEditingSlide(null);
-      setSelectedElementId(null);
-      setNewSlide({
-        elements: [],
-        bgColor: '#ffffff',
-        isActive: true,
-        order: welcomeSlides.length + 1
-      });
-      console.log("Slide saved successfully!");
-    } catch (error) {
-      console.error("Detailed Firestore Save Error:", error);
-      handleFirestoreError(error, OperationType.WRITE, 'welcome_slides');
-    } finally {
-      setIsSavingSlide(false);
-    }
-  };
-
+  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings'>('pending');
   // --- Rendering Editor UI ---
-  const selectedElement = (newSlide.elements || []).find((el: any) => el.id === selectedElementId);
-  const [showPreviewSlider, setShowPreviewSlider] = useState(false);
-  const [previewInitialSlide, setPreviewInitialSlide] = useState(0);
-
   const effectiveCategory = activeCategory === 'hr' ? hrSubTab : activeCategory;
 
   const currentItems = effectiveCategory === 'titles' ? titles :
@@ -454,22 +246,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       }
     );
 
-    const unsubSlides = onSnapshot(
-      query(collection(db, 'welcome_slides'), orderBy('order', 'asc')),
-      (snapshot) => {
-        setWelcomeSlides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }, (error) => {
-        handleFirestoreError(error, OperationType.GET, 'welcome_slides');
-      }
-    );
-
     return () => {
       unsubFeatures();
       unsubReg();
       unsubAnnouncements();
       unsubAuthLogs();
       unsubPendingUsers();
-      unsubSlides();
     };
   }, []);
 
@@ -483,7 +265,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   };
 
   const updateShowWelcomeSlider = async (enable: boolean) => {
-    const updatedSettings = { ...editSettings, showWelcomeSlider: enable };
+    const updatedSettings = { ...editSettings }; // Removing showWelcomeSlider
     setEditSettings(updatedSettings);
     try {
       await setDoc(doc(db, 'system_settings', 'main'), updatedSettings);
@@ -537,15 +319,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
 
 
-  const deleteSlide = async (id: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa slide này?')) return;
-    try {
-      await deleteDoc(doc(db, 'welcome_slides', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `welcome_slides/${id}`);
-    }
-  };
-
   const deleteAnnouncement = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'announcements', id));
@@ -584,10 +357,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       setTitlePermissions(snapshot.docs.map(doc => doc.data() as TitlePermission));
     });
 
-    const unsubSlides = onSnapshot(query(collection(db, 'welcome_slides'), orderBy('order', 'asc')), (snapshot) => {
-      setWelcomeSlides(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
     setLoading(false);
     return () => {
       unsubTitles();
@@ -597,7 +366,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       unsubRoles();
       unsubPerms();
       unsubTitlePerms();
-      unsubSlides();
     };
   }, []);
 
@@ -810,6 +578,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'hr', label: 'Quản lý Nhân sự', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'theme', label: 'Quản lý Giao diện', icon: Sun, color: 'text-pink-500', bg: 'bg-pink-500/10' },
+    { id: 'version', label: 'Nhật ký Phiên bản', icon: History, color: 'text-blue-500', bg: 'bg-blue-500/10' },
   ];
 
   const HR_SUB_TABS = [
@@ -821,6 +590,44 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'roles', label: 'Vai trò hệ thống', icon: ShieldCheck },
     { id: 'permissions', label: 'Phân quyền làm việc', icon: Lock },
   ];
+
+  const CATEGORY_DETAILS: Record<string, { desc: string; longDesc: string; gradient: string }> = {
+    home: {
+      desc: 'Trung tâm điều khiển & Thông báo',
+      longDesc: 'Giám sát toàn diện trạng thái vận hành, quản trị hệ thống tính năng cốt lõi và kênh truyền thông nội bộ chuyên nghiệp.',
+      gradient: 'from-indigo-600 to-blue-500'
+    },
+    registration: {
+      desc: 'Kiểm soát truy cập & Phê duyệt',
+      longDesc: 'Quản lý quy trình gia nhập hệ thống, phê duyệt thành viên mới và thiết lập trải nghiệm chào mừng chuyên nghiệp.',
+      gradient: 'from-emerald-600 to-teal-500'
+    },
+    general: {
+      desc: 'Cấu hình hệ thống & Nhật ký',
+      longDesc: 'Thiết lập các thông số cơ bản, quản lý điều khoản sử dụng và giám sát lịch sử truy cập của toàn bộ người dùng.',
+      gradient: 'from-cyan-600 to-sky-500'
+    },
+    hr: {
+      desc: 'Quản trị nhân sự & Tổ chức',
+      longDesc: 'Xây dựng cơ cấu tổ chức, quản lý danh sách nhân viên và thiết lập hệ thống phân quyền làm việc chuyên sâu.',
+      gradient: 'from-blue-600 to-indigo-500'
+    },
+    features: {
+      desc: 'Hệ sinh thái tính năng & Tiện ích',
+      longDesc: 'Tùy chỉnh trạng thái hoạt động (Mở/Bảo trì/Đóng), phân cấp quyền truy cập và cá nhân hóa trải nghiệm người dùng.',
+      gradient: 'from-orange-600 to-amber-500'
+    },
+    theme: {
+      desc: 'Thiết kế giao diện & Trải nghiệm',
+      longDesc: 'Nâng tầm trải nghiệm thị giác thông qua việc tùy biến màu sắc, chế độ hiển thị và phong cách thiết kế hiện đại.',
+      gradient: 'from-pink-600 to-rose-500'
+    },
+    version: {
+      desc: 'Lộ trình phát triển hệ thống',
+      longDesc: 'Ghi nhận lịch sử hoàn thiện ứng dụng, cập nhật tính năng mới và theo dõi quá trình tiến hóa của hệ thống qua thời gian.',
+      gradient: 'from-violet-600 to-purple-500'
+    }
+  };
 
   const [selectedFeatureForDetail, setSelectedFeatureForDetail] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
@@ -1622,23 +1429,30 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         key={feature.id}
         onClick={() => setSelectedFeatureForDetail(feature.id)}
         className={cn(
-          "p-3 sm:p-6 rounded-3xl border-2 transition-all relative group cursor-pointer",
-          isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-primary" : "bg-white border-slate-50 hover:border-primary"
+          "p-5 sm:p-7 rounded-[2rem] border-2 transition-all relative group cursor-pointer overflow-hidden",
+          isDarkMode 
+            ? "bg-slate-900/40 border-slate-800 hover:border-primary/50 hover:bg-slate-800/60" 
+            : "bg-white border-slate-100 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/5"
         )}
       >
-        <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-6">
+        {/* Subtle Gradient Hover Effect */}
+        <div className={cn(
+          "absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none bg-gradient-to-br",
+          details.gradient
+        )} />
+
+        <div className="flex items-center gap-4 sm:gap-5 mb-4 sm:mb-8 relative z-10">
           <div className={cn(
-            "p-2.5 sm:p-4 rounded-2xl shrink-0",
-            isDarkMode ? "bg-slate-800 text-primary" : "bg-primary-light/30 text-primary"
+            "p-3 sm:p-4 rounded-2xl shrink-0 shadow-lg transition-transform group-hover:scale-110",
+            isDarkMode ? "bg-slate-800 text-primary" : "bg-primary/5 text-primary"
           )}>
-            <feature.icon size={20} className="sm:hidden" />
-            <feature.icon size={24} className="hidden sm:block" />
+            <feature.icon size={24} />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className={cn("font-black text-[12px] sm:text-sm truncate", isDarkMode ? "text-white" : "text-slate-900")}>
+            <h4 className={cn("font-black text-sm sm:text-base truncate tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
               {settings.customTitle || feature.label}
             </h4>
-            <p className="text-[9px] sm:text-[10px] font-medium text-slate-500 truncate">{feature.desc}</p>
+            <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 truncate uppercase tracking-widest">{feature.desc}</p>
           </div>
         </div>
 
@@ -1750,37 +1564,118 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     );
   };
 
+  const details = CATEGORY_DETAILS[activeCategory] || CATEGORY_DETAILS.home;
+
   return (
     <>
     <div className="space-y-6">
       <div className={cn(
-        "mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6",
-        activeCategory === 'registration' && "hidden sm:flex"
+        "relative overflow-hidden rounded-[2.5rem] p-8 lg:p-12 mb-10 transition-all",
+        isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/50"
       )}>
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className={cn(
-              "p-2 rounded-xl shadow-lg bg-opacity-100",
-              isDarkMode ? "text-white" : "text-slate-900",
-              currentCategory.bg.replace('/10', '')
-            )}>
-              <currentCategory.icon size={24} />
+        {/* Abstract Background Elements */}
+        <div className={cn(
+          "absolute -top-24 -right-24 w-96 h-96 rounded-full blur-[100px] opacity-20 bg-gradient-to-br",
+          details.gradient
+        )} />
+        <div className={cn(
+          "absolute -bottom-24 -left-24 w-72 h-72 rounded-full blur-[80px] opacity-10 bg-gradient-to-tr",
+          details.gradient
+        )} />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-4 mb-4">
+              <div className={cn(
+                "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-2xl transition-transform hover:scale-110",
+                "bg-gradient-to-br", details.gradient
+              )}>
+                <currentCategory.icon size={28} />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className={cn(
+                    "text-3xl lg:text-4xl font-black tracking-tight",
+                    isDarkMode ? "text-white" : "text-slate-900"
+                  )}>
+                    {currentCategory.label}
+                  </h2>
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                    isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
+                  )}>
+                    Admin Panel
+                  </span>
+                </div>
+                <p className={cn(
+                  "text-sm font-black uppercase tracking-[0.2em] mt-1",
+                  isDarkMode ? "text-indigo-400" : "text-indigo-600"
+                )}>
+                  {details.desc}
+                </p>
+              </div>
             </div>
-            <h2 className={cn(
-              "text-2xl lg:text-3xl font-black tracking-tight transition-colors",
-              isDarkMode ? "text-white" : "text-slate-900"
-            )}>{currentCategory.label}</h2>
+            
+            <p className={cn(
+              "text-base lg:text-lg font-medium leading-relaxed max-w-xl",
+              isDarkMode ? "text-slate-400" : "text-slate-500"
+            )}>
+              {details.longDesc}
+            </p>
           </div>
-          <p className={cn(
-            "font-medium transition-colors text-sm",
-            isDarkMode ? "text-slate-400" : "text-slate-500"
-          )}>
-            {activeCategory === 'registration'
-              ? 'Phê duyệt tài khoản và thiết lập quy tắc đăng ký thành viên mới.'
-              : activeCategory === 'home'
-                ? 'Tổng quan hệ thống, cấu hình tính năng và quản lý thông báo toàn viện.'
-                : 'Quản lý danh mục nhân sự và phân quyền hệ thống (Quyền quản lý & Quyền làm việc).'}
-          </p>
+
+          <div className="flex items-center gap-4 lg:self-end">
+            {activeCategory === 'registration' && pendingUsers.length > 0 && (
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-rose-500/5">
+                <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center">
+                  <ShieldAlert size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">Yêu cầu chờ</p>
+                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{pendingUsers.length}</p>
+                </div>
+              </div>
+            )}
+            
+            {activeCategory === 'home' && (
+              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-indigo-500/5">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-500 text-white flex items-center justify-center">
+                  <Activity size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-1">Đang Online</p>
+                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{stats.online}</p>
+                </div>
+              </div>
+            )}
+
+            {activeCategory === 'hr' && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-emerald-500/5">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center">
+                  <Users size={24} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">Tổng nhân sự</p>
+                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{allUsers.length}</p>
+                </div>
+              </div>
+            )}
+            {activeCategory === 'version' && ['admin', 'operator'].includes(userRole) && (
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('trigger-add-version'))}
+                className={cn(
+                  "group relative px-8 py-5 rounded-[28px] transition-all duration-300",
+                  "bg-indigo-600 text-white shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40",
+                  "hover:-translate-y-1 active:translate-y-0",
+                  "flex items-center gap-3 overflow-hidden"
+                )}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-indigo-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Plus size={24} className="relative z-10 group-hover:rotate-90 transition-transform duration-300" />
+                <span className="relative z-10 font-black text-sm uppercase tracking-widest">Thêm phiên bản mới</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1789,18 +1684,18 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         <div className="space-y-6">
           {activeCategory === 'hr' && (
             <div className={cn(
-              "flex flex-wrap items-center gap-2 p-1.5 rounded-2xl w-fit",
-              isDarkMode ? "bg-slate-800" : "bg-slate-100"
+              "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
+              isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
             )}>
               {HR_SUB_TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setHrSubTab(tab.id as any)}
                   className={cn(
-                    "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
+                    "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
                     hrSubTab === tab.id
-                      ? (isDarkMode ? "bg-slate-700 text-white shadow-none" : "bg-white text-blue-600 shadow-lg shadow-slate-200")
-                      : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                      ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
+                      : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
                   )}
                 >
                   <tab.icon size={14} />
@@ -1810,27 +1705,28 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             </div>
           )}
 
-          {activeCategory === 'home' ? (
+          {activeCategory === 'home' && (
             <div className="space-y-6">
               <div className={cn(
-                "flex flex-wrap items-center gap-2 p-1.5 rounded-2xl w-fit",
-                isDarkMode ? "bg-slate-800" : "bg-slate-100"
+                "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
+                isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
               )}>
                 {[
-                  { id: 'features_main', label: 'Tính năng' },
-                  { id: 'utilities', label: 'Tiện ích' },
-                  { id: 'notifications', label: 'Thông báo' }
+                  { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
+                  { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid },
+                  { id: 'notifications', label: 'Thông báo viện', icon: MessageSquare }
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setHomeSubTab(tab.id as any)}
                     className={cn(
-                      "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                      "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
                       homeSubTab === tab.id
-                        ? (isDarkMode ? "bg-slate-700 text-white shadow-none" : "bg-white text-blue-600 shadow-lg shadow-slate-200")
-                        : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                        ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
+                        : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
                     )}
                   >
+                    <tab.icon size={14} />
                     {tab.label}
                   </button>
                 ))}
@@ -2077,7 +1973,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </AnimatePresence>
               )}
             </div>
-          ) : activeCategory === 'general' ? (
+          )}
+
+          {activeCategory === 'general' && (
             <div className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className={cn(
@@ -2412,8 +2310,20 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               </div>
             </div>
-          </div>
-          ) : activeCategory === 'theme' ? (
+            </div>
+          )}
+          
+          {activeCategory === 'version' && (
+            <div className="-m-4 lg:-m-10">
+              <VersionManagement 
+                isDarkMode={isDarkMode || false} 
+                userRole={userRole} 
+                uid={uid} 
+              />
+            </div>
+          )}
+          
+          {activeCategory === 'theme' && (
             <ThemeSettings
               isDarkMode={isDarkMode}
               editSettings={editSettings}
@@ -2422,7 +2332,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               isSaving={isSavingSettings}
               saveSuccess={saveSuccess}
             />
-          ) : activeCategory === 'features' ? (
+          )}
+          
+          {activeCategory === 'features' && (
             <AnimatePresence mode="wait">
               {selectedFeatureForDetail ? (
                 <div key="detail">
@@ -2431,24 +2343,25 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               ) : (
                 <div className="space-y-8">
                   <div className={cn(
-                    "flex items-center gap-2 p-1.5 rounded-2xl w-fit",
-                    isDarkMode ? "bg-slate-800" : "bg-slate-100"
+                    "flex items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md mb-8",
+                    isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
                   )}>
                     {[
-                      { id: 'all', label: 'Tất cả' },
-                      { id: 'features_main', label: 'Tính năng' },
-                      { id: 'utilities', label: 'Tiện ích' }
+                      { id: 'all', label: 'Tất cả mục', icon: LayoutGrid },
+                      { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
+                      { id: 'utilities', label: 'Tiện ích mở rộng', icon: Sparkles }
                     ].map(cat => (
                       <button
                         key={cat.id}
                         onClick={() => setFeatureCategoryFilter(cat.id as any)}
                         className={cn(
-                          "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                          "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
                           featureCategoryFilter === cat.id
-                            ? (isDarkMode ? "bg-slate-700 text-white shadow-none" : "bg-white text-blue-600 shadow-lg shadow-slate-200")
-                            : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                            ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
+                            : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
                         )}
                       >
+                        <cat.icon size={14} />
                         {cat.label}
                       </button>
                     ))}
@@ -2509,32 +2422,33 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               )}
             </AnimatePresence>
-          ) : activeCategory === 'registration' ? (
+          )}
+          
+          {activeCategory === 'registration' && (
             <div className="space-y-6">
               {/* Registration Sub-tabs */}
-              <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+              <div className={cn(
+                "flex items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md mb-8",
+                isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
+              )}>
                 {[
-                  { id: 'pending', label: 'Duyệt', icon: ShieldAlert },
-                  { id: 'settings', label: 'Cấu hình', icon: Settings },
-                  { id: 'slides', label: 'Slide', icon: ImageIcon },
+                  { id: 'pending', label: 'Duyệt tài khoản', icon: ShieldAlert },
+                  { id: 'settings', label: 'Cấu hình đăng ký', icon: Settings },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setRegSubTab(tab.id as any)}
                     className={cn(
-                      "flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all shrink-0",
+                      "flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
                       regSubTab === tab.id
-                        ? "bg-primary text-white shadow-lg shadow-primary/20"
-                        : isDarkMode
-                          ? "bg-slate-800 text-slate-400 hover:text-white"
-                          : "bg-white text-slate-500 hover:text-slate-900 border border-slate-100"
+                        ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
+                        : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
                     )}
                   >
                     <tab.icon size={16} />
-                    <span className="hidden xs:inline">{tab.label}</span>
-                    <span className="xs:hidden">{tab.label.split(' ')[0]}</span>
+                    <span>{tab.label}</span>
                     {tab.id === 'pending' && pendingUsers.length > 0 && (
-                      <span className="bg-rose-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]">
+                      <span className="bg-rose-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg shadow-rose-500/20">
                         {pendingUsers.length}
                       </span>
                     )}
@@ -2702,24 +2616,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             {titles.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                           </select>
                         </div>
-
-                        <div className={cn(
-                          "flex items-center justify-between p-4 rounded-2xl transition-colors border-2 border-indigo-500/20 bg-indigo-500/5",
-                        )}>
-                          <div>
-                            <p className={cn("text-sm font-bold", isDarkMode ? "text-indigo-300" : "text-indigo-900")}>Bật Slide Chào mừng</p>
-                            <p className="text-[10px] text-slate-500 font-medium tracking-tight">Hiển thị slide giới thiệu khi người dùng đăng nhập</p>
-                          </div>
-                          <button
-                            onClick={() => updateShowWelcomeSlider(!editSettings.showWelcomeSlider)}
-                            className={cn(
-                              "w-12 h-6 rounded-full p-1 transition-all relative",
-                              editSettings.showWelcomeSlider ? "bg-indigo-600" : "bg-slate-400"
-                            )}
-                          >
-                            <div className={cn("w-4 h-4 rounded-full bg-white transition-all transform", editSettings.showWelcomeSlider ? "translate-x-6" : "translate-x-0")} />
-                          </button>
-                        </div>
                       </div>
                     </div>
 
@@ -2737,540 +2633,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   </motion.div>
                 )}
-
-                {regSubTab === 'slides' && (
-                  <motion.div
-                    key="slides"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="space-y-6"
-                    >
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                          <ImageIcon size={18} /> Quản lý Slide chào mừng
-                        </h3>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => setShowPreviewSlider(true)}
-                            className={cn(
-                              "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2",
-                              isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                            )}
-                          >
-                            <Layout size={16} /> Xem toàn bộ Slide
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditingSlide(null);
-                              setNewSlide({ elements: [], bgColor: '#ffffff', isActive: true, order: welcomeSlides.length + 1 });
-                              setShowSlideForm(true);
-                            }}
-                            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
-                          >
-                            <Plus size={16} /> Thêm Slide mới
-                          </button>
-                        </div>
-                      </div>
-
-                      <AnimatePresence>
-                        {showSlideForm && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.98 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.98 }}
-                            className={cn(
-                              "rounded-[24px] sm:rounded-[40px] border-4 overflow-hidden p-4 sm:p-8 shadow-2xl",
-                              isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                            )}
-                          >
-                            {/* Editor Toolbar */}
-                            <div className={cn(
-                              "flex flex-wrap items-center justify-between gap-4 mb-8 p-4 rounded-[2rem] border",
-                              isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/50 border-slate-200"
-                            )}>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => addElement('text')}
-                                  className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-                                >
-                                  <FileText size={18} /> + Văn bản
-                                </button>
-                                <button
-                                  onClick={() => addElement('image')}
-                                  className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
-                                >
-                                  <ImageIcon size={18} /> + Hình ảnh
-                                </button>
-                              </div>
-
-                              <div className="flex items-center gap-2 border-x border-slate-200 dark:border-slate-700 px-4">
-                                <label className="text-[10px] font-black uppercase text-slate-400 mr-2">Bố cục mẫu:</label>
-                                {PRESET_LAYOUTS.map((layout) => (
-                                  <button
-                                    key={layout.id}
-                                    onClick={() => {
-                                      if (confirm(`Áp dụng bố cục "${layout.name}"? Thao tác này sẽ thay thế các phần tử hiện tại.`)) {
-                                        setNewSlide({ ...newSlide, elements: layout.elements.map(el => ({ ...el, id: Math.random().toString(36).substr(2, 9) })) });
-                                        setSelectedElementId(null);
-                                      }
-                                    }}
-                                    className={cn(
-                                      "p-2.5 rounded-xl flex flex-col items-center gap-1 transition-all hover:bg-indigo-500 hover:text-white",
-                                      isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-100 shadow-sm"
-                                    )}
-                                    title={layout.name}
-                                  >
-                                    <layout.icon size={16} />
-                                    <span className="text-[8px] font-bold uppercase tracking-tighter">{layout.name}</span>
-                                  </button>
-                                ))}
-                              </div>
-
-                              <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] font-black uppercase text-slate-500">Màu nền</label>
-                                  <input
-                                    type="color"
-                                    value={newSlide.bgColor}
-                                    onChange={(e) => setNewSlide({ ...newSlide, bgColor: e.target.value })}
-                                    className={cn(
-                                      "w-10 h-10 rounded-xl cursor-pointer p-1 border-2",
-                                      isDarkMode ? "bg-slate-700 border-slate-600" : "bg-white border-slate-200"
-                                    )}
-                                  />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <label className="text-[10px] font-black uppercase text-slate-500">Thứ tự</label>
-                                  <input
-                                    type="number"
-                                    value={newSlide.order}
-                                    onChange={(e) => setNewSlide({ ...newSlide, order: parseInt(e.target.value) || 0 })}
-                                    className={cn(
-                                      "w-16 px-3 py-2 rounded-xl border-2 font-bold text-sm",
-                                      isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
-                                    )}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => setShowPreview(true)}
-                                  className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
-                                >
-                                  <Eye size={18} /> Xem trước
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setShowSlideForm(false);
-                                    setEditingSlide(null);
-                                  }}
-                                  className={cn(
-                                    "px-6 py-3 rounded-2xl font-black text-xs uppercase transition-all",
-                                    isDarkMode ? "text-slate-400 hover:bg-slate-700/50" : "text-slate-500 hover:bg-slate-200/50"
-                                  )}
-                                >
-                                  Hủy
-                                </button>
-                                <button
-                                  onClick={saveSlide}
-                                  disabled={isSavingSlide}
-                                  className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-indigo-600/30"
-                                >
-                                  {isSavingSlide ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                                  {editingSlide ? 'Cập nhật Slide' : 'Lưu Slide'}
-                                </button>
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                              {/* Canvas Area */}
-                              <div className="xl:col-span-3">
-                                <div
-                                  id="slide-canvas"
-                                  className={cn(
-                                    "relative w-full rounded-[2rem] sm:rounded-[3rem] border-4 border-dashed shadow-inner overflow-hidden",
-                                    "aspect-[9/16] sm:aspect-video",
-                                    isDarkMode ? "border-slate-700" : "border-slate-200"
-                                  )}
-                                  style={{ backgroundColor: newSlide.bgColor }}
-                                  onClick={(e) => {
-                                    if (e.target === e.currentTarget) setSelectedElementId(null);
-                                  }}
-                                >
-                                  {(newSlide.elements || []).map((el: any) => (
-                                    <motion.div
-                                      key={el.id}
-                                      drag
-                                      dragMomentum={false}
-                                      dragConstraints={{ left: 0, top: 0, right: 0, bottom: 0 }} // Logic check: we'll use ref for better constraints if needed, but let's fix the calculation first
-                                      onDragEnd={(_, info) => {
-                                        const container = document.getElementById('slide-canvas');
-                                        if (!container) return;
-                                        const rect = container.getBoundingClientRect();
-
-                                        // Calculate position relative to container
-                                        let newX = ((info.point.x - rect.left) / rect.width) * 100;
-                                        let newY = ((info.point.y - rect.top) / rect.height) * 100;
-
-                                        // Clamp values between 0-95 to keep them visible
-                                        newX = Math.max(0, Math.min(95, newX));
-                                        newY = Math.max(0, Math.min(95, newY));
-
-                                        updateElement(el.id, { x: newX, y: newY });
-                                      }}
-                                      onMouseDown={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedElementId(el.id);
-                                      }}
-                                      className={cn(
-                                        "absolute cursor-move select-none p-4 rounded-xl transition-shadow",
-                                        selectedElementId === el.id ? "ring-2 ring-indigo-500 shadow-2xl z-50 bg-white/10 backdrop-blur-sm" : "hover:bg-white/5"
-                                      )}
-                                      style={{
-                                        left: `${el.x}%`,
-                                        top: `${el.y}%`,
-                                        width: el.type === 'image' ? el.w : 'auto',
-                                        transform: el.style?.textAlign === 'center' ? 'translateX(-50%)' : el.style?.textAlign === 'right' ? 'translateX(-100%)' : 'none',
-                                        touchAction: 'none',
-                                        zIndex: el.type === 'text' ? 20 : 10
-                                      }}
-                                    >
-                                      {el.type === 'text' ? (
-                                        <div
-                                          style={{
-                                            fontSize: el.style?.fontSize || '24px',
-                                            color: el.style?.color || '#000000',
-                                            fontWeight: el.style?.fontWeight || 'normal',
-                                            fontFamily: el.style?.fontFamily || 'Inter',
-                                            textAlign: el.style?.textAlign || 'left'
-                                          }}
-                                          className="whitespace-pre-wrap leading-tight drop-shadow-sm pointer-events-none"
-                                        >
-                                          {el.content}
-                                        </div>
-                                      ) : (
-                                        <div className="relative group/img pointer-events-none">
-                                          <img
-                                            src={getDirectImageUrl(el.content) || 'https://via.placeholder.com/400x300?text=Nhập+URL+ảnh+bên+phải'}
-                                            className="w-full h-auto rounded-xl shadow-lg"
-                                            alt=""
-                                          />
-                                        </div>
-                                      )}
-                                    </motion.div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Properties Panel */}
-                              <div className="xl:col-span-1">
-                                    {/* Layers / Element List */}
-                                    <div className="space-y-3">
-                                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Danh sách phần tử</h4>
-                                      <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-                                        {(newSlide.elements || []).length === 0 ? (
-                                          <div className="py-4 text-center text-[10px] font-bold text-slate-400 italic">Chưa có phần tử nào</div>
-                                        ) : (
-                                          (newSlide.elements || []).map((el: any) => (
-                                            <button
-                                              key={el.id}
-                                              onClick={() => setSelectedElementId(el.id)}
-                                              className={cn(
-                                                "w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all text-left",
-                                                selectedElementId === el.id
-                                                  ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                                                  : isDarkMode
-                                                    ? "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
-                                                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-200 shadow-sm"
-                                              )}
-                                            >
-                                              <div className={cn(
-                                                "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
-                                                selectedElementId === el.id ? "bg-white/20" : "bg-slate-100 dark:bg-slate-800"
-                                              )}>
-                                                {el.type === 'text' ? <Type size={14} /> : <Square size={14} />}
-                                              </div>
-                                              <div className="min-w-0 flex-1">
-                                                <p className="text-[10px] font-black uppercase tracking-tighter opacity-60">
-                                                  {el.type === 'text' ? 'Văn bản' : 'Hình ảnh'}
-                                                </p>
-                                                <p className="text-xs font-bold truncate">
-                                                  {el.type === 'text' ? el.content : 'Image Layer'}
-                                                </p>
-                                              </div>
-                                            </button>
-                                          ))
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    <div className="h-px bg-slate-200 dark:bg-slate-700 my-6" />
-
-                                    {selectedElement ? (
-                                      <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <div className="flex items-center justify-between">
-                                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Thiết lập phần tử</h4>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          removeElement(selectedElement.id);
-                                        }}
-                                        className="text-rose-500 hover:bg-rose-500/10 p-2 rounded-xl transition-all"
-                                      >
-                                        <Trash2 size={18} />
-                                      </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                      <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">
-                                          {selectedElement.type === 'text' ? 'Nội dung văn bản' : 'Link hình ảnh'}
-                                        </label>
-                                        {selectedElement.type === 'text' ? (
-                                          <textarea
-                                            value={selectedElement.content}
-                                            onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
-                                            className={cn(
-                                              "w-full px-4 py-3 rounded-xl border-2 font-bold text-xs min-h-[100px] resize-none focus:ring-2 focus:ring-indigo-500 transition-all",
-                                              isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-                                            )}
-                                            placeholder="Nhập nội dung..."
-                                          />
-                                        ) : (
-                                          <input
-                                            type="text"
-                                            value={selectedElement.content}
-                                            onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
-                                            className={cn(
-                                              "w-full px-4 py-3 rounded-xl border-2 font-bold text-xs focus:ring-2 focus:ring-indigo-500 transition-all",
-                                              isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-                                            )}
-                                            placeholder="Dán link ảnh tại đây..."
-                                          />
-                                        )}
-                                      </div>
-
-                                      {selectedElement?.type === 'text' && (
-                                        <>
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Cỡ chữ</label>
-                                              <input
-                                                type="text"
-                                                value={selectedElement?.style?.fontSize || '24px'}
-                                                onChange={(e) => updateElement(selectedElement.id, { style: { ...(selectedElement.style || {}), fontSize: e.target.value } })}
-                                                className={cn(
-                                                  "w-full px-4 py-2 rounded-xl border-2 font-bold text-xs",
-                                                  isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-                                                )}
-                                              />
-                                            </div>
-                                            <div className="space-y-1">
-                                              <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Màu sắc</label>
-                                              <input
-                                                type="color"
-                                                value={selectedElement?.style?.color || '#000000'}
-                                                onChange={(e) => updateElement(selectedElement.id, { style: { ...(selectedElement.style || {}), color: e.target.value } })}
-                                                className="w-full h-9 rounded-xl cursor-pointer"
-                                              />
-                                            </div>
-                                          </div>
-                                          <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Căn lề văn bản</label>
-                                            <div className="flex items-center gap-2">
-                                              {[
-                                                { id: 'left', icon: AlignLeft },
-                                                { id: 'center', icon: AlignCenter },
-                                                { id: 'right', icon: AlignRight }
-                                              ].map((align) => (
-                                                <button
-                                                  key={align.id}
-                                                  onClick={() => updateElement(selectedElement.id, { style: { ...(selectedElement.style || {}), textAlign: align.id } })}
-                                                  className={cn(
-                                                    "flex-1 py-2.5 rounded-xl border-2 flex items-center justify-center transition-all",
-                                                    (selectedElement?.style?.textAlign || 'left') === align.id
-                                                      ? "bg-indigo-600 border-indigo-600 text-white shadow-lg"
-                                                      : isDarkMode ? "bg-slate-900 border-slate-800 text-slate-400" : "bg-white border-slate-200 text-slate-500"
-                                                  )}
-                                                >
-                                                  <align.icon size={16} />
-                                                </button>
-                                              ))}
-                                            </div>
-                                          </div>
-                                          <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Font chữ</label>
-                                            <select
-                                              value={selectedElement?.style?.fontFamily || 'Inter'}
-                                              onChange={(e) => updateElement(selectedElement.id, { style: { ...(selectedElement.style || {}), fontFamily: e.target.value } })}
-                                              className={cn(
-                                                "w-full px-4 py-2 rounded-xl border-2 font-bold text-xs",
-                                                isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-                                              )}
-                                            >
-                                              <option value="Inter">Inter (Hiện đại)</option>
-                                              <option value="Montserrat">Montserrat (Mạnh mẽ)</option>
-                                              <option value="Playfair Display">Playfair (Cổ điển)</option>
-                                              <option value="Roboto">Roboto (Phổ biến)</option>
-                                            </select>
-                                          </div>
-                                        </>
-                                      )}
-
-                                      <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                        <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Vị trí nhanh trên Slide</label>
-                                        <div className="flex items-center gap-2">
-                                          {[
-                                            { label: 'Trái', x: 5, icon: AlignLeft },
-                                            { label: 'Giữa', x: 50, icon: AlignCenter },
-                                            { label: 'Phải', x: 95, icon: AlignRight }
-                                          ].map((pos) => (
-                                            <button
-                                              key={pos.label}
-                                              onClick={() => updateElement(selectedElement.id, { x: pos.x, style: { ...(selectedElement?.style || {}), textAlign: pos.label === 'Trái' ? 'left' : pos.label === 'Giữa' ? 'center' : 'right' } })}
-                                              className={cn(
-                                                "flex-1 py-2.5 rounded-xl border-2 flex flex-col items-center gap-1 transition-all",
-                                                isDarkMode ? "bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500" : "bg-white border-slate-200 text-slate-500 hover:border-indigo-500"
-                                              )}
-                                            >
-                                              <pos.icon size={14} />
-                                              <span className="text-[9px] font-black uppercase tracking-tighter">{pos.label}</span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {selectedElement.type === 'image' && (
-                                        <div className="space-y-1">
-                                          <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase">Chiều rộng (px)</label>
-                                          <input
-                                            type="text"
-                                            value={selectedElement.w}
-                                            onChange={(e) => updateElement(selectedElement.id, { w: e.target.value })}
-                                            className={cn(
-                                              "w-full px-4 py-2 rounded-xl border-2 font-bold text-xs",
-                                              isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-900"
-                                            )}
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className={cn(
-                                    "flex flex-col items-center justify-center h-full p-8 border-2 border-dashed rounded-[2rem] opacity-40",
-                                    isDarkMode ? "border-slate-700" : "border-slate-200"
-                                  )}>
-                                    <MousePointer2 size={32} className="mb-2" />
-                                    <p className="text-center text-[10px] font-black uppercase tracking-widest leading-relaxed">Chọn một phần tử<br />để thiết kế</p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {welcomeSlides.map((slide, idx) => (
-                          <div
-                            key={slide.id}
-                            className={cn(
-                              "group relative rounded-[2.5rem] border-2 overflow-hidden transition-all hover:shadow-2xl hover:-translate-y-1",
-                              isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                            )}
-                          >
-                            <div
-                              className="relative h-48 overflow-hidden flex items-center justify-center cursor-zoom-in"
-                              style={{ backgroundColor: slide.bgColor || '#f1f5f9' }}
-                            >
-                              <div className="scale-[0.25] pointer-events-none origin-center w-[1280px] h-[720px] relative">
-                                {(slide.elements || []).map((el: any) => (
-                                  <div
-                                    key={el.id}
-                                    className="absolute"
-                                    style={{
-                                      left: `${el.x}%`,
-                                      top: `${el.y}%`,
-                                      width: el.type === 'image' ? el.w : 'auto',
-                                      fontSize: el.style?.fontSize,
-                                      color: el.style?.color,
-                                      fontFamily: el.style?.fontFamily,
-                                      fontWeight: el.style?.fontWeight,
-                                      zIndex: el.type === 'text' ? 20 : 10
-                                    }}
-                                  >
-                                    {el.type === 'text' ? el.content : <img src={getDirectImageUrl(el.content)} className="w-full" alt="" />}
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div
-                                className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 z-30"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPreviewData(slide);
-                                  setShowPreview(true);
-                                }}
-                              >
-                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingSlide(slide);
-                                      setNewSlide({
-                                        elements: slide.elements || [],
-                                        bgColor: slide.bgColor || '#ffffff',
-                                        isActive: slide.isActive ?? true,
-                                        order: slide.order ?? 0
-                                      });
-                                      setShowSlideForm(true);
-                                    }}
-                                    className="w-10 h-10 rounded-xl bg-white text-indigo-600 flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
-                                  >
-                                    <Edit3 size={18} />
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (confirm('Xóa slide này?')) deleteSlide(slide.id);
-                                    }}
-                                    className="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
-                                  >
-                                    <Trash2 size={18} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="p-6">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Slide #{slide.order}</span>
-                                {!slide.isActive && <span className="text-[10px] font-black uppercase text-rose-500 tracking-widest">Đang ẩn</span>}
-                              </div>
-                              <h4 className={cn("font-bold text-sm", isDarkMode ? "text-white" : "text-slate-900")}>
-                                {slide.elements?.find((e: any) => e.type === 'text')?.content?.substring(0, 30) || 'Slide hình ảnh'}...
-                              </h4>
-                            </div>
-                          </div>
-                        ))}
-                        {welcomeSlides.length === 0 && !showSlideForm && (
-                          <div className="col-span-full py-20 text-center">
-                            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
-                              <ImageIcon size={32} className="text-slate-300" />
-                            </div>
-                            <p className="text-slate-500 font-bold">Chưa có slide chào mừng nào.</p>
-                            <p className="text-[10px] text-slate-400">Hãy thêm slide để làm trang đăng nhập sinh động hơn.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
               </AnimatePresence>
             </div>
-          ) : (
+          )}
+          
+          {/* Final Fallback for HR/Staff */}
+          {(activeCategory === 'hr' || activeCategory === 'staff') && (
             <div className={cn(
               "p-6 rounded-[32px] border transition-all",
               effectiveCategory === 'staff' ? "" : (isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30")
@@ -3302,7 +2670,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </button>
                   </div>
 
-                  {activeCategory === 'roles' && (
+                  {effectiveCategory === 'roles' && (
                     <div className={cn(
                       "flex items-center gap-2 px-4 py-3 rounded-2xl mb-2 border",
                       isDarkMode ? "bg-amber-900/10 border-amber-900/30" : "bg-amber-50 border-amber-100"
@@ -3478,80 +2846,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       />
 
 
-      {/* Designer Preview Modal */}
-      <AnimatePresence>
-        {showPreview && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 lg:p-12 bg-black/95 backdrop-blur-2xl"
-          >
-            <div className="absolute top-8 right-8 flex items-center gap-4 z-[10000]">
-              <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">
-                {previewData ? `Xem trước Slide #${previewData.order}` : 'Chế độ thiết kế'}
-              </p>
-              <button 
-                onClick={() => {
-                  setShowPreview(false);
-                  setPreviewData(null);
-                }}
-                className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-all border border-white/10 shadow-2xl"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className={cn(
-              "w-full overflow-hidden relative shadow-[0_0_100px_rgba(0,0,0,0.5)] transition-all duration-500",
-              "aspect-[9/16] max-h-[80vh] sm:aspect-video sm:max-w-6xl sm:rounded-[3rem] rounded-[2rem]",
-              isDarkMode ? "bg-slate-900" : "bg-white"
-            )}>
-              <div 
-                className="absolute inset-0 z-0"
-                style={{ backgroundColor: (previewData || newSlide).bgColor || '#ffffff' }}
-              />
-                    <div className="absolute inset-0 z-10 pointer-events-none">
-                      {((previewData || newSlide).elements || []).map((el: any) => (
-                        <div
-                          key={el.id}
-                          className="absolute"
-                          style={{ 
-                            left: `${el.x}%`, 
-                            top: `${el.y}%`,
-                            width: el.type === 'image' ? el.w : 'auto',
-                            transform: el.style?.textAlign === 'center' ? 'translateX(-50%)' : el.style?.textAlign === 'right' ? 'translateX(-100%)' : 'none',
-                            zIndex: el.type === 'text' ? 20 : 10
-                          }}
-                        >
-                    {el.type === 'text' ? (
-                      <div 
-                        style={{ 
-                          fontSize: el.style?.fontSize || '24px', 
-                          color: el.style?.color || '#000000',
-                          fontWeight: el.style?.fontWeight || 'normal',
-                          fontFamily: el.style?.fontFamily || 'Inter',
-                          textAlign: el.style?.textAlign || 'left'
-                        }}
-                        className="whitespace-pre-wrap leading-tight drop-shadow-2xl"
-                      >
-                        {el.content}
-                      </div>
-                    ) : (
-                      <img 
-                        src={getDirectImageUrl(el.content)} 
-                        className="w-full h-auto rounded-[2rem] shadow-2xl"
-                        alt=""
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <ConfirmModal
         isOpen={isTermsConfirmOpen}
         onClose={() => setIsTermsConfirmOpen(false)}
@@ -3582,16 +2876,6 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         isDarkMode={isDarkMode}
       />
 
-      {showPreviewSlider && (
-        <WelcomeSlider
-          key="preview-slider"
-          onComplete={() => setShowPreviewSlider(false)}
-          isDarkMode={isDarkMode}
-          userName="Quản trị viên"
-          slides={welcomeSlides}
-          initialSlide={previewInitialSlide}
-        />
-      )}
     </div>
     </>
   );

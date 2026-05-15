@@ -515,39 +515,6 @@
       },
       "required": ["id", "name"]
     },
-    "WelcomeSlide": {
-      "title": "WelcomeSlide",
-      "description": "Thông tin slide chào mừng hiển thị ở trang đăng nhập/đăng ký.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "description2": { "type": "string" },
-        "description3": { "type": "string" },
-        "description4": { "type": "string" },
-        "position2": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
-        "position3": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
-        "position4": { "type": "string", "enum": ["top-left", "bottom-left", "top-right", "bottom-right"] },
-        "imageUrl": { "type": "string" },
-        "imageUrl2": { "type": "string" },
-        "imageUrl3": { "type": "string" },
-        "imageUrl4": { "type": "string" },
-        "imagePosition2": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
-        "imagePosition3": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
-        "imagePosition4": { "type": "string", "enum": ["left", "center", "right", "top-left", "bottom-left", "top-right", "bottom-right"] },
-        "order": { "type": "number" },
-        "isActive": { "type": "boolean" },
-        "bgColor": { "type": "string" },
-        "titleAlign": { "type": "string", "enum": ["left", "center", "right"] },
-        "descAlign": { "type": "string", "enum": ["left", "center", "right"] },
-        "imageFit": { "type": "string", "enum": ["cover", "contain"] },
-        "buttonText": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "title", "order"]
-    }
-  },
   "firestore": {
     "/patients/{maLk}": {
       "schema": "Patient",
@@ -684,10 +651,6 @@
     "/companies/{id}": {
       "schema": "Company",
       "description": "Danh mục công ty dược phẩm."
-    },
-    "/welcome_slides/{slideId}": {
-      "schema": "WelcomeSlide",
-      "description": "Danh sách các slide chào mừng hiển thị tại trang đăng nhập."
     }
   }
 }

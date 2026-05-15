@@ -125,7 +125,7 @@ export interface UserProfile {
   position?: 'Giám đốc' | 'Phó giám đốc' | 'Trưởng khoa' | 'Phó khoa' | 'Nhân viên' | string;
   specialty?: 'Không' | 'Tiến sĩ' | 'Thạc sĩ' | 'Chuyên khoa I' | 'Chuyên khoa II' | 'Dược lâm sàng' | string;
   department?: string;
-  role: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member';
+  role: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member' | 'unapproved';
   isApproved?: boolean;
   photoSyncToken?: string;
   hideEmail?: boolean;
@@ -516,6 +516,15 @@ export interface SystemSettings {
   loginCardGlassMode?: boolean;
   termsOfUse?: string;
   termsUpdateDate?: string;
-  showWelcomeSlider?: boolean;
 }
 
+export interface VersionLog {
+  id: string;
+  versionName: string;
+  releaseDate: string;
+  notes: string;
+  changes: { type: 'fix' | 'feature' | 'improvement' | 'breaking'; description: string }[];
+  isDraft?: boolean;
+  createdBy: string;
+  createdAt: string;
+}

@@ -316,8 +316,7 @@ service cloud.firestore {
              (!('loginPrimaryColor' in data) || (data.loginPrimaryColor is string)) &&
              (!('loginCardGlassMode' in data) || (data.loginCardGlassMode is bool)) &&
              (!('termsOfUse' in data) || (data.termsOfUse is string && data.termsOfUse.size() < 10000)) &&
-             (!('termsUpdateDate' in data) || (data.termsUpdateDate is string)) &&
-             (!('showWelcomeSlider' in data) || (data.showWelcomeSlider is bool));
+             (!('termsUpdateDate' in data) || (data.termsUpdateDate is string));
     }
 
     function isValidSocialPost(data) {
@@ -404,20 +403,15 @@ service cloud.firestore {
              isValidDateString(data.timestamp);
     }
 
-    function isValidWelcomeSlide(data) {
-      return hasRequiredFields(['id', 'title', 'order']) &&
-             data.id is string && data.id.size() > 0 &&
-             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
-             data.order is number &&
-             (!('imageUrl' in data) || data.imageUrl is string) &&
-             (!('description' in data) || data.description is string) &&
-             (!('isActive' in data) || data.isActive is bool) &&
-             (!('bgColor' in data) || data.bgColor is string) &&
-             (!('titleAlign' in data) || data.titleAlign in ['left', 'center', 'right']) &&
-             (!('descAlign' in data) || data.descAlign in ['left', 'center', 'right']) &&
-             (!('imageFit' in data) || data.imageFit in ['cover', 'contain']) &&
-             (!('buttonText' in data) || data.buttonText is string) &&
-             (!('createdAt' in data) || isValidDateString(data.createdAt));
+    function isValidVersion(data) {
+      return hasRequiredFields(['id', 'versionName', 'releaseDate', 'createdBy', 'createdAt']) &&
+             data.id is string &&
+             data.versionName is string && data.versionName.size() > 0 &&
+             data.releaseDate is string &&
+             data.createdBy == request.auth.uid &&
+             (!('notes' in data) || data.notes is string) &&
+             (!('isDraft' in data) || data.isDraft is bool) &&
+             (!('changes' in data) || data.changes is list);
     }
 
     // ===============================================================
@@ -584,14 +578,14 @@ service cloud.firestore {
     }
 
     match /notes/{noteId} {
-      allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
       allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && request.resource.data.createdBy == request.auth.uid && isValidNote(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidNotification(request.resource.data);
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && 
                     isValidNotification(request.resource.data) &&
@@ -645,16 +639,16 @@ service cloud.firestore {
     }
 
     match /todos/{todoId} {
-      allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidTodo(request.resource.data);
       allow update: if isAuthenticated() && resource.data.createdBy == request.auth.uid && isValidTodo(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
-    match /welcome_slides/{slideId} {
-      allow read: if true; // Publicly readable for login screen
-      allow write: if isAdmin() && isValidWelcomeSlide(request.resource.data);
-      allow delete: if isAdmin();
+    match /versions/{versionId} {
+      allow get, list: if isAuthenticated();
+      allow create, update: if isOperator() && isValidVersion(request.resource.data);
+      allow delete: if isOperator();
     }
 
     // Default deny

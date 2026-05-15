@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle, Info as InfoIcon } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { Reorder } from 'motion/react';
+import { db, collection, query, where, orderBy, limit, onSnapshot } from '../firebase';
+import { VersionLog } from '../types';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  userRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member';
+  userRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member' | 'unapproved';
   displayName: string;
   title?: string;
   photoURL?: string;
@@ -61,9 +63,38 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
+  const [latestVersion, setLatestVersion] = useState<VersionLog | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; y: number; isMaintenance?: boolean; isClosed?: boolean } | null>(null);
   const [viewedProfileUid, setViewedProfileUid] = useState<string | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!uid) return;
+
+    try {
+      const q = query(
+        collection(db, 'versions'), 
+        where('isDraft', '==', false),
+        orderBy('releaseDate', 'desc'), 
+        limit(1)
+      );
+      
+      const unsubscribe = onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+          setLatestVersion(snap.docs[0].data() as VersionLog);
+        }
+      }, (error) => {
+        // Silently fail if permissions are not set yet to avoid console clutter
+        if (error.code !== 'permission-denied') {
+          console.error("Version listener error:", error);
+        }
+      });
+
+      return unsubscribe;
+    } catch (e) {
+      console.warn("Firestore query failed:", e);
+    }
+  }, [uid]);
 
   useEffect(() => {
     const allPossibleItems: SidebarItem[] = [
@@ -498,6 +529,43 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className={cn("p-2 border-t space-y-2", isDarkMode ? "border-slate-800" : "border-slate-100")}>
+          {['admin', 'operator'].includes(userRole) ? (
+            <button 
+              onClick={() => setActiveTab('admin_version')}
+              className={cn(
+                "w-full px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all",
+                isCollapsed ? "justify-center" : "",
+                activeTab === 'admin_version' 
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : isDarkMode ? "text-slate-500 bg-slate-900/50 hover:bg-slate-900" : "text-slate-400 bg-white border border-slate-100 shadow-sm hover:bg-slate-50"
+              )}
+            >
+              <History size={12} className={activeTab === 'admin_version' ? "text-primary" : "text-slate-400"} />
+              {!isCollapsed && (
+                <div className="flex-1 flex items-center justify-between min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-tight leading-none">Phiên bản</span>
+                  <span className="truncate text-[10px] leading-tight font-black opacity-60 ml-2">{latestVersion?.versionName || 'v1.0.0'}</span>
+                </div>
+              )}
+            </button>
+          ) : (
+            <div 
+              className={cn(
+                "w-full px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all cursor-default",
+                isCollapsed ? "justify-center" : "",
+                isDarkMode ? "text-slate-500 bg-slate-900/50" : "text-slate-400 bg-white border border-slate-100 shadow-sm"
+              )}
+            >
+              <History size={12} className="text-slate-400" />
+              {!isCollapsed && (
+                <div className="flex-1 flex items-center justify-between min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-tight leading-none">Phiên bản</span>
+                  <span className="truncate text-[10px] leading-tight font-black opacity-60 ml-2">{latestVersion?.versionName || 'v1.0.0'}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className={cn(
             "px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all",
             isCollapsed ? "justify-center" : "",
