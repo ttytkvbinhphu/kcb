@@ -2,5 +2,5 @@
   "name": "KCB PB",
   "description": "Ứng dụng tra cứu danh mục thuốc, kiểm tra tương tác thuốc và hỗ trợ kê toa chuyên nghiệp dành cho nhân viên y tế.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

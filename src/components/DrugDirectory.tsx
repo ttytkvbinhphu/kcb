@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link } from 'lucide-react';
+import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link, Pause } from 'lucide-react';
 import { Drug, DrugGroup, Ingredient, ManualInteraction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, storage, getDoc, writeBatch, getDocs, where } from '../firebase';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import DrugGroupManagement from './DrugGroupManagement';
 import CatalogManagement from './CatalogManagement';
 import ImageEditorModal from './ImageEditorModal';
@@ -82,7 +81,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [availableExcipients, setAvailableExcipients] = useState<any[]>([]);
   const [availableCompanies, setAvailableCompanies] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'hidden'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'hidden' | 'suspended'>('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [dosageFormFilter, setDosageFormFilter] = useState('all');
   const [selectedDrug, setSelectedDrug] = useState<Drug | null>(null);
@@ -630,8 +629,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
       // Status filter (only applicable in management mode, as general search hides hidden drugs anyway)
       if (canManage) {
-        if (statusFilter === 'active' && drug.isClosed) return false;
+        if (statusFilter === 'active' && (drug.isClosed || drug.status === 'suspended')) return false;
         if (statusFilter === 'hidden' && !drug.isClosed) return false;
+        if (statusFilter === 'suspended' && drug.status !== 'suspended') return false;
       }
 
       let matchesSearch = false;
@@ -667,6 +667,13 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         (drug.dosageForm && drug.dosageForm === dosageFormFilter);
 
       return matchesSearch && matchesGroup && matchesIngredient && matchesStock && matchesDosageForm;
+    }).sort((a, b) => {
+      // Sort "Hết hàng" (out of stock) to the bottom
+      const aOut = a.stockStatus === 'out';
+      const bOut = b.stockStatus === 'out';
+      if (aOut && !bOut) return 1;
+      if (!aOut && bOut) return -1;
+      return 0;
     });
   }, [drugs, searchTerm, searchMode, groupFilter, groupDescendantsMap, selectedIngredientNames, canSeeClosedDrugs, canManage, statusFilter, stockFilter, dosageFormFilter]);
 
@@ -1062,8 +1069,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
     setExtracting(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-
       const base64Data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -1073,9 +1078,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         reader.readAsDataURL(targetFile);
       });
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
+      const { generateGeminiContent } = await import('../lib/gemini');
+      const text = await generateGeminiContent(
+        "gemini-3-flash-preview",
+        [
           {
             parts: [
               { text: "Bạn là một chuyên gia trích xuất dữ liệu y tế chuyên sâu. Trình bày thông tin thuốc từ tệp PDF đính kèm. QUY TẮC BẮT BUỘC:\n1. CHỉ trả về JSON thô.\n2. PHÂN LOẠI CHI TIẾT: Tách biệt rõ ràng Chỉ định, Chống chỉ định (thuốc/bệnh lý/khác), Tác dụng phụ, Dược lực học, Dược động học.\n3. TRÍCH XUẤT ICD-10: Cố gắng suy luận mã ICD-10 cho các chỉ định (ví dụ: 'Tăng huyết áp' -> 'I10').\n4. Tóm tắt súc tích nhưng không mất ý y khoa. Đảm bảo các đơn vị đo lường (mg, ml, %) chính xác.\n\nCấu trúc:\n- name, atcCode, manufacturers, dosageForm, administrationRoute, drugGroup, isRx (boolean), mechanismOfAction\n- activeIngredients: [{name, amount, unit}]\n- indications: [{content, icd10s: string[]}]\n- contraindications: [{content, type: 'Drug'|'ICD-10'|'Age'|'Weight'|'Other'}]\n- sideEffects: string[]\n- pharmacodynamics/pharmacokinetics: [{category, content}]\n- specificInteractions: [{target, content}]\n- pregnancy/lactation/driving: string\n- overdose: string" },
@@ -1083,106 +1089,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             ]
           }
         ],
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+        {
           maxOutputTokens: 8192,
           responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              activeIngredients: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    amount: { type: Type.STRING },
-                    unit: { type: Type.STRING }
-                  }
-                }
-              },
-              excipients: { type: Type.STRING },
-              atcCode: { type: Type.STRING },
-              indications: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    content: { type: Type.STRING },
-                    icd10s: { type: Type.ARRAY, items: { type: Type.STRING } }
-                  }
-                }
-              },
-              contraindications: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    content: { type: Type.STRING },
-                    type: { type: Type.STRING, enum: ['Drug', 'ICD-10', 'Weight', 'Age', 'Other'] }
-                  }
-                }
-              },
-              sideEffects: { type: Type.ARRAY, items: { type: Type.STRING } },
-              generalAdministration: { type: Type.STRING },
-              dosageAndAdministration: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    category: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  }
-                }
-              },
-              precautions: { type: Type.STRING },
-              driving: { type: Type.STRING },
-              pregnancy: { type: Type.STRING },
-              lactation: { type: Type.STRING },
-              interactions: { type: Type.STRING },
-              specificInteractions: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    target: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  }
-                }
-              },
-              pharmacodynamics: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    category: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  }
-                }
-              },
-              pharmacokinetics: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    category: { type: Type.STRING },
-                    content: { type: Type.STRING }
-                  }
-                }
-              },
-              overdose: { type: Type.STRING },
-              dosageForm: { type: Type.STRING },
-              manufacturer: { type: Type.STRING },
-              administrationRoute: { type: Type.STRING },
-              drugGroup: { type: Type.STRING }
-            },
-            required: ["name", "activeIngredients"]
-          }
         }
-      });
-
-      let text = (response.text || '{}').trim();
+      );
 
       // Basic JSON cleanup if needed
       const cleanJson = (str: string) => {
@@ -1256,8 +1167,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         setExtractedData(result);
         setIsReviewModalOpen(true);
       } catch (parseError) {
-        console.error("JSON Parse failed:", parseError, "Text preview:", text.substring(0, 1000) + "...");
-        alert("Dữ liệu từ AI bị lỗi định dạng (Unterminated string). Vui lòng thử lại với file PDF khác hoặc tóm tắt hơn.");
+        console.error("JSON Parse failed after all attempts:", parseError, "Text preview:", text.substring(0, 1000) + "...");
+        alert("Dữ liệu từ AI bị lỗi định dạng. Vui lòng thử lại với file PDF khác hoặc tóm tắt hơn.");
       }
     } catch (error) {
       console.error("AI Extraction failed:", error);
@@ -1378,6 +1289,18 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     try {
       const drugRef = doc(db, 'drugs', drug.id);
       const updateData = { ...drug, isClosed: !drug.isClosed };
+      if ('category' in updateData) delete updateData.category;
+      await setDoc(drugRef, updateData, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `drugs/${drug.id}`);
+    }
+  };
+
+  const handleToggleSuspended = async (drug: any) => {
+    try {
+      const drugRef = doc(db, 'drugs', drug.id);
+      const newStatus = drug.status === 'suspended' ? 'active' : 'suspended';
+      const updateData = { ...drug, status: newStatus };
       if ('category' in updateData) delete updateData.category;
       await setDoc(drugRef, updateData, { merge: true });
     } catch (error) {
@@ -1609,6 +1532,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     >
                       <option value="all">Tất cả trạng thái</option>
                       <option value="active">Đang hoạt động</option>
+                      <option value="suspended">Tạm ngưng</option>
                       <option value="hidden">Đang ẩn</option>
                     </select>
                     <ChevronRight className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90" size={14} />
@@ -2390,7 +2314,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 <div className={cn("pl-12 text-blue-500", !canSeeStatusColumn && !canSeeActionsColumn ? "col-span-8" : (!canSeeStatusColumn || !canSeeActionsColumn ? "col-span-6" : "col-span-4"))}>Tên thuốc & Hoạt chất</div>
                 <div className="col-span-2 pl-4 text-indigo-500">Nhóm dược lý</div>
                 <div className="col-span-2 pl-4 text-emerald-500">Dạng bào chế</div>
-                {canSeeStatusColumn && <div className="col-span-2 pl-4 text-amber-500">Tình trạng</div>}
+                {canSeeStatusColumn && <div className="col-span-2 pl-4 text-amber-500">Cảnh báo</div>}
                 {canSeeActionsColumn && <div className="col-span-2 text-right pr-2">Thao tác</div>}
               </div>
             )}
@@ -2575,7 +2499,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             </span>
                           )}
 
-                          {drug.expiryStatus && drug.stockStatus !== 'out' && (
+                          {drug.expiryStatus && drug.expiryStatus !== 'valid' && drug.stockStatus !== 'out' && (
                             <span className={cn(
                               "inline-flex items-center gap-1 text-[7px] lg:text-[8px] px-1.5 py-0.5 rounded-md font-black border uppercase tracking-wider",
                               drug.expiryStatus === 'expired'
@@ -2585,7 +2509,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                   : (isDarkMode ? "bg-emerald-950/30 text-emerald-400 border-emerald-900/50" : "bg-emerald-50 text-emerald-600 border-emerald-100")
                             )}>
                               <Calendar size={8} />
-                              {drug.expiryStatus === 'expired' ? 'Hết hạn' : drug.expiryStatus === 'expiring' ? 'Sắp hết hạn' : 'Còn hạn'}
+                              {drug.expiryStatus === 'expired' ? 'Hết hạn' : drug.expiryStatus === 'expiring' ? 'Sắp hết hạn' : ''}
                               {drug.expiryDate ? ` (${drug.expiryDate.split('-').reverse().join('/')})` : ''}
                             </span>
                           )}
@@ -2623,6 +2547,19 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 )}
                               >
                                 {drug.isClosed ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); }}
+                                title={drug.status === 'suspended' ? "Kích hoạt lại" : "Tạm ngưng"}
+                                className={cn(
+                                  "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
+                                  isDarkMode
+                                    ? (drug.status === 'suspended' ? "text-emerald-500 hover:bg-emerald-500/10 border border-emerald-500/20" : "text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-700")
+                                    : (drug.status === 'suspended' ? "text-emerald-600 hover:bg-emerald-50 border border-emerald-100" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-amber-100")
+                                )}
+                              >
+                                <Pause size={14} />
                               </button>
                               <button
                                 type="button"
@@ -2683,6 +2620,19 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             )}
                           >
                             {drug.isClosed ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); }}
+                            title={drug.status === 'suspended' ? "Kích hoạt lại" : "Tạm ngưng"}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
+                              isDarkMode
+                                ? (drug.status === 'suspended' ? "text-emerald-500 hover:bg-emerald-500/10" : "text-slate-500 hover:text-amber-500 hover:bg-amber-500/10")
+                                : (drug.status === 'suspended' ? "text-emerald-600 hover:bg-emerald-50/50" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50/50")
+                            )}
+                          >
+                            <Pause size={13} />
                           </button>
                           <button
                             type="button"

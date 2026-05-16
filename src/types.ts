@@ -147,6 +147,11 @@ export interface ICD10 {
   isPinned?: boolean;
   showOnWorkspace?: boolean;
   isAppendixA2?: boolean;
+  isAppendixA3?: boolean;
+  isAppendixA4?: boolean;
+  isAppendixA5?: boolean;
+  isAppendixA6?: boolean;
+  isRestricted?: boolean;
   commonDrugs?: string[];
   pinnedBy?: string[];
   workspaceBy?: string[];
@@ -448,7 +453,7 @@ export interface Note {
 
 export interface Todo {
   id: string;
-  text: string;
+  title: string;
   completed: boolean;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'in_progress' | 'completed' | 'overdue';
@@ -525,6 +530,7 @@ export interface VersionLog {
   notes: string;
   changes: { type: 'fix' | 'feature' | 'improvement' | 'breaking'; description: string }[];
   isDraft?: boolean;
+  readBy?: string[];
   createdBy: string;
   createdAt: string;
 }

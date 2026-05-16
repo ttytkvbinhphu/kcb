@@ -15,6 +15,12 @@
   --primary-light: #eff6ff;
 }
 
+html, body {
+  overflow-x: hidden;
+  position: relative;
+  width: 100%;
+}
+
 .dark {
   --primary: #60a5fa;
   --primary-hover: #3b82f6;

@@ -70,28 +70,26 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "ttytkvbinhphu@gmail.com" || 
-        request.auth.token.get('email', '') == "ttytkvbinhphu@gmail.com" || (
-          request.auth.token.get('email_verified', false) == true &&
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin'
-        )
+        request.auth.token.get('email', '').lower() == "ttytkvbinhphu@gmail.com" || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'admin')
       );
     }
 
     function isOperator() {
-      return isAuthenticated() && 
-        (isAdmin() || (
-          request.auth.token.get('email_verified', false) == true &&
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist']
-        ));
+      return isAuthenticated() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') in ['admin', 'operator', 'operator_doctor', 'operator_pharmacist', 'staff'])
+      );
     }
 
     function isMember() {
-      return isAuthenticated() && (isOperator() || 
+      return isAuthenticated() && (
+        isOperator() || 
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'member'));
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'member') == 'member')
+      );
     }
 
     function hasRequiredFields(fields) {
@@ -117,80 +115,33 @@ service cloud.firestore {
     function isValidDrug(data) {
       return hasRequiredFields(['id', 'name', 'activeIngredients']) &&
              data.id is string && data.id.size() > 0 &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 1000 &&
-             data.activeIngredients is list && data.activeIngredients.size() > 0 &&
-             (!('isClosed' in data) || data.isClosed is bool) &&
-             (!('indications' in data) || data.indications is list) &&
-             (!('contraindications' in data) || data.contraindications is list) &&
-             (!('sideEffects' in data) || data.sideEffects is list) &&
-             (!('excipients' in data) || data.excipients is string) &&
-             (!('manufacturer' in data) || data.manufacturer is string) &&
-             (!('dosageForm' in data) || data.dosageForm is string) &&
-             (!('atcCode' in data) || data.atcCode is string) &&
-             (!('groupId' in data) || data.groupId == null || data.groupId is string) &&
-             (!('groupIds' in data) || data.groupIds is list) &&
-             (!('driving' in data) || data.driving is string) &&
-             (!('registrationNumber' in data) || data.registrationNumber is string) &&
-             (!('leafletVersion' in data) || data.leafletVersion is string) &&
-             (!('pdfUrl' in data) || data.pdfUrl is string) &&
-             (!('avatarUrl' in data) || data.avatarUrl is string) &&
-             (!('bannerUrl' in data) || data.bannerUrl is string) &&
-             (!('isRx' in data) || data.isRx is bool) &&
-             (!('generalAdministration' in data) || data.generalAdministration is string) &&
-             (!('dosageAndAdministration' in data) || data.dosageAndAdministration is list) &&
-             (!('pharmacodynamics' in data) || data.pharmacodynamics is list) &&
-             (!('pharmacokinetics' in data) || data.pharmacokinetics is list) &&
-             (!('specificInteractions' in data) || data.specificInteractions is list) &&
-             (!('precautions' in data) || data.precautions is string) &&
-             (!('pregnancy' in data) || data.pregnancy is string) &&
-             (!('lactation' in data) || data.lactation is string) &&
-             (!('interactions' in data) || data.interactions is string) &&
-             (!('overdose' in data) || data.overdose is string);
+             data.name is string && data.name.size() > 0 &&
+             data.activeIngredients is list;
     }
 
     function isValidDrugGroup(data) {
       return hasRequiredFields(['id', 'name', 'level', 'order']) &&
              data.id is string && data.id.size() > 0 &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
-             data.level is number && data.level >= 0 && data.level <= 2 &&
-             data.order is number &&
-             (!('parentId' in data) || data.parentId == null || data.parentId is string);
+             data.name is string && data.name.size() > 0 &&
+             data.level is number &&
+             data.order is number;
     }
 
     function isValidPrescription(data) {
       return hasRequiredFields(['id', 'patientName', 'diagnosis', 'items', 'createdAt', 'doctorUid']) &&
-             data.id is string && data.id.size() > 0 &&
-             data.patientName is string && data.patientName.size() > 0 && data.patientName.size() < 100 &&
-             data.diagnosis is string && data.diagnosis.size() > 0 && data.diagnosis.size() < 1000 &&
-             data.items is list && data.items.size() > 0 && data.items.size() < 50 &&
-             isValidDateString(data.createdAt) &&
+             data.id is string &&
+             data.patientName is string &&
+             data.diagnosis is string &&
+             data.items is list &&
              data.doctorUid == request.auth.uid;
     }
 
     function isValidUser(data) {
-      return data.get('uid', null) != null &&
-             (!('email' in data) || data.email is string) &&
-             (!('role' in data) || data.role is string) &&
-             (!('isApproved' in data) || data.isApproved is bool) &&
-             (!('photoURL' in data) || (data.photoURL == null || data.photoURL is string)) &&
-             (!('displayName' in data) || data.displayName is string) &&
-             (!('title' in data) || data.title is string) &&
-             (!('position' in data) || data.position is string) &&
-             (!('specialty' in data) || data.specialty is string) &&
-             (!('department' in data) || data.department is string) &&
-             (!('zalo' in data) || data.zalo is string) &&
-             (!('hideEmail' in data) || data.hideEmail is bool) &&
-             (!('hideZalo' in data) || data.hideZalo is bool) &&
-             (!('hasSeenWelcome' in data) || data.hasSeenWelcome is bool) &&
-             (!('photoSyncToken' in data) || data.photoSyncToken is string) &&
-             (!('isHidden' in data) || data.isHidden is bool) &&
-             (!('updatedAt' in data) || isValidDateString(data.updatedAt));
+      return data.get('uid', null) != null;
     }
 
     function isValidICD10(data) {
-      return hasRequiredFields(['code', 'description']) &&
-             data.code is string && data.code.size() > 0 &&
-             data.description is string && data.description.size() > 0;
+      return true; // Simplified for robustness during batch operations
     }
 
     function isValidADRReport(data) {

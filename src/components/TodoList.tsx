@@ -101,7 +101,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
 
     try {
       await addDoc(collection(db, 'todos'), {
-        text: newTodo.trim(),
+        title: newTodo.trim(),
         completed: false,
         priority: newPriority,
         status: 'pending',
@@ -151,7 +151,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
 
   const startEdit = (todo: Todo) => {
     setEditingId(todo.id);
-    setEditText(todo.text);
+    setEditText(todo.title);
     setEditPriority(todo.priority || 'medium');
     setEditDueDate(todo.dueDate || '');
     setEditDueTime(todo.dueTime || '');
@@ -167,7 +167,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
     if (!editText.trim()) return;
     try {
       await updateDoc(doc(db, 'todos', id), {
-        text: editText.trim(),
+        title: editText.trim(),
         priority: editPriority,
         status: editStatus,
         type: editType,
@@ -186,7 +186,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
   };
 
   const filteredTodos = todos.filter(todo => {
-    const matchesSearch = todo.text.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = todo.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          (todo.category?.toLowerCase().includes(searchTerm.toLowerCase())) ||
                          (todo.patientId?.toLowerCase().includes(searchTerm.toLowerCase()));
     
@@ -284,7 +284,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
               isDarkMode ? "text-slate-100" : "text-slate-800",
               todo.completed && "line-through text-slate-400"
             )}>
-              {todo.text}
+              {todo.title}
             </h4>
 
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-slate-400">
@@ -379,7 +379,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
               />
             ) : (
               <h2 className={cn("text-3xl font-black leading-tight tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                {todo.text}
+                {todo.title}
               </h2>
             )}
           </div>

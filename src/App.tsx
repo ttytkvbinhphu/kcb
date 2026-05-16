@@ -16,6 +16,7 @@ const SystemConfig = lazy(() => import('./components/SystemConfig'));
 const SocialWall = lazy(() => import('./components/SocialWall'));
 const PatientManagement = lazy(() => import('./components/PatientManagement'));
 const StaffManagement = lazy(() => import('./components/StaffManagement'));
+import UpdateNotification from './components/UpdateNotification';
 
 import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -926,6 +927,7 @@ export default function App() {
         "min-h-screen flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
         isDarkMode ? "bg-slate-950" : "bg-slate-50"
       )}>
+        <UpdateNotification isDarkMode={isDarkMode} uid={user?.uid} />
         {/* Dynamic Background */}
         {systemSettings.loginBgUrl && (
           <div className="absolute inset-0 z-0">
@@ -1736,6 +1738,7 @@ export default function App() {
 
   return (
     <>
+      <UpdateNotification isDarkMode={isDarkMode} />
       <div className={cn(
         "min-h-screen font-sans transition-colors duration-300 flex",
         isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
@@ -1770,10 +1773,14 @@ export default function App() {
             isApproved={userProfile.isApproved}
           />
 
-          <main ref={(el) => { mainScrollRef.current = el; }} className={cn(
-            "flex-1 h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
-            isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
-          )}>
+          <main 
+            ref={(el) => { mainScrollRef.current = el; }} 
+            className={cn(
+              "flex-1 h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
+              isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
+            )}
+            style={{ touchAction: 'pan-y' }}
+          >
             {/* Mobile Header */}
             <div className={cn(
               "lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b backdrop-blur-md",
@@ -2562,6 +2569,7 @@ export default function App() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6, pointerEvents: 'none' }}
       transition={{ duration: 0.15 }}
+      style={{ minHeight: '100%' }}
     >
 
       <Suspense fallback={

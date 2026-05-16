@@ -927,7 +927,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
                     <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
                       <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                      Phụ lục A2 — Điểm quyền lực tối thiểu
+                      Không là bệnh chính — Điểm quyền lực tối thiểu
                     </p>
                     <div className="flex items-center gap-3">
                       <input

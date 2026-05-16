@@ -19,7 +19,9 @@ import {
   addDoc as firestoreAddDoc, 
   writeBatch as firestoreWriteBatch,
   serverTimestamp, 
-  increment 
+  increment,
+  arrayUnion,
+  arrayRemove 
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -168,5 +170,5 @@ export async function signOut(auth: any) {
   return firebaseSignOut(auth);
 }
 
-export { signInWithPopup, onAuthStateChanged, collection, getDocs, onSnapshot, query, where, orderBy, limit, doc, getDoc, deleteDoc, serverTimestamp, increment };
+export { signInWithPopup, onAuthStateChanged, collection, getDocs, onSnapshot, query, where, orderBy, limit, doc, getDoc, deleteDoc, serverTimestamp, increment, arrayUnion, arrayRemove };
 export type { User };

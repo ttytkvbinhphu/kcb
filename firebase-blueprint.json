@@ -136,7 +136,11 @@
       "properties": {
         "code": { "type": "string", "description": "Mã bệnh" },
         "description": { "type": "string", "description": "Mô tả bệnh" },
-        "commonDrugs": { "type": "array", "items": { "type": "string" }, "description": "Gợi ý thuốc thường dùng" }
+        "commonDrugs": { "type": "array", "items": { "type": "string" }, "description": "Gợi ý thuốc thường dùng" },
+        "isAppendixA2": { "type": "boolean", "description": "Nằm trong phụ lục A2" },
+        "isRestricted": { "type": "boolean", "description": "Mã hạn chế sử dụng" },
+        "notes": { "type": "string", "description": "Ghi chú thêm" },
+        "chapter": { "type": "string", "description": "Chương bệnh" }
       },
       "required": ["code", "description"]
     },
@@ -498,6 +502,39 @@
       },
       "required": ["id", "name"]
     },
+    "Todo": {
+      "title": "Todo",
+      "description": "Nhiệm vụ trong danh sách công việc.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "completed": { "type": "boolean" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+        "dueDate": { "type": "string" },
+        "category": { "type": "string" },
+        "department": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["title", "completed", "priority", "createdBy", "createdAt"]
+    },
+    "AuthLog": {
+      "title": "AuthLog",
+      "description": "Lịch sử đăng nhập và đăng xuất của người dùng.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "type": { "type": "string", "enum": ["login", "logout"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userEmail", "type", "timestamp"]
+    },
     "Company": {
       "title": "Company",
       "description": "Danh sách các công ty dược phẩm.",
@@ -631,6 +668,10 @@
     "/auth_logs/{logId}": {
       "schema": "AuthLog",
       "description": "Lịch sử đăng nhập và đăng xuất của người dùng."
+    },
+    "/todos/{todoId}": {
+      "schema": "Todo",
+      "description": "Danh sách công việc cá nhân."
     },
     "/ingredients/{id}": {
       "schema": "Ingredient",

@@ -10,6 +10,11 @@ interface ICDDetailModalProps {
     code: string;
     description: string;
     isAppendixA2?: boolean;
+    isAppendixA3?: boolean;
+    isAppendixA4?: boolean;
+    isAppendixA5?: boolean;
+    isAppendixA6?: boolean;
+    isRestricted?: boolean;
     notes?: string;
     chapter?: string;
   } | null;
@@ -26,6 +31,17 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
   isDarkMode = false,
   onShowDrugDetail
 }) => {
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   if (!icd) return null;
 
   return (
@@ -73,7 +89,32 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                     </span>
                     {icd.isAppendixA2 && (
                       <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-indigo-600 text-white shadow-sm">
-                        Phụ lục A2
+                        Không là bệnh chính
+                      </span>
+                    )}
+                    {icd.isAppendixA3 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-amber-600 text-white shadow-sm">
+                        Không khuyến khích là bệnh chính
+                      </span>
+                    )}
+                    {icd.isRestricted && (
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-rose-600 text-white shadow-sm">
+                        Không dùng
+                      </span>
+                    )}
+                    {icd.isAppendixA4 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-600 text-white shadow-sm">
+                        Chỉ dùng mã hóa nguyên nhân tử vong
+                      </span>
+                    )}
+                    {icd.isAppendixA5 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-pink-600 text-white shadow-sm">
+                        Mã bệnh ở nữ giới
+                      </span>
+                    )}
+                    {icd.isAppendixA6 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-cyan-600 text-white shadow-sm">
+                        Mã bệnh ở nam giới
                       </span>
                     )}
                   </div>
@@ -128,21 +169,40 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                   </div>
 
                   {/* Appendix Info */}
-                  {icd.isAppendixA2 && (
+                  {(icd.isAppendixA2 || icd.isRestricted) && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-1 h-4 bg-indigo-500 rounded-full" />
-                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Lưu ý chẩn đoán</span>
+                        <div className={cn("w-1 h-4 rounded-full", icd.isRestricted ? "bg-rose-500" : "bg-indigo-500")} />
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Phụ lục & Lưu ý</span>
                       </div>
                       <div className={cn(
                         "p-4 rounded-2xl border flex items-start gap-3",
-                        isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-indigo-50/50 border-indigo-100"
+                        icd.isRestricted 
+                          ? (isDarkMode ? "bg-rose-900/10 border-rose-500/20" : "bg-rose-50/50 border-rose-100")
+                          : (isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-indigo-50/50 border-indigo-100")
                       )}>
-                        <AlertCircle size={18} className="text-indigo-500 shrink-0 mt-1" />
-                        <div>
-                          <p className={cn("text-xs font-bold leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                            Mã bệnh này nằm trong Phụ lục A2, không được sử dụng làm chẩn đoán chính trong điều trị.
-                          </p>
+                        {icd.isRestricted ? (
+                           <AlertCircle size={18} className="text-rose-500 shrink-0 mt-1" />
+                        ) : (
+                           <BookOpen size={18} className="text-indigo-500 shrink-0 mt-1" />
+                        )}
+                        <div className="space-y-2">
+                          {icd.isAppendixA2 && (
+                            <div className="space-y-1">
+                               <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>Không là bệnh chính</p>
+                               <p className={cn("text-xs font-bold leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                 Mã bệnh này không được sử dụng làm chẩn đoán chính trong điều trị.
+                               </p>
+                            </div>
+                          )}
+                          {icd.isRestricted && (
+                            <div className="space-y-1">
+                               <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-rose-400" : "text-rose-600")}>Mã không dùng trực tiếp</p>
+                               <p className={cn("text-xs font-bold leading-relaxed", isDarkMode ? "text-rose-300" : "text-rose-700")}>
+                                 Mã bệnh này không được sử dụng làm chẩn đoán do là mã tổng quát. Phải sử dụng mã 4 hoặc 5 ký tự cụ thể hơn.
+                               </p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

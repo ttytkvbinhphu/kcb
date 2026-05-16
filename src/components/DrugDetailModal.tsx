@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink, Briefcase, Lock } from 'lucide-react';
+import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink, Briefcase, Lock, Pause } from 'lucide-react';
 import { Drug, ICD10, Ingredient } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -22,6 +22,17 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   canSeeIcdSuggestions = true,
   canSeeCommonIndications = true
 }) => {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   const [activeDetailTab, setActiveDetailTab] = useState<'indications' | 'contraindications' | 'dosage' | 'interactions' | 'warnings' | 'side_effects' | 'pharmacology' | 'info'>('indications');
   const [direction, setDirection] = useState(0);
   const [icdList, setIcdList] = useState<ICD10[]>([]);
@@ -108,6 +119,17 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
       window.history.back();
     }
   }, [isOpen]);
+
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   if (!drug) return null;
 
@@ -249,6 +271,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             ĐANG ẨN
                           </span>
                         )}
+                        {drug.status === 'suspended' && (
+                          <span className={cn(
+                            "shrink-0 px-3 py-1 rounded-lg text-[10px] font-black border flex items-center gap-1.5",
+                            isDarkMode ? "bg-amber-900/20 text-amber-400 border-amber-900/30" : "bg-amber-50 text-amber-600 border-amber-100 shadow-sm"
+                          )}>
+                            <Pause size={12} className="shrink-0" />
+                            TẠM NGƯNG
+                          </span>
+                        )}
 
                       </div>
                       <p className={cn(
@@ -351,13 +382,14 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                     animate="center"
                     exit="exit"
                     transition={{
-                      x: { type: "spring", stiffness: 300, damping: 30 },
+                      x: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
                       opacity: { duration: 0.2 }
                     }}
-                    drag="x"
+                    drag={isMobile ? "x" : false}
                     dragConstraints={{ left: 0, right: 0 }}
-                    dragElastic={1}
+                    dragElastic={isMobile ? 1 : 0}
                     onDragEnd={(e, { offset, velocity }) => {
+                      if (!isMobile) return;
                       const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 500;
                       if (swipe) {
                         if (offset.x < 0) {
@@ -406,18 +438,43 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     <div className="mt-4 flex flex-wrap gap-2">
                                       {item.icd10s.map((fullName, idx) => {
                                         const code = fullName.split(' - ')[0];
-                                        const desc = fullName.split(' - ')[1] || icdList.find(icd => icd.code === code)?.description;
+                                        const icdObj = icdList.find(icd => icd.code === code);
+                                        const desc = fullName.split(' - ')[1] || icdObj?.description;
                                         const isDefault = (item.defaultIcd10s || []).includes(fullName) || item.defaultIcd10 === fullName;
                                         return (
-                                          <div key={idx} className={cn(
-                                            "px-2.5 py-1.5 rounded-lg text-[9px] font-black border flex items-center gap-2 transition-all",
-                                            isDefault 
-                                              ? "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
-                                              : isDarkMode ? "bg-slate-900/50 border-slate-700" : "bg-slate-100 border-slate-200"
-                                          )}>
-                                            <span className={isDefault ? "text-white" : "text-blue-500"}>{code}</span>
-                                            {desc && <span className={cn("font-bold", isDefault ? "text-white/80" : "opacity-50")}>{desc}</span>}
-                                            {isDefault && <Star size={10} fill="currentColor" className="text-white" />}
+                                          <div key={idx} className="flex items-center gap-1">
+                                            <div className={cn(
+                                              "px-2.5 py-1.5 rounded-lg text-[9px] font-black border flex items-center gap-2 transition-all",
+                                              isDefault 
+                                                ? "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
+                                                : isDarkMode ? "bg-slate-900/50 border-slate-700" : "bg-slate-100 border-slate-200"
+                                            )}>
+                                              <span className={isDefault ? "text-white" : "text-blue-500"}>{code}</span>
+                                              {desc && <span className={cn("font-bold", isDefault ? "text-white/80" : "opacity-50")}>{desc}</span>}
+                                              {isDefault && <Star size={10} fill="currentColor" className="text-white" />}
+                                            </div>
+                                            {icdObj && (
+                                              <div className="flex gap-0.5">
+                                                {icdObj.isAppendixA2 && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-indigo-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Không là bệnh chính">24</span>
+                                                )}
+                                                {icdObj.isAppendixA3 && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-amber-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Không khuyến khích là bệnh chính">25</span>
+                                                )}
+                                                {icdObj.isRestricted && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-rose-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã không được sử dụng">26</span>
+                                                )}
+                                                {icdObj.isAppendixA4 && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-blue-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Chỉ dùng mã hóa nguyên nhân tử vong">27</span>
+                                                )}
+                                                {icdObj.isAppendixA5 && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-pink-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã bệnh ở nữ giới">28</span>
+                                                )}
+                                                {icdObj.isAppendixA6 && (
+                                                  <span className="shrink-0 px-1 py-0.5 rounded bg-cyan-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã bệnh ở nam giới">29</span>
+                                                )}
+                                              </div>
+                                            )}
                                           </div>
                                         );
                                       })}
@@ -453,11 +510,44 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               <p className="text-sm leading-relaxed">{item.content}</p>
                               {canSeeIcdSuggestions && item.icd10s && item.icd10s.length > 0 && (
                                 <div className="mt-3 flex flex-wrap gap-2">
-                                  {item.icd10s.map((code, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black border border-rose-100">
-                                      {code}
-                                    </span>
-                                  ))}
+                                  {item.icd10s.map((fullName, idx) => {
+                                    const code = fullName.split(' - ')[0];
+                                    const icdObj = icdList.find(icd => icd.code === code);
+                                    const desc = fullName.split(' - ')[1] || icdObj?.description;
+                                    return (
+                                      <div key={idx} className="flex items-center gap-1">
+                                        <div className={cn(
+                                          "px-2 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2",
+                                          isDarkMode ? "bg-rose-900/20 border-rose-900/30 text-rose-400" : "bg-rose-50 border-rose-100 text-rose-600"
+                                        )}>
+                                          <span>{code}</span>
+                                          {desc && <span className="opacity-60 font-bold">{desc}</span>}
+                                        </div>
+                                        {icdObj && (
+                                          <div className="flex gap-0.5">
+                                            {icdObj.isAppendixA2 && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-indigo-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Không là bệnh chính">24</span>
+                                            )}
+                                            {icdObj.isAppendixA3 && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-amber-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Không khuyến khích là bệnh chính">25</span>
+                                            )}
+                                            {icdObj.isRestricted && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-rose-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã không được sử dụng">26</span>
+                                            )}
+                                            {icdObj.isAppendixA4 && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-blue-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Chỉ dùng mã hóa nguyên nhân tử vong">27</span>
+                                            )}
+                                            {icdObj.isAppendixA5 && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-pink-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã bệnh ở nữ giới">28</span>
+                                            )}
+                                            {icdObj.isAppendixA6 && (
+                                              <span className="shrink-0 px-1 py-0.5 rounded bg-cyan-500 text-white text-[7px] font-black uppercase tracking-tighter" title="Mã bệnh ở nam giới">29</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
@@ -679,69 +769,72 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Người cập nhật */}
-                        <div className={cn(
-                          "p-5 rounded-2xl border flex items-center gap-4",
-                          isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
-                        )}>
-                          <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
-                            <UserCheck size={18} className="text-blue-500" />
+                        {/* Metadata Rows */}
+                        <div className="flex flex-col md:flex-row gap-4">
+                          {/* Người cập nhật */}
+                          <div className={cn(
+                            "flex-1 p-5 rounded-2xl border flex items-center gap-4",
+                            isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
+                          )}>
+                            <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
+                              <UserCheck size={18} className="text-blue-500" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5 truncate">Cập nhật bởi</p>
+                              <p className="text-sm font-bold truncate">{drug.updatedBy || 'Hệ thống'}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5">Cập nhật bởi</p>
-                            <p className="text-sm font-bold">{drug.updatedBy || 'Hệ thống'}</p>
-                          </div>
+
+                          {/* Ngày cập nhật */}
+                          {drug.updatedAt && (
+                            <div className={cn(
+                              "flex-1 p-5 rounded-2xl border flex items-center gap-4",
+                              isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
+                            )}>
+                              <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
+                                <Clock size={18} className="text-indigo-500" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5 truncate">Ngày cập nhật</p>
+                                <p className={cn("text-sm font-bold truncate", isDarkMode ? "text-blue-400" : "text-blue-600")}>
+                                  {(() => {
+                                    try {
+                                      return new Intl.DateTimeFormat('vi-VN', {
+                                        day: '2-digit', month: '2-digit', year: 'numeric',
+                                        hour: '2-digit', minute: '2-digit', hour12: false,
+                                        timeZone: 'Asia/Ho_Chi_Minh'
+                                      }).format(new Date(drug.updatedAt));
+                                    } catch { return drug.updatedAt; }
+                                  })()}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Ngày tạo */}
+                          {drug.createdAt && (
+                            <div className={cn(
+                              "flex-1 p-5 rounded-2xl border flex items-center gap-4",
+                              isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
+                            )}>
+                              <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
+                                <Calendar size={18} className="text-emerald-500" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5 truncate">Ngày tạo</p>
+                                <p className={cn("text-sm font-bold truncate", isDarkMode ? "text-emerald-400" : "text-emerald-600")}>
+                                  {(() => {
+                                    try {
+                                      return new Intl.DateTimeFormat('vi-VN', {
+                                        day: '2-digit', month: '2-digit', year: 'numeric'
+                                      }).format(new Date(drug.createdAt));
+                                    } catch { return drug.createdAt; }
+                                  })()}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-
-                        {/* Ngày cập nhật */}
-                        {drug.updatedAt && (
-                          <div className={cn(
-                            "p-5 rounded-2xl border flex items-center gap-4",
-                            isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
-                          )}>
-                            <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
-                              <Clock size={18} className="text-indigo-500" />
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5">Ngày cập nhật</p>
-                              <p className={cn("text-sm font-bold", isDarkMode ? "text-blue-400" : "text-blue-600")}>
-                                {(() => {
-                                  try {
-                                    return new Intl.DateTimeFormat('vi-VN', {
-                                      day: '2-digit', month: '2-digit', year: 'numeric',
-                                      hour: '2-digit', minute: '2-digit', hour12: false,
-                                      timeZone: 'Asia/Ho_Chi_Minh'
-                                    }).format(new Date(drug.updatedAt));
-                                  } catch { return drug.updatedAt; }
-                                })()}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Ngày tạo */}
-                        {drug.createdAt && (
-                          <div className={cn(
-                            "p-5 rounded-2xl border flex items-center gap-4",
-                            isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm"
-                          )}>
-                            <div className={cn("p-2.5 rounded-xl shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-100")}>
-                              <Calendar size={18} className="text-emerald-500" />
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-50 mb-0.5">Ngày tạo</p>
-                              <p className={cn("text-sm font-bold", isDarkMode ? "text-emerald-400" : "text-emerald-600")}>
-                                {(() => {
-                                  try {
-                                    return new Intl.DateTimeFormat('vi-VN', {
-                                      day: '2-digit', month: '2-digit', year: 'numeric'
-                                    }).format(new Date(drug.createdAt));
-                                  } catch { return drug.createdAt; }
-                                })()}
-                              </p>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Tờ hướng dẫn PDF */}
                         {drug.pdfUrl && (

@@ -566,14 +566,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          <div className={cn(
-            "px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all",
-            isCollapsed ? "justify-center" : "",
-            isDarkMode ? "text-slate-500 bg-slate-900/50" : "text-slate-400 bg-white border border-slate-100 shadow-sm"
-          )} title="Zalo: 093.262.10.28 (DS. Bảo)">
-            <MessageSquare size={10} className="text-primary shrink-0" />
-            {!isCollapsed && <span className="truncate">Zalo: 093.262.10.28 (DS. Bảo)</span>}
-          </div>
+
         </div>
 
       </div>

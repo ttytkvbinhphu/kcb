@@ -3,7 +3,6 @@ import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCi
 import { Drug, InteractionResult, ManualInteraction, ICD10 } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { GoogleGenAI } from "@google/genai";
 import DrugDetailModal from './DrugDetailModal';
 import { db, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, setDoc, doc, deleteDoc, query, orderBy, sanitizeData } from '../firebase';
 import ConfirmModal from './ConfirmModal';
@@ -235,7 +234,6 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       const drugNames = selectedDrugs.map(d => d.name).join(', ');
 
       const prompt = `Kiểm tra tương tác thuốc giữa các loại thuốc sau: ${drugNames}. 
@@ -244,16 +242,16 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
       - description: Mô tả chi tiết các tương tác (nếu có) bằng tiếng Việt.
       - recommendation: Lời khuyên cho bác sĩ bằng tiếng Việt.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
+      const { generateGeminiContent } = await import('../lib/gemini');
+      const text = await generateGeminiContent(
+        "gemini-3-flash-preview",
+        [{ parts: [{ text: prompt }] }],
+        {
           responseMimeType: "application/json",
           maxOutputTokens: 2048,
         }
-      });
+      );
 
-      const text = response.text || '{}';
       try {
         const data = JSON.parse(text.trim());
         setResult({ ...data, isAI: true });
