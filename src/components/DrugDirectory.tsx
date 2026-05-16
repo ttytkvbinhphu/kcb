@@ -652,16 +652,16 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       if (searchMode === 'all') {
         matchesSearch = (drug.name || '').toLowerCase().includes(term) ||
           (drug.activeIngredients || []).some(ing =>
-            (ing.name || '').toLowerCase().includes(term) ||
-            (ing.amount || '').toLowerCase().includes(term) ||
-            (ing.unit || '').toLowerCase().includes(term)
+            String(ing.name || '').toLowerCase().includes(term) ||
+            String(ing.amount || '').toLowerCase().includes(term) ||
+            String(ing.unit || '').toLowerCase().includes(term)
           ) ||
           (drug.atcCode || '').toLowerCase().includes(term);
       } else if (searchMode === 'name') {
         matchesSearch = (drug.name || '').toLowerCase().includes(term);
       } else if (searchMode === 'ingredient') {
         matchesSearch = (drug.activeIngredients || []).some(ing =>
-          (ing.name || '').toLowerCase().includes(term)
+          String(ing.name || '').toLowerCase().includes(term)
         );
       }
 

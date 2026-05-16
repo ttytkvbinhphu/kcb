@@ -288,9 +288,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                       )}>
                         {(drug.activeIngredients || []).map(ing => {
                           const baseIngredient = ingredients.find(i => 
-                            i.name.toLowerCase() === ing.name.toLowerCase() ||
-                            i.alias?.toLowerCase() === ing.name.toLowerCase() ||
-                            i.aliases?.some(a => a.toLowerCase() === ing.name.toLowerCase())
+                            String(i.name || '').toLowerCase() === String(ing.name || '').toLowerCase() ||
+                            String(i.alias || '').toLowerCase() === String(ing.name || '').toLowerCase() ||
+                            (i.aliases || []).some(a => String(a || '').toLowerCase() === String(ing.name || '').toLowerCase())
                           );
                           
                           let displayName = `${ing.name} ${ing.amount}${ing.unit}`;
