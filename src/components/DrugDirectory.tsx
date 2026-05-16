@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link, Pause } from 'lucide-react';
+import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link, Pause, MoreVertical } from 'lucide-react';
 import { Drug, DrugGroup, Ingredient, ManualInteraction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -153,6 +153,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [selectedIngredient, setSelectedIngredient] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [ingredientPage, setIngredientPage] = useState(1);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     const saved = localStorage.getItem('drug_items_per_page');
     return saved ? Number(saved) : 20;
@@ -347,6 +348,19 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Close action menu when clicking outside
+  useEffect(() => {
+    if (!openActionMenuId) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-menu-container')) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openActionMenuId]);
 
 
   // Live lookup: always find the current portal node at render time.
@@ -1446,8 +1460,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         <div className="hidden lg:block">
           <div className={cn(
             "inline-flex items-center gap-4 px-6 py-3 rounded-[32px] border-2 transition-all",
-            isDarkMode 
-              ? "bg-blue-500/5 border-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/5" 
+            isDarkMode
+              ? "bg-blue-500/5 border-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/5"
               : "bg-blue-50 border-blue-100 text-blue-600 shadow-xl shadow-blue-500/10"
           )}>
             <div className="p-2 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-600/20">
@@ -1458,7 +1472,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             </span>
           </div>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-2">
           <div className="hidden lg:block">
             {viewModeToggle}
@@ -2519,7 +2533,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
                     {canSeeActionsColumn && (
                       <div className="hidden md:flex md:col-span-2 justify-end p-1">
-                        <div className="grid grid-cols-2 gap-1">
+                        <div className="flex items-center gap-2">
                           {drug.pdfUrl && (
                             <button
                               type="button"
@@ -2534,56 +2548,82 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             </button>
                           )}
                           {canManage && (
-                            <>
+                            <div className="relative action-menu-container">
                               <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); }}
-                                title={drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  setOpenActionMenuId(openActionMenuId === drug.id ? null : drug.id); 
+                                }}
                                 className={cn(
-                                  "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                                  isDarkMode
-                                    ? (drug.isClosed ? "text-amber-500 hover:bg-amber-500/10 border border-amber-500/20" : "text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10 border border-slate-700")
-                                    : (drug.isClosed ? "text-amber-600 hover:bg-amber-50 border border-amber-100" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-100")
+                                  "p-1.5 rounded-lg transition-all flex items-center justify-center",
+                                  isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100",
+                                  openActionMenuId === drug.id 
+                                    ? (isDarkMode ? "text-primary bg-slate-800" : "text-primary bg-slate-100") 
+                                    : "text-slate-400"
                                 )}
                               >
-                                {drug.isClosed ? <EyeOff size={14} /> : <Eye size={14} />}
+                                <MoreVertical size={16} />
                               </button>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); }}
-                                title={drug.status === 'suspended' ? "Kích hoạt lại" : "Tạm ngưng"}
-                                className={cn(
-                                  "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                                  isDarkMode
-                                    ? (drug.status === 'suspended' ? "text-emerald-500 hover:bg-emerald-500/10 border border-emerald-500/20" : "text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-700")
-                                    : (drug.status === 'suspended' ? "text-emerald-600 hover:bg-emerald-50 border border-emerald-100" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50 border border-amber-100")
+
+                              <AnimatePresence>
+                                {openActionMenuId === drug.id && (
+                                  <motion.div
+                                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                    className={cn(
+                                      "absolute right-0 top-full mt-2 z-50 rounded-xl shadow-2xl border overflow-hidden min-w-[160px]",
+                                      isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                                    )}
+                                  >
+                                    <div className="p-1">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); setOpenActionMenuId(null); }}
+                                        className={cn(
+                                          "w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold transition-colors rounded-lg",
+                                          isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        {drug.isClosed ? <Eye size={14} className="text-emerald-500" /> : <EyeOff size={14} className="text-amber-500" />}
+                                        {drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); setOpenActionMenuId(null); }}
+                                        className={cn(
+                                          "w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold transition-colors rounded-lg",
+                                          isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        <Pause size={14} className={drug.status === 'suspended' ? "text-emerald-500" : "text-amber-500"} />
+                                        {drug.status === 'suspended' ? "Kích hoạt" : "Tạm ngưng"}
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); setOpenActionMenuId(null); }}
+                                        className={cn(
+                                          "w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold transition-colors rounded-lg",
+                                          isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                        )}
+                                      >
+                                        <Edit2 size={14} className="text-blue-500" />
+                                        Chỉnh sửa
+                                      </button>
+                                      <div className={cn("h-px my-1", isDarkMode ? "bg-slate-800" : "bg-slate-100")} />
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); setOpenActionMenuId(null); }}
+                                        className={cn(
+                                          "w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold transition-colors rounded-lg",
+                                          isDarkMode ? "hover:bg-rose-900/20 text-rose-400" : "hover:bg-rose-50 text-rose-500"
+                                        )}
+                                      >
+                                        <Trash2 size={14} />
+                                        Xóa thuốc
+                                      </button>
+                                    </div>
+                                  </motion.div>
                                 )}
-                              >
-                                <Pause size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); }}
-                                title="Chỉnh sửa"
-                                className={cn(
-                                  "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                                  isDarkMode ? "text-slate-500 hover:text-primary hover:bg-primary/10 border border-slate-700" : "text-slate-400 hover:text-primary hover:bg-primary/5 border border-slate-100"
-                                )}
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); }}
-                                title="Xóa"
-                                className={cn(
-                                  "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                                  isDarkMode ? "text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-700" : "text-slate-400 hover:text-rose-500 hover:bg-rose-500/5 border border-slate-100"
-                                )}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </>
+                              </AnimatePresence>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -2607,55 +2647,79 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                         </button>
                       )}
                       {canManage && (
-                        <div className="flex items-center gap-1">
+                        <div className="relative action-menu-container">
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); }}
-                            title={drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              setOpenActionMenuId(openActionMenuId === drug.id ? null : drug.id); 
+                            }}
                             className={cn(
-                              "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                              isDarkMode
-                                ? (drug.isClosed ? "text-amber-500 hover:bg-amber-500/10" : "text-slate-500 hover:text-emerald-500 hover:bg-emerald-500/10")
-                                : (drug.isClosed ? "text-amber-600 hover:bg-amber-50/50" : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50/50")
+                              "p-1.5 rounded-lg transition-all flex items-center justify-center border shadow-sm",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-500",
+                              openActionMenuId === drug.id && "ring-2 ring-primary border-primary"
                             )}
                           >
-                            {drug.isClosed ? <EyeOff size={13} /> : <Eye size={13} />}
+                            <MoreVertical size={14} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); }}
-                            title={drug.status === 'suspended' ? "Kích hoạt lại" : "Tạm ngưng"}
-                            className={cn(
-                              "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                              isDarkMode
-                                ? (drug.status === 'suspended' ? "text-emerald-500 hover:bg-emerald-500/10" : "text-slate-500 hover:text-amber-500 hover:bg-amber-500/10")
-                                : (drug.status === 'suspended' ? "text-emerald-600 hover:bg-emerald-50/50" : "text-slate-400 hover:text-amber-600 hover:bg-amber-50/50")
+
+                          <AnimatePresence>
+                            {openActionMenuId === drug.id && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                className={cn(
+                                  "absolute right-0 top-full mt-2 z-50 rounded-xl shadow-2xl border overflow-hidden min-w-[140px]",
+                                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                                )}
+                              >
+                                <div className="p-1">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleClosed(drug); setOpenActionMenuId(null); }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2.5 text-[11px] font-bold transition-colors rounded-lg",
+                                      isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                    )}
+                                  >
+                                    {drug.isClosed ? <Eye size={14} className="text-emerald-500" /> : <EyeOff size={14} className="text-amber-500" />}
+                                    {drug.isClosed ? "Hiện thuốc" : "Ẩn thuốc"}
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleSuspended(drug); setOpenActionMenuId(null); }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2.5 text-[11px] font-bold transition-colors rounded-lg",
+                                      isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                    )}
+                                  >
+                                    <Pause size={14} className={drug.status === 'suspended' ? "text-emerald-500" : "text-amber-500"} />
+                                    {drug.status === 'suspended' ? "Kích hoạt" : "Tạm ngưng"}
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); setOpenActionMenuId(null); }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2.5 text-[11px] font-bold transition-colors rounded-lg",
+                                      isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600"
+                                    )}
+                                  >
+                                    <Edit2 size={14} className="text-blue-500" />
+                                    Chỉnh sửa
+                                  </button>
+                                  <div className={cn("h-px my-1", isDarkMode ? "bg-slate-800" : "bg-slate-100")} />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); setOpenActionMenuId(null); }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2.5 text-[11px] font-bold transition-colors rounded-lg text-rose-500",
+                                      isDarkMode ? "hover:bg-rose-900/20" : "hover:bg-rose-50"
+                                    )}
+                                  >
+                                    <Trash2 size={14} />
+                                    Xóa thuốc
+                                  </button>
+                                </div>
+                              </motion.div>
                             )}
-                          >
-                            <Pause size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleOpenModal(drug); }}
-                            title="Sửa"
-                            className={cn(
-                              "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                              isDarkMode ? "text-slate-500 hover:text-primary hover:bg-primary/10" : "text-slate-400 hover:text-primary hover:bg-primary/5"
-                            )}
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(drug.id, drug.name, drug.pdfUrl); }}
-                            title="Xóa"
-                            className={cn(
-                              "p-1.5 rounded-lg transition-all hover:scale-110 flex items-center justify-center",
-                              isDarkMode ? "text-slate-500 hover:text-rose-500 hover:bg-rose-500/10" : "text-slate-400 hover:text-rose-500 hover:bg-rose-500/5"
-                            )}
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          </AnimatePresence>
                         </div>
                       )}
                     </div>
@@ -6129,7 +6193,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             else handleOpenModal();
           }}
           className={cn(
-            "fixed bottom-20 lg:bottom-10 right-6 lg:right-10 z-[60] w-14 lg:w-16 h-14 lg:h-16 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95 group",
+            "fixed bottom-32 lg:bottom-32 right-6 lg:right-10 z-[60] w-14 lg:w-16 h-14 lg:h-16 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl transition-all hover:scale-110 active:scale-95 group",
             "shadow-blue-500/40",
             selectedDrug && "hidden lg:flex"
           )}

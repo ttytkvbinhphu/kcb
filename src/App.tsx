@@ -886,7 +886,7 @@ export default function App() {
   if (!isAuthReady) {
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center transition-colors",
+        "h-[100dvh] flex items-center justify-center transition-colors",
         isDarkMode ? "bg-slate-950" : "bg-slate-50"
       )}>
         <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -924,7 +924,7 @@ export default function App() {
 
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
+        "h-[100dvh] flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
         isDarkMode ? "bg-slate-950" : "bg-slate-50"
       )}>
         <UpdateNotification isDarkMode={isDarkMode} uid={user?.uid} />
@@ -1368,7 +1368,7 @@ export default function App() {
   if (!userProfile || permsLoading) {
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center transition-colors",
+        "h-[100dvh] flex items-center justify-center transition-colors",
         isDarkMode ? "bg-slate-950" : "bg-slate-50"
       )}>
         <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1740,10 +1740,10 @@ export default function App() {
     <>
       <UpdateNotification isDarkMode={isDarkMode} />
       <div className={cn(
-        "min-h-screen font-sans transition-colors duration-300 flex",
+        "h-[100dvh] font-sans transition-colors duration-300 flex overflow-hidden",
         isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
       )}>
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary" /></div>}>
+        <Suspense fallback={<div className="h-[100dvh] flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary" /></div>}>
           <Sidebar
             activeTab={activeTab}
             setActiveTab={(tab) => {
@@ -1776,7 +1776,7 @@ export default function App() {
           <main 
             ref={(el) => { mainScrollRef.current = el; }} 
             className={cn(
-              "flex-1 h-screen overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
+              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
               isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
             )}
             style={{ touchAction: 'pan-y' }}

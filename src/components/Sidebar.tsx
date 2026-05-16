@@ -384,7 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar */}
       <div className={cn(
-        "h-screen flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
+        "h-[100dvh] flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
         isCollapsed ? "w-[80px]" : "w-[260px]",
         isAdminMode 
           ? (isDarkMode ? "bg-slate-950 border-indigo-900/30 text-white" : "bg-white border-indigo-100 text-slate-900")
