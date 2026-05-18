@@ -152,6 +152,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [searchMode, setSearchMode] = useState<'all' | 'name' | 'ingredient'>('all');
   const [selectedIngredient, setSelectedIngredient] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const pageBeforeSearchRef = useRef(1);
+  const wasSearchingRef = useRef(false);
   const [ingredientPage, setIngredientPage] = useState(1);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
@@ -694,9 +696,36 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   useEffect(() => {
     setCurrentPage(1);
     setIngredientPage(1);
-  }, [searchTerm, groupFilter, searchMode, selectedIngredient, viewMode, itemsPerPage, stockFilter, dosageFormFilter]);
+  }, [groupFilter, searchMode, selectedIngredient, viewMode, itemsPerPage, stockFilter, dosageFormFilter]);
+
+  // Handle searchTerm changes with page restoration
+  useEffect(() => {
+    const isSearching = (searchTerm || '').trim() !== '';
+
+    if (isSearching) {
+      if (!wasSearchingRef.current) {
+        // Save current page before starting search
+        pageBeforeSearchRef.current = currentPage;
+      }
+      setCurrentPage(1);
+      setIngredientPage(1);
+    } else if (wasSearchingRef.current) {
+      // Restore previous page when search is cleared
+      setCurrentPage(pageBeforeSearchRef.current);
+    }
+
+    wasSearchingRef.current = isSearching;
+  }, [searchTerm]);
 
   const totalPages = Math.ceil(filteredDrugs.length / itemsPerPage);
+
+  // Safety: Cap currentPage within totalPages range when results change
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
   const paginatedDrugs = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredDrugs.slice(start, start + itemsPerPage);

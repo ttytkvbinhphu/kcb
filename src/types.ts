@@ -144,6 +144,10 @@ export interface ICD10 {
   code: string;
   description: string;
   notes?: string;
+  guide?: string;
+  isNew?: boolean;
+  oldName?: string;
+  isExpired?: boolean;
   isPinned?: boolean;
   showOnWorkspace?: boolean;
   isAppendixA2?: boolean;

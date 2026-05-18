@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronLeft, ChevronRight, Pin, LayoutDashboard, Layers } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronsLeft, ChevronsRight, Pin, LayoutDashboard, Layers } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth, handleFirestoreError, OperationType } from '../firebase';
 import * as XLSX from 'xlsx';
 import { ICD10, Drug, UserProfile } from '../types';
@@ -40,13 +40,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'has_suggestions' | 'no_suggestions'>('all');
   const [icdCategoryFilter, setIcdCategoryFilter] = useState<'all' | 'appendix_a2' | 'appendix_a3' | 'appendix_a4' | 'appendix_a5' | 'appendix_a6' | 'restricted'>('all');
   const [icdChapterFilter, setIcdChapterFilter] = useState<string>('all');
+  const [icdGuideFilter, setIcdGuideFilter] = useState<'all' | 'has_guide' | 'no_guide'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchRestrictModalOpen, setIsBatchRestrictModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [editingIcd, setEditingIcd] = useState<ICD10 | null>(null);
-  const [batchAction, setBatchAction] = useState<'restrict' | 'appendix' | 'add' | 'appendix_a3' | 'appendix_a4' | 'appendix_a5' | 'appendix_a6'>('restrict');
+  const [batchAction, setBatchAction] = useState<'restrict' | 'appendix' | 'add' | 'appendix_a3' | 'appendix_a4' | 'appendix_a5' | 'appendix_a6' | 'add_guide'>('restrict');
   const [batchRestrictCodes, setBatchRestrictCodes] = useState('');
   const [batchRestrictStatus, setBatchRestrictStatus] = useState<'idle' | 'processing' | 'done' | 'setup'>('idle');
   const [batchResults, setBatchResults] = useState<{success: number, failed: string[]}>({ success: 0, failed: [] });
@@ -72,12 +73,18 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const [drugSearchTerm, setDrugSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+  const previousPageRef = useRef(1);
+  const isSearchingRef = useRef(false);
+  const prevFiltersRef = useRef({ searchTerm: '', filterStatus: 'all', icdCategoryFilter: 'all', icdChapterFilter: 'all', icdGuideFilter: 'all' });
 
   const [formData, setFormData] = useState<ICD10>({
     code: '',
     description: '',
     notes: '',
-    isAppendixA2: false
+    isAppendixA2: false,
+    isNew: false,
+    isExpired: false,
+    oldName: ''
   });
 
 
@@ -123,14 +130,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     return userPowerPoints >= (featureSettings?.showAppendixA2MinPower ?? 0);
   }, [featureSettings, userPowerPoints]);
 
-  const canSeeNotes = useMemo(() => {
-    const status = featureStates?.view_notes;
-    if (status === 'closed') return false;
-    if (status === 'maintenance') {
-      return userRole === 'admin' || userRole === 'operator';
-    }
-    return userPowerPoints >= (featureSettings?.showNotesMinPower ?? 0);
-  }, [featureSettings, userPowerPoints, featureStates, userRole]);
+  const canSeeNotes = true;
 
   const canSeeShortcuts = useMemo(() => {
     return userPowerPoints >= (featureSettings?.showShortcutsMinPower ?? 0);
@@ -195,6 +195,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         if (!filtersMap[icdChapterFilter]?.includes(firstChar)) return false;
       }
 
+      // Guide filter
+      if (icdGuideFilter === 'has_guide' && (!icd.guide || icd.guide.trim() === '')) return false;
+      if (icdGuideFilter === 'no_guide' && icd.guide && icd.guide.trim() !== '') return false;
+
       const suggestions = drugsByIcd[(icd.code || '').trim().toUpperCase()];
       const hasSuggestions = suggestions && suggestions.length > 0;
 
@@ -219,12 +223,37 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       if (!a.isPinned && b.isPinned) return 1;
       return (a.code || '').localeCompare(b.code || '');
     });
-  }, [icdList, searchTerm, filterStatus, icdChapterFilter, icdCategoryFilter, drugsByIcd, canManage, userProfile]);
+  }, [icdList, searchTerm, filterStatus, icdChapterFilter, icdCategoryFilter, icdGuideFilter, drugsByIcd, canManage, userProfile]);
 
-  // Reset to page 1 when search term or filter changes
+  // Reset to page 1 when search term or filter changes, and restore previous page when cleared
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter]);
+    const prev = prevFiltersRef.current;
+    const filtersChanged = 
+      prev.searchTerm !== searchTerm || 
+      prev.filterStatus !== filterStatus || 
+      prev.icdCategoryFilter !== icdCategoryFilter || 
+      prev.icdChapterFilter !== icdChapterFilter ||
+      prev.icdGuideFilter !== icdGuideFilter;
+
+    const hasSearchOrFilter = searchTerm || filterStatus !== 'all' || icdCategoryFilter !== 'all' || icdChapterFilter !== 'all' || icdGuideFilter !== 'all';
+
+    if (filtersChanged) {
+      if (hasSearchOrFilter) {
+        if (!isSearchingRef.current) {
+          isSearchingRef.current = true;
+        }
+        setCurrentPage(1);
+      } else {
+        if (isSearchingRef.current) {
+          setCurrentPage(previousPageRef.current);
+          isSearchingRef.current = false;
+        }
+      }
+      prevFiltersRef.current = { searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter, icdGuideFilter };
+    } else if (!isSearchingRef.current) {
+       previousPageRef.current = currentPage;
+    }
+  }, [searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter, icdGuideFilter, currentPage]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage);
   const paginatedList = useMemo(() => {
@@ -242,8 +271,12 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       code: '', 
       description: '', 
       notes: '', 
+      guide: '',
       isAppendixA2: false,
-      isRestricted: false 
+      isRestricted: false,
+      isNew: false,
+      isExpired: false,
+      oldName: ''
     });
     }
     setIsModalOpen(true);
@@ -339,68 +372,84 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     let successCount = 0;
     const failedItems: string[] = [];
 
-    // Split by lines for batch add, or by common delimiters for marking
-    const inputLines = batchRestrictCodes.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const rawLines = batchRestrictCodes.split('\n');
+    let processedItems: { code: string, content?: string, marking?: boolean }[] = [];
+
+    if (batchAction === 'add' || batchAction === 'add_guide') {
+      let currentItem: any = null;
+      for (const line of rawLines) {
+        // Look for the "Code |" pattern at the START of a line
+        const match = line.match(/^([A-Z][0-9][A-Z0-9.]+)\s*\|\s*(.*)$/i);
+        if (match) {
+          if (currentItem) processedItems.push(currentItem);
+          currentItem = { code: match[1].trim().toUpperCase(), content: match[2].trim() };
+        } else if (currentItem) {
+          // It's a continuation of the previous item's content
+          currentItem.content += '\n' + line.trim();
+        }
+      }
+      if (currentItem) processedItems.push(currentItem);
+      
+      // Post-process: strip surrounding quotes from content
+      processedItems = processedItems.map(item => {
+        let content = item.content || '';
+        if (content.startsWith('"') && content.endsWith('"')) {
+          content = content.substring(1, content.length - 1).trim();
+        }
+        return { ...item, content };
+      });
+    } else {
+      // Marking mode (Restrict or Appendix) - split by comma or newline
+      processedItems = rawLines.flatMap(line => 
+        line.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(c => c.length > 0)
+      ).map(code => ({ code, marking: true }));
+    }
     
     // Process in chunks to respect Firestore batch limits (500)
-    const batchSize = 100; // Smaller size for safer processing
-    for (let i = 0; i < inputLines.length; i += batchSize) {
-      const chunk = inputLines.slice(i, i + batchSize);
+    const batchSize = 100;
+    for (let i = 0; i < processedItems.length; i += batchSize) {
+      const chunk = processedItems.slice(i, i + batchSize);
       const batch = writeBatch(db);
       let batchOps = 0;
 
-      for (const line of chunk) {
+      for (const item of chunk) {
         try {
+          const icdRef = doc(db, 'icd10', item.code);
           if (batchAction === 'add') {
-            // Format: Code | Description
-            const parts = line.split('|');
-            if (parts.length >= 2) {
-              const code = parts[0].trim().toUpperCase();
-              const description = parts.slice(1).join('|').trim();
-              if (code && description) {
-                const icdRef = doc(db, 'icd10', code);
-                batch.set(icdRef, {
-                  code,
-                  description,
-                  updatedBy: userProfile?.displayName || 'Admin',
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
-                successCount++;
-                batchOps++;
-              } else {
-                failedItems.push(line);
-              }
-            } else {
-              failedItems.push(line);
-            }
+            batch.set(icdRef, {
+              code: item.code,
+              description: item.content,
+              updatedBy: userProfile?.displayName || 'Admin',
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          } else if (batchAction === 'add_guide') {
+            batch.set(icdRef, {
+              code: item.code,
+              guide: item.content,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
           } else {
-            // Marking mode (Restrict or Appendix)
-            const codes = line.split(/[\s,]+/).map(c => c.trim().toUpperCase()).filter(c => c.length > 0);
-            for (const code of codes) {
-              const icdRef = doc(db, 'icd10', code);
-              let fieldToUpdate = '';
-              switch(batchAction) {
-                case 'restrict': fieldToUpdate = 'isRestricted'; break;
-                case 'appendix': fieldToUpdate = 'isAppendixA2'; break;
-                case 'appendix_a3': fieldToUpdate = 'isAppendixA3'; break;
-                case 'appendix_a4': fieldToUpdate = 'isAppendixA4'; break;
-                case 'appendix_a5': fieldToUpdate = 'isAppendixA5'; break;
-                case 'appendix_a6': fieldToUpdate = 'isAppendixA6'; break;
-              }
-
-              if (fieldToUpdate) {
-                batch.set(icdRef, { 
-                  code,
-                  [fieldToUpdate]: true,
-                  updatedAt: new Date().toISOString()
-                }, { merge: true });
-                successCount++;
-                batchOps++;
-              }
+            let fieldToUpdate = '';
+            switch(batchAction) {
+              case 'restrict': fieldToUpdate = 'isRestricted'; break;
+              case 'appendix': fieldToUpdate = 'isAppendixA2'; break;
+              case 'appendix_a3': fieldToUpdate = 'isAppendixA3'; break;
+              case 'appendix_a4': fieldToUpdate = 'isAppendixA4'; break;
+              case 'appendix_a5': fieldToUpdate = 'isAppendixA5'; break;
+              case 'appendix_a6': fieldToUpdate = 'isAppendixA6'; break;
+            }
+            if (fieldToUpdate) {
+              batch.set(icdRef, { 
+                code: item.code,
+                [fieldToUpdate]: true,
+                updatedAt: new Date().toISOString()
+              }, { merge: true });
             }
           }
+          successCount++;
+          batchOps++;
         } catch (err) {
-          failedItems.push(line);
+          failedItems.push(item.code);
         }
       }
 
@@ -411,6 +460,37 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
     setBatchResults({ success: successCount, failed: failedItems });
     setBatchRestrictStatus('done');
+  };
+
+  const handleExportICDCodes = () => {
+    // Chỉ lấy cột mã ICD-10 từ danh sách đang hiển thị (filteredList)
+    const dataToExport = filteredList.map(icd => ({
+      'Mã ICD-10': icd.code,
+      'Tên bệnh': icd.description,
+      'Ghi chú': icd.notes || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'ICD-10 Codes');
+    
+    // Xuất file với tên có ngày hiện tại
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `ICD10_Codes_${date}.xlsx`);
+  };
+
+  const handleExportGuideExcel = () => {
+    const dataToExport = filteredList.map(icd => ({
+      'Mã ICD-10': icd.code,
+      'Hướng dẫn': icd.guide || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'ICD-10 Guides');
+    
+    const date = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `ICD10_Guides_${date}.xlsx`);
   };
 
   if (loading) {
@@ -715,6 +795,51 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 </div>
                 )}
 
+                {/* Guide Filter */}
+                <div className="flex flex-col gap-2 pt-2 border-t border-emerald-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="w-1 h-3 bg-violet-500 rounded-full" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Hướng dẫn</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setIcdGuideFilter('all')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                        icdGuideFilter === 'all'
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                      )}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      onClick={() => setIcdGuideFilter('has_guide')}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                        icdGuideFilter === 'has_guide'
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                      )}
+                    >
+                      <Check size={12} />
+                      Có H.Dẫn
+                    </button>
+                    <button
+                      onClick={() => setIcdGuideFilter('no_guide')}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                        icdGuideFilter === 'no_guide'
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                      )}
+                    >
+                      <X size={12} />
+                      Không
+                    </button>
+                  </div>
+                </div>
+
                 {/* Chapter Filters */}
                 <div className={cn(
                   "flex items-center gap-2 overflow-x-auto no-scrollbar",
@@ -968,6 +1093,26 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 <span>Thêm / Hạn chế hàng loạt</span>
               </button>
               <button
+                onClick={handleExportICDCodes}
+                className={cn(
+                  "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 lg:py-3 rounded-lg lg:rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap text-[10px] sm:text-xs lg:text-sm border",
+                  isDarkMode ? "bg-slate-800 border-slate-700 text-blue-400 hover:bg-blue-900/20" : "bg-white border-slate-200 text-blue-600 hover:bg-blue-50"
+                )}
+              >
+                <FileSpreadsheet size={16} />
+                <span>Export ICD-10</span>
+              </button>
+              <button
+                onClick={handleExportGuideExcel}
+                className={cn(
+                  "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 lg:py-3 rounded-lg lg:rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap text-[10px] sm:text-xs lg:text-sm border",
+                  isDarkMode ? "bg-slate-800 border-slate-700 text-violet-400 hover:bg-violet-900/20" : "bg-white border-slate-200 text-violet-600 hover:bg-violet-50"
+                )}
+              >
+                <FileSpreadsheet size={16} />
+                <span>Export H.Dẫn</span>
+              </button>
+              <button
                 onClick={() => handleOpenModal()}
                 className={cn(
                   "flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-6 py-2 lg:py-3 bg-emerald-600 text-white rounded-lg lg:rounded-xl font-bold transition-all active:scale-95 whitespace-nowrap text-[10px] sm:text-xs lg:text-sm",
@@ -1047,6 +1192,38 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 </div>
               </div>
               )}
+
+              {/* Guide Filters Group */}
+              <div className="flex flex-col gap-2 min-w-[280px]">
+                <div className="flex items-center gap-2 px-1">
+                  <div className="w-1 h-3 bg-violet-500 rounded-full" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Hướng dẫn</span>
+                </div>
+                <div className={cn(
+                  "flex items-center gap-1 p-1.5 rounded-2xl border",
+                  isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-slate-50 border-slate-100"
+                )}>
+                  {[
+                    { id: 'all', label: 'Tất cả' },
+                    { id: 'has_guide', label: 'Có H.Dẫn', icon: Check },
+                    { id: 'no_guide', label: 'Không', icon: X }
+                  ].map(stat => (
+                    <button
+                      key={stat.id}
+                      onClick={() => setIcdGuideFilter(stat.id as any)}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
+                        icdGuideFilter === stat.id
+                          ? "bg-white dark:bg-slate-700 text-violet-600 dark:text-violet-400 shadow-md ring-1 ring-violet-500/10"
+                          : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                      )}
+                    >
+                      {stat.icon && <stat.icon size={12} />}
+                      {stat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Chapter Filters - PC View Expanded */}
@@ -1144,75 +1321,97 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   )}>
                     {icd.code}
                   </span>
-                  <h4 className={cn("flex-1 font-bold leading-tight mt-0.5 text-[14px] flex items-center flex-wrap gap-2", isDarkMode ? "text-white" : "text-black")}>
-                    {icd.description}
-                    {icd.isAppendixA2 && canSeeAppendixA2 && (
-                      <div className="relative group/a2 inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-indigo-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/a2:bg-indigo-600">
-                          24
+                  <div className="flex-1 flex flex-col gap-1">
+                    <h4 className={cn("font-bold leading-tight mt-0.5 text-[14px]", isDarkMode ? "text-white" : "text-black")}>
+                      {icd.description}
+                      {icd.isNew && (
+                        <span className="ml-2 inline-block align-text-bottom px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest">
+                          MỚI
                         </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a2:opacity-100 group-hover/a2:visible transition-all duration-200 translate-y-1 group-hover/a2:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Không là bệnh chính
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
-                        </div>
-                      </div>
-                    )}
-                    {icd.isAppendixA3 && (
-                      <div className="relative group/a3 inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/a3:bg-amber-600">
-                          25
+                      )}
+                      {!!icd.oldName && (
+                        <span className="ml-2 inline-block align-text-bottom px-1.5 py-0.5 rounded bg-violet-500 text-white text-[8px] font-black uppercase tracking-widest">
+                          TÊN MỚI
                         </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a3:opacity-100 group-hover/a3:visible transition-all duration-200 translate-y-1 group-hover/a3:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Không khuyến khích là bệnh chính
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
-                        </div>
-                      </div>
-                    )}
-                    {icd.isAppendixA4 && (
-                      <div className="relative group/a4 inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-blue-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/a4:bg-blue-600">
-                          27
+                      )}
+                      {icd.isExpired && (
+                        <span className="ml-2 inline-block align-text-bottom px-1.5 py-0.5 rounded bg-slate-500 text-white text-[8px] font-black uppercase tracking-widest">
+                          Hết hiệu lực
                         </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a4:opacity-100 group-hover/a4:visible transition-all duration-200 translate-y-1 group-hover/a4:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Chỉ dùng mã hóa nguyên nhân tử vong
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                      )}
+                      {icd.isAppendixA2 && canSeeAppendixA2 && (
+                        <div className="ml-1 relative group/a2 inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/a2:bg-indigo-600">
+                            24
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a2:opacity-100 group-hover/a2:visible transition-all duration-200 translate-y-1 group-hover/a2:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Không là bệnh chính
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {icd.isAppendixA5 && (
-                      <div className="relative group/a5 inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-pink-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/a5:bg-pink-600">
-                          28
-                        </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a5:opacity-100 group-hover/a5:visible transition-all duration-200 translate-y-1 group-hover/a5:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Mã bệnh ở nữ giới
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                      )}
+                      {icd.isAppendixA3 && (
+                        <div className="ml-1 relative group/a3 inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/a3:bg-amber-600">
+                            25
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a3:opacity-100 group-hover/a3:visible transition-all duration-200 translate-y-1 group-hover/a3:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Không khuyến khích là bệnh chính
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {icd.isAppendixA6 && (
-                      <div className="relative group/a6 inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-cyan-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/a6:bg-cyan-600">
-                          29
-                        </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a6:opacity-100 group-hover/a6:visible transition-all duration-200 translate-y-1 group-hover/a6:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Mã bệnh ở nam giới
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                      )}
+                      {icd.isAppendixA4 && (
+                        <div className="ml-1 relative group/a4 inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-blue-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/a4:bg-blue-600">
+                            27
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a4:opacity-100 group-hover/a4:visible transition-all duration-200 translate-y-1 group-hover/a4:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Chỉ dùng mã hóa nguyên nhân tử vong
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {icd.isRestricted && (
-                      <div className="relative group/x inline-block scale-90 origin-left">
-                        <span className="px-1.5 py-0.5 rounded-md bg-rose-500 text-white text-[8px] font-black uppercase tracking-widest align-middle cursor-help transition-all group-hover/x:bg-rose-600">
-                          26
-                        </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/x:opacity-100 group-hover/x:visible transition-all duration-200 translate-y-1 group-hover/x:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
-                          Mã không được sử dụng
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                      )}
+                      {icd.isAppendixA5 && (
+                        <div className="ml-1 relative group/a5 inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-pink-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/a5:bg-pink-600">
+                            28
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a5:opacity-100 group-hover/a5:visible transition-all duration-200 translate-y-1 group-hover/a5:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Mã bệnh ở nữ giới
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </h4>
+                      )}
+                      {icd.isAppendixA6 && (
+                        <div className="ml-1 relative group/a6 inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-cyan-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/a6:bg-cyan-600">
+                            29
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/a6:opacity-100 group-hover/a6:visible transition-all duration-200 translate-y-1 group-hover/a6:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Mã bệnh ở nam giới
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
+                        </div>
+                      )}
+                      {icd.isRestricted && (
+                        <div className="ml-1 relative group/x inline-block scale-90 origin-left align-middle">
+                          <span className="px-1.5 py-0.5 rounded-md bg-rose-500 text-white text-[8px] font-black uppercase tracking-widest cursor-help transition-all group-hover/x:bg-rose-600">
+                            26
+                          </span>
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max px-2.5 py-1 bg-slate-900/95 backdrop-blur-sm text-white text-[9px] font-bold rounded shadow-xl opacity-0 invisible group-hover/x:opacity-100 group-hover/x:visible transition-all duration-200 translate-y-1 group-hover/x:translate-y-0 z-50 pointer-events-none border border-slate-700/50">
+                            Mã không được sử dụng
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-[3px] border-transparent border-t-slate-900" />
+                          </div>
+                        </div>
+                      )}
+                    </h4>
+                  {icd.oldName && (
+                    <span className={cn("text-[11px] italic", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      Tên cũ: {icd.oldName}
+                    </span>
+                  )}
+                  </div>
                   {canManage && (
                     <div className="shrink-0 flex gap-1">
                         <button 
@@ -1340,6 +1539,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 <th className={cn("w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mã ICD-10</th>
                 <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mô tả bệnh</th>
                 {canSeeAppendixA2 && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors text-center", isDarkMode ? "text-slate-500" : "text-slate-400")}>Nguyên tắc</th>}
+                <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors text-center", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                  <div className="flex items-center justify-center gap-1.5">
+                    Hướng dẫn
+                    <div className="relative group/guide-header inline-block">
+                      <div className={cn(
+                        "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black border transition-all cursor-help",
+                        isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700 group-hover/guide-header:text-emerald-400 group-hover/guide-header:border-emerald-500/50" : "bg-slate-100 text-slate-500 border-slate-200 group-hover/guide-header:text-emerald-600 group-hover/guide-header:border-emerald-200"
+                      )}>
+                        !
+                      </div>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-max px-3 py-1.5 bg-slate-900/95 backdrop-blur-md text-white text-[10px] font-bold rounded-lg shadow-xl opacity-0 invisible group-hover/guide-header:opacity-100 group-hover/guide-header:visible transition-all duration-300 -translate-y-1 group-hover/guide-header:translate-y-0 z-[100] pointer-events-none border border-slate-700/50 flex items-center gap-2">
+                        <Info size={12} className="text-blue-400" />
+                        Hưỡng dẫn mã hóa bổ sung của WHO 2019
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95" />
+                      </div>
+                    </div>
+                  </div>
+                </th>
                 {isDrugSuggestionsAllowed && (
                   <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Gợi ý thuốc</th>
                 )}
@@ -1372,14 +1589,36 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </span>
                   </td>
                   <td className="px-4 sm:px-6 lg:px-8 py-5">
-                    <p 
-                      className={cn(
-                        "font-semibold leading-relaxed transition-colors text-[14px]",
-                        isDarkMode ? "text-slate-200" : "text-slate-900"
+                    <div className="flex flex-col gap-1">
+                      <p 
+                        className={cn(
+                          "font-semibold leading-relaxed transition-colors text-[14px]",
+                          isDarkMode ? "text-slate-200" : "text-slate-900"
+                        )}
+                      >
+                        {icd.description}
+                        {icd.isNew && (
+                          <span className="ml-2 inline-block align-text-bottom px-2 py-0.5 rounded bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest shadow-sm">
+                            MỚI
+                          </span>
+                        )}
+                        {!!icd.oldName && (
+                          <span className="ml-2 inline-block align-text-bottom px-2 py-0.5 rounded bg-violet-500 text-white text-[9px] font-black uppercase tracking-widest shadow-sm">
+                            TÊN MỚI
+                          </span>
+                        )}
+                        {icd.isExpired && (
+                          <span className="ml-2 inline-block align-text-bottom px-2 py-0.5 rounded bg-slate-500 text-white text-[9px] font-black uppercase tracking-widest shadow-sm">
+                            Hết hiệu lực
+                          </span>
+                        )}
+                      </p>
+                      {icd.oldName && (
+                        <span className={cn("text-[11px] italic", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          Tên cũ: {icd.oldName}
+                        </span>
                       )}
-                    >
-                      {icd.description}
-                    </p>
+                    </div>
                   </td>
                   {canSeeAppendixA2 && (
                     <td className="px-4 sm:px-6 lg:px-8 py-5 text-center">
@@ -1462,6 +1701,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       </div>
                     </td>
                   )}
+                  <td className="px-4 sm:px-6 lg:px-8 py-5 text-left min-w-[250px]">
+                    <div className={cn(
+                      "text-[11px] font-semibold leading-relaxed transition-colors whitespace-pre-wrap",
+                      isDarkMode ? "text-slate-300" : "text-slate-700"
+                    )}>
+                      {icd.guide || <div className="text-center"><span className={isDarkMode ? "text-slate-700" : "text-slate-200"}>-</span></div>}
+                    </div>
+                  </td>
                   {isDrugSuggestionsAllowed && (
                     <td className="px-4 sm:px-6 lg:px-8 py-4">
                       <div className="flex flex-wrap gap-1.5">
@@ -1566,7 +1813,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               ))}
               {filteredList.length === 0 && (
                 <tr key="empty-results-row">
-                  <td colSpan={2 + (canSeeAppendixA2 ? 1 : 0) + (isDrugSuggestionsAllowed ? 1 : 0) + (canSeeNotes ? 1 : 0) + (!canManage && canSeeShortcuts ? 1 : 0) + (canManage ? 1 : 0)} className="px-8 py-20 text-center">
+                  <td colSpan={3 + (canSeeAppendixA2 ? 1 : 0) + (isDrugSuggestionsAllowed ? 1 : 0) + (canSeeNotes ? 1 : 0) + (!canManage && canSeeShortcuts ? 1 : 0) + (canManage ? 1 : 0)} className="px-8 py-20 text-center">
                     <div className={cn(
                       "w-16 lg:w-20 h-16 lg:h-20 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors",
                       isDarkMode ? "bg-slate-800" : "bg-slate-50"
@@ -1604,26 +1851,26 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
             <div className="flex items-center gap-2">
               <button
                 disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => prev - 1)}
+                onClick={() => setCurrentPage(1)}
                 className={cn(
                   "p-2 rounded-xl border transition-all disabled:opacity-30",
                   isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                 )}
+                title="Trang đầu"
               >
-                <ChevronLeft size={20} />
+                <ChevronsLeft size={20} />
               </button>
-              
               <div className="flex items-center gap-1">
-                {[...Array(Math.min(3, totalPages))].map((_, i) => {
+                {[...Array(Math.min(5, totalPages))].map((_, i) => {
                   let pageNum;
-                  if (totalPages <= 3) {
+                  if (totalPages <= 5) {
                     pageNum = i + 1;
-                  } else if (currentPage <= 2) {
+                  } else if (currentPage <= 3) {
                     pageNum = i + 1;
-                  } else if (currentPage >= totalPages - 1) {
-                    pageNum = totalPages - 2 + i;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
                   } else {
-                    pageNum = currentPage - 1 + i;
+                    pageNum = currentPage - 2 + i;
                   }
 
                   return (
@@ -1645,13 +1892,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
               <button
                 disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => prev + 1)}
+                onClick={() => setCurrentPage(totalPages)}
                 className={cn(
                   "p-2 rounded-xl border transition-all disabled:opacity-30",
                   isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                 )}
+                title="Trang cuối"
               >
-                <ChevronRight size={20} />
+                <ChevronsRight size={20} />
               </button>
             </div>
           </div>
@@ -1683,14 +1931,23 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-rose-500/10 text-rose-500 rounded-xl">
-                    <AlertTriangle size={20} />
+                  <div className={cn(
+                    "p-2 rounded-xl transition-colors",
+                    (batchAction === 'add' || batchAction === 'add_guide') ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
+                  )}>
+                    {(batchAction === 'add' || batchAction === 'add_guide') ? <FileSpreadsheet size={20} /> : <AlertTriangle size={20} />}
                   </div>
                   <div>
                     <h3 className={cn("text-lg font-black transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>
-                      Thiết lập Hạn chế hàng loạt
+                      {batchAction === 'add' ? 'Thêm ICD-10 hàng loạt' : 
+                       batchAction === 'add_guide' ? 'Thêm Hướng dẫn hàng loạt' : 
+                       'Thiết lập Hạn chế hàng loạt'}
                     </h3>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Đánh dấu ICD-10 Không được dùng</p>
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      {batchAction === 'add' ? 'Cập nhật danh sách mã bệnh' : 
+                       batchAction === 'add_guide' ? 'Cập nhật nội dung hướng dẫn mã hóa' : 
+                       'Đánh dấu trạng thái cho ICD-10'}
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -1771,12 +2028,23 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       >
                         THÊM
                       </button>
+                      <button
+                        onClick={() => setBatchAction('add_guide')}
+                        className={cn(
+                          "flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all",
+                          batchAction === 'add_guide' ? "bg-white dark:bg-slate-900 shadow-sm text-blue-400" : "text-slate-500"
+                        )}
+                      >
+                        HƯỚNG DẪN
+                      </button>
                     </div>
 
                     <div className="space-y-4">
                       <p className={cn("text-sm font-medium", isDarkMode ? "text-slate-400" : "text-slate-600")}>
                         {batchAction === 'add' ? (
                           <>Nhập danh sách mã ICD-10 theo định dạng <span className="font-bold">Mã | Tên bệnh</span> (Mỗi dòng một cặp).<br/><span className="text-[10px] opacity-70 italic text-emerald-500 font-bold">Ví dụ: A00.0 | Bệnh tả do Vibrio cholerae 01</span></>
+                        ) : batchAction === 'add_guide' ? (
+                          <>Nhập danh sách hướng dẫn theo định dạng <span className="font-bold">Mã | Nội dung hướng dẫn</span> (Mỗi dòng một cặp).<br/><span className="text-[10px] opacity-70 italic text-blue-400 font-bold">Ví dụ: A00 | Cần mã hóa thêm tác nhân gây bệnh (B95-B97)</span></>
                         ) : (
                           <>Nhập danh sách mã ICD-10 bạn muốn đánh dấu {
                             batchAction === 'restrict' ? <span className="font-black text-rose-500">"Không được dùng"</span> : 
@@ -1792,7 +2060,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         rows={8}
                         value={batchRestrictCodes}
                         onChange={(e) => setBatchRestrictCodes(e.target.value)}
-                        placeholder={batchAction === 'add' ? "A00.0 | Bệnh tả\nA01.1 | Bệnh phó thương hàn A" : "VD: A00, A01, B02.3, C00..."}
+                        placeholder={batchAction === 'add' ? "A00.0 | Bệnh tả\nA01.1 | Bệnh phó thương hàn A" : batchAction === 'add_guide' ? "A00 | Cần mã hóa thêm tác nhân (B95-B97)\nI10 | Mã hóa thêm bệnh tim (I11-I13)" : "VD: A00, A01, B02.3, C00..."}
                         className={cn(
                           "w-full px-4 py-4 border rounded-2xl focus:ring-2 transition-all font-mono text-sm",
                           batchAction === 'restrict' ? "focus:ring-rose-500" : 
@@ -1826,7 +2094,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                             batchAction === 'appendix_a4' ? "bg-blue-600 shadow-blue-200" : 
                             batchAction === 'appendix_a5' ? "bg-pink-600 shadow-pink-200" : 
                             batchAction === 'appendix_a6' ? "bg-cyan-600 shadow-cyan-200" : 
-                            "bg-emerald-600 shadow-emerald-200",
+                            batchAction === 'add_guide' ? "bg-blue-500 shadow-blue-200" :
+                             "bg-emerald-600 shadow-emerald-200",
                             isDarkMode && "shadow-none"
                           )}
                         >
@@ -1974,14 +2243,42 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   </div>
 
                   <div className="md:col-span-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên cũ (nếu có)</label>
+                    <input
+                      type="text"
+                      value={formData.oldName || ''}
+                      onChange={(e) => setFormData({ ...formData, oldName: e.target.value })}
+                      placeholder="Nhập tên cũ của bệnh nếu có sự thay đổi..."
+                      className={cn(
+                        "w-full px-4 py-2.5 sm:py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                      )}
+                    />
+                  </div>
+
+                  <div className="md:col-span-3">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ghi chú</label>
                     <textarea
-                      rows={3}
+                      rows={2}
                       value={formData.notes || ''}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                       placeholder="Nhập ghi chú hoặc hướng dẫn điều trị nhanh..."
                       className={cn(
                         "w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all font-medium text-sm no-scrollbar",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                      )}
+                    />
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Hướng dẫn mã hóa (WHO 2019)</label>
+                    <textarea
+                      rows={2}
+                      value={formData.guide || ''}
+                      onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
+                      placeholder="Nhập hướng dẫn mã hóa bổ sung..."
+                      className={cn(
+                        "w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 transition-all font-medium text-sm no-scrollbar",
                         isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
                       )}
                     />
@@ -2123,6 +2420,52 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           Mã bệnh ở nam giới
                         </span>
                         <span className="text-[10px] font-bold text-slate-500">Mã bệnh chỉ có hoặc chủ yếu ở nam giới</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer group select-none">
+                      <div 
+                        onClick={() => setFormData({ ...formData, isNew: !formData.isNew })}
+                        className={cn(
+                          "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                          formData.isNew 
+                            ? "bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-200 dark:shadow-none" 
+                            : (isDarkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white shadow-sm hover:border-emerald-400")
+                        )}
+                      >
+                        {formData.isNew && <Check size={16} className="text-white" strokeWidth={4} />}
+                      </div>
+                      <div className="flex flex-col" onClick={() => setFormData({ ...formData, isNew: !formData.isNew })}>
+                        <span className={cn(
+                          "text-sm font-black transition-all",
+                          isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-emerald-500"
+                        )}>
+                          Mã mới
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">Mã bệnh mới được bổ sung</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 cursor-pointer group select-none">
+                      <div 
+                        onClick={() => setFormData({ ...formData, isExpired: !formData.isExpired })}
+                        className={cn(
+                          "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                          formData.isExpired 
+                            ? "bg-slate-500 border-slate-500 shadow-lg shadow-slate-200 dark:shadow-none" 
+                            : (isDarkMode ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white shadow-sm hover:border-slate-400")
+                        )}
+                      >
+                        {formData.isExpired && <Check size={16} className="text-white" strokeWidth={4} />}
+                      </div>
+                      <div className="flex flex-col" onClick={() => setFormData({ ...formData, isExpired: !formData.isExpired })}>
+                        <span className={cn(
+                          "text-sm font-black transition-all",
+                          isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-slate-500"
+                        )}>
+                          Mã hết hiệu lực
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">Mã bệnh đã bị loại bỏ hoặc không còn hiệu lực</span>
                       </div>
                     </label>
                   </div>

@@ -496,7 +496,8 @@ export default function App() {
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      limit(50)
     );
 
     const unsubNotifications = onSnapshot(q, (snapshot) => {

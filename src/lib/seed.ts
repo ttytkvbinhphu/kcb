@@ -94,7 +94,7 @@ export const seedInitialData = async (userId?: string) => {
   try {
     // Seed drugs
     const drugsRef = collection(db, 'drugs');
-    const drugsSnap = await getDocs(drugsRef);
+    const drugsSnap = await getDocs(query(drugsRef, limit(1)));
     if (drugsSnap.empty) {
       for (const drug of MOCK_DRUGS) {
         await setDoc(doc(db, 'drugs', drug.id), drug);
@@ -103,7 +103,7 @@ export const seedInitialData = async (userId?: string) => {
 
     // Seed ADR Catalog
     const adrCatRef = collection(db, 'adr_catalog');
-    const adrCatSnap = await getDocs(adrCatRef);
+    const adrCatSnap = await getDocs(query(adrCatRef, limit(1)));
     if (adrCatSnap.empty) {
       for (const item of MOCK_ADR_CATALOG) {
         await setDoc(doc(db, 'adr_catalog', item.id), item);
@@ -112,7 +112,7 @@ export const seedInitialData = async (userId?: string) => {
 
     // Seed ADR Reports and migration
     const adrReportsRef = collection(db, 'adr_reports');
-    const adrReportsSnap = await getDocs(adrReportsRef);
+    const adrReportsSnap = await getDocs(query(adrReportsRef, limit(1)));
     if (adrReportsSnap.empty && userId) {
       const mockReports = [
         {
@@ -140,7 +140,7 @@ export const seedInitialData = async (userId?: string) => {
 
     // Seed system config if empty
     const titlesRef = collection(db, 'config_titles');
-    const titlesSnap = await getDocs(titlesRef);
+    const titlesSnap = await getDocs(query(titlesRef, limit(1)));
     if (titlesSnap.empty) {
       const defaultTitles = ['Bác sĩ', 'Dược sĩ', 'Điều dưỡng'];
       for (let i = 0; i < defaultTitles.length; i++) {
@@ -149,7 +149,7 @@ export const seedInitialData = async (userId?: string) => {
     }
 
     const positionsRef = collection(db, 'config_positions');
-    const positionsSnap = await getDocs(positionsRef);
+    const positionsSnap = await getDocs(query(positionsRef, limit(1)));
     if (positionsSnap.empty) {
       const defaultPositions = ['Giám đốc', 'Phó giám đốc', 'Trưởng khoa', 'Phó khoa', 'Nhân viên'];
       for (let i = 0; i < defaultPositions.length; i++) {
@@ -158,7 +158,7 @@ export const seedInitialData = async (userId?: string) => {
     }
 
     const specialtiesRef = collection(db, 'config_specialties');
-    const specialtiesSnap = await getDocs(specialtiesRef);
+    const specialtiesSnap = await getDocs(query(specialtiesRef, limit(1)));
     if (specialtiesSnap.empty) {
       const defaultSpecialties = ['Không', 'Tiến sĩ', 'Thạc sĩ', 'Chuyên khoa I', 'Chuyên khoa II', 'Dược lâm sàng'];
       for (let i = 0; i < defaultSpecialties.length; i++) {
@@ -167,7 +167,7 @@ export const seedInitialData = async (userId?: string) => {
     }
 
     const rolesRef = collection(db, 'config_roles');
-    const rolesSnap = await getDocs(rolesRef);
+    const rolesSnap = await getDocs(query(rolesRef, limit(1)));
     if (rolesSnap.empty) {
       const defaultRoles = [
         { id: 'admin', name: 'Quản trị viên' },
@@ -182,7 +182,7 @@ export const seedInitialData = async (userId?: string) => {
     }
 
     const permsRef = collection(db, 'role_permissions');
-    const permsSnap = await getDocs(permsRef);
+    const permsSnap = await getDocs(query(permsRef, limit(1)));
     
     // Ensure specialized operator roles have permissions even if collection is not empty
     const requiredRolePerms = [
@@ -202,7 +202,7 @@ export const seedInitialData = async (userId?: string) => {
     }
 
     const titlePermsRef = collection(db, 'title_permissions');
-    const titlePermsSnap = await getDocs(titlePermsRef);
+    const titlePermsSnap = await getDocs(query(titlePermsRef, limit(1)));
     if (titlePermsSnap.empty) {
       const defaultTitlePerms = [
         { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
