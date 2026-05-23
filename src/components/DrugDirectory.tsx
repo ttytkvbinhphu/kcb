@@ -235,6 +235,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     generalAdministration: '',
     isClosed: false,
     isRx: false,
+    isNew: false,
     status: 'active',
     stockStatus: 'available',
     expiryStatus: 'valid',
@@ -684,6 +685,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
       return matchesSearch && matchesGroup && matchesIngredient && matchesStock && matchesDosageForm;
     }).sort((a, b) => {
+      // Prioritize new drugs (isNew) to the top
+      const aNew = !!a.isNew;
+      const bNew = !!b.isNew;
+      if (aNew && !bNew) return -1;
+      if (!aNew && bNew) return 1;
+
       // Sort "Hết hàng" (out of stock) to the bottom
       const aOut = a.stockStatus === 'out';
       const bOut = b.stockStatus === 'out';
@@ -757,6 +764,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         pdfUrl: drug.pdfUrl || '',
         administrationRoute: drug.administrationRoute || '',
         isRx: !!drug.isRx,
+        isNew: !!drug.isNew,
         stockStatus: drug.stockStatus || 'available',
         expiryStatus: drug.expiryStatus || 'valid',
         activeIngredients: (drug.activeIngredients || []).map((ing: any) => {
@@ -822,6 +830,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         administrationRoute: '',
         isClosed: false,
         isRx: false,
+        isNew: false,
         generalAdministration: '',
         dosageAndAdministration: [],
         precautions: '',
@@ -1123,7 +1132,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
       const { generateGeminiContent } = await import('../lib/gemini');
       const text = await generateGeminiContent(
-        "gemini-3-flash-preview",
+        "gemini-3.5-flash",
         [
           {
             parts: [
@@ -1865,6 +1874,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
               onClose={() => setViewMode('drugs')}
               inline={true}
               externalTrigger={catalogAddTrigger}
+              onDrugClick={handleShowDrugDetail}
             />
           </div>
         </div>
@@ -2442,6 +2452,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                         )}>{drug.name}</h3>
                         {drug.isRx && (
                           <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-rose-500/10 text-rose-500 rounded-md font-black border border-rose-500/20">Rx</span>
+                        )}
+                        {drug.isNew && (
+                          <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded-md font-black border border-emerald-500/20 flex items-center gap-0.5"><Sparkles size={8} className="text-emerald-500" />Mới</span>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -4047,6 +4060,55 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               >
                                 <span className={cn("text-[10px] font-black uppercase tracking-widest", formData.expiryStatus === 'expired' ? "opacity-100" : "opacity-40")}>Hết hạn</span>
                                 <div className={cn("w-1.5 h-1.5 rounded-full", formData.expiryStatus === 'expired' ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" : "bg-slate-300")} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* New Drug Marking Setting */}
+                          <div className={cn(
+                            "p-4 sm:p-6 rounded-[24px] border transition-all",
+                            isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
+                          )}>
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className={cn(
+                                "p-2.5 rounded-xl",
+                                isDarkMode ? "bg-emerald-500/20 text-emerald-400" : "bg-emerald-50 text-emerald-600"
+                              )}>
+                                <Sparkles size={20} />
+                              </div>
+                              <div>
+                                <h4 className={cn("text-sm font-black uppercase tracking-widest", isDarkMode ? "text-slate-200" : "text-slate-700")}>Đánh dấu Thuốc mới</h4>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Hiển thị nhãn Thuốc mới cho người dùng</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, isNew: true })}
+                                className={cn(
+                                  "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all",
+                                  formData.isNew
+                                    ? (isDarkMode ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-md translate-y-[-2px]")
+                                    : (isDarkMode ? "bg-slate-900/50 border-slate-800 text-slate-500" : "bg-white border-slate-200 text-slate-400 hover:border-emerald-300")
+                                )}
+                              >
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest", formData.isNew ? "opacity-100" : "opacity-40")}>Đánh dấu Mới</span>
+                                <div className={cn("w-1.5 h-1.5 rounded-full", formData.isNew ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-slate-300")} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, isNew: false })}
+                                className={cn(
+                                  "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all",
+                                  !formData.isNew
+                                    ? (isDarkMode ? "bg-slate-700/50 border-slate-600 text-slate-300" : "bg-slate-100 border-slate-300 text-slate-600 shadow-sm translate-y-[-2px]")
+                                    : (isDarkMode ? "bg-slate-900/50 border-slate-800 text-slate-500" : "bg-white border-slate-200 text-slate-400 hover:border-slate-300")
+                                )}
+                              >
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest", !formData.isNew ? "opacity-100" : "opacity-40")}>Không gắn nhãn</span>
+                                <div className={cn("w-1.5 h-1.5 rounded-full", !formData.isNew ? "bg-slate-500 shadow-[0_0_8px_rgba(100,116,139,0.5)]" : "bg-slate-300")} />
                               </button>
                             </div>
                           </div>
@@ -5847,6 +5909,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             type="excipient"
             isDarkMode={isDarkMode}
             onClose={() => setIsExcipientModalOpen(false)}
+            onDrugClick={handleShowDrugDetail}
           />
         )}
       </AnimatePresence>

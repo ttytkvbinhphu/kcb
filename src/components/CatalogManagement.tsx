@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search, Check } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search, Check, Pill } from 'lucide-react';
 import { Ingredient, Excipient } from '../types';
 import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, sanitizeData } from '../firebase';
 import { cn } from '../lib/utils';
@@ -12,9 +12,17 @@ interface CatalogManagementProps {
   onClose?: () => void;
   inline?: boolean;
   externalTrigger?: number;
+  onDrugClick?: (drug: any) => void;
 }
 
-const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode, onClose, inline = false, externalTrigger = 0 }) => {
+const CatalogManagement: React.FC<CatalogManagementProps> = ({ 
+  type, 
+  isDarkMode, 
+  onClose, 
+  inline = false, 
+  externalTrigger = 0,
+  onDrugClick
+}) => {
   const collectionName = 
     type === 'ingredient' ? 'ingredients' : 
     type === 'excipient' ? 'excipients' : 
@@ -32,6 +40,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
   const [items, setItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [relatedItems, setRelatedItems] = useState<any[]>([]);
+  const [drugs, setDrugs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,6 +49,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
   const [searchTerm, setSearchTerm] = useState('');
   const [currentAlias, setCurrentAlias] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedDetailExcipient, setSelectedDetailExcipient] = useState<any | null>(null);
   
   const [formData, setFormData] = useState<any>({
     name: '',
@@ -103,6 +113,52 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
       handleOpenModal();
     }
   }, [externalTrigger]);
+
+  useEffect(() => {
+    if (type !== 'excipient') return;
+    const q = query(collection(db, 'drugs'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setDrugs(snapshot.docs.map(doc => doc.data()));
+    }, (error) => {
+      console.error("Error fetching drugs for CatalogManagement:", error);
+    });
+    return () => unsubscribe();
+  }, [type]);
+
+  const getDrugsWithExcipient = (excipient: any) => {
+    if (type !== 'excipient') return [];
+    
+    const nameLower = (excipient.name || '').toLowerCase().trim();
+    if (!nameLower) return [];
+    
+    const aliases = (excipient.aliases || []).map((a: string) => a.toLowerCase().trim());
+    if (excipient.alias) {
+      aliases.push(excipient.alias.toLowerCase().trim());
+    }
+    
+    return drugs.filter(drug => {
+      const drugExStr = (drug.excipients || '').toLowerCase().trim();
+      if (!drugExStr) return false;
+      
+      // Direct whole string match
+      if (drugExStr === nameLower || aliases.includes(drugExStr)) return true;
+      
+      // Comma/semicolon/newline separation check
+      const parts = drugExStr.split(/[,;\n]/).map(p => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (part === nameLower || aliases.includes(part)) {
+          return true;
+        }
+        
+        // Match base name if the part has extra descriptors, e.g., "Lactose khan" matches "Lactose"
+        if (nameLower.length >= 4 && part.includes(nameLower)) return true;
+        for (const alias of aliases) {
+          if (alias.length >= 4 && part.includes(alias)) return true;
+        }
+      }
+      return false;
+    });
+  };
 
   const handleOpenModal = (item?: any) => {
     if (item) {
@@ -291,14 +347,50 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
         ) : filteredItems.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filteredItems.map(item => (
-              <div key={item.id} className={cn(
-                "p-4 rounded-2xl border transition-all group relative",
-                isDarkMode ? "bg-slate-900 border-slate-800 hover:border-indigo-900/50" : "bg-white border-slate-100 hover:border-indigo-200 shadow-sm"
-              )}>
+              <div 
+                key={item.id} 
+                onClick={() => {
+                  if (type === 'excipient') {
+                    setSelectedDetailExcipient(item);
+                  }
+                }}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all group relative",
+                  type === 'excipient' && "cursor-pointer hover:shadow-md hover:bg-slate-50/50 dark:hover:bg-slate-800/20",
+                  isDarkMode ? "bg-slate-900 border-slate-800 hover:border-indigo-900/50" : "bg-white border-slate-100 hover:border-indigo-200 shadow-sm"
+                )}
+              >
                  <div className="flex justify-between items-start">
                   <div className="flex-1 overflow-hidden pr-8">
-                     <h4 className={cn("font-bold text-sm truncate mb-1 flex items-center gap-2", isDarkMode ? "text-white" : "text-slate-900")}>
-                       {item.name}
+                     <h4 className={cn("font-bold text-sm mb-1 flex flex-wrap items-center gap-2", isDarkMode ? "text-white" : "text-slate-900")}>
+                        {type === 'excipient' ? (
+                          <span className="text-left font-bold text-sm hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">
+                            {item.name}
+                          </span>
+                        ) : (
+                          <span className="truncate max-w-[150px] sm:max-w-[260px]">{item.name}</span>
+                        )}
+                        {type === 'excipient' && (() => {
+                          const matchingDrugs = getDrugsWithExcipient(item);
+                          if (matchingDrugs.length > 0) {
+                            return (
+                              <span className={cn(
+                                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border shrink-0",
+                                isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-200/50"
+                              )}>
+                                <Pill size={8} className="text-emerald-500" /> {matchingDrugs.length} thuốc
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className={cn(
+                              "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border shrink-0 opacity-60",
+                              isDarkMode ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-400 border-slate-200"
+                            )}>
+                              Chưa có thuốc
+                            </span>
+                          );
+                        })()}
                        {(type === 'ingredient_category' || type === 'excipient_category') && (
                          <span className={cn(
                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black",
@@ -346,6 +438,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                          )}
                        </div>
                      )}
+
                     {type === 'company' && (item.address || item.phone) && (
                       <div className="flex flex-col gap-0.5 mb-1">
                         {item.address && (
@@ -362,7 +455,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                   </div>
                   <div className="absolute right-3 top-3 flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                      <button 
-                      onClick={() => handleOpenModal(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenModal(item);
+                      }}
                       className={cn(
                         "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
                         isDarkMode ? "text-slate-400 hover:text-indigo-400 hover:bg-indigo-900/30" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
@@ -371,7 +467,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                       <Edit2 size={14} />
                     </button>
                     <button 
-                      onClick={() => handleDelete(item.id, item.name)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(item.id, item.name);
+                      }}
                       className={cn(
                         "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
                         isDarkMode ? "text-slate-400 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
@@ -666,6 +765,186 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({ type, isDarkMode,
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+        {selectedDetailExcipient && (
+          <div 
+            onClick={() => setSelectedDetailExcipient(null)}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={cn(
+                "w-full h-full sm:h-auto sm:max-w-xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[80vh]",
+                isDarkMode ? "bg-slate-900 border border-slate-800" : "bg-white"
+              )}
+            >
+              <div className={cn(
+                "p-4 sm:p-6 border-b flex items-center justify-between",
+                isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-white"
+              )}>
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                    <Database size={20} />
+                  </div>
+                  <div>
+                    <h4 className={cn("font-black text-base sm:text-lg", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Chi tiết Tá dược
+                    </h4>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Thông tin hoạt chất phụ trợ</span>
+                  </div>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setSelectedDetailExcipient(null)} 
+                  className={cn(
+                    "p-2 rounded-xl transition-colors",
+                    isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"
+                  )}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scrollbar">
+                {/* Name and Categories */}
+                <div>
+                  <h3 className={cn("text-xl font-extrabold mb-1.5", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                    {selectedDetailExcipient.name}
+                  </h3>
+                  
+                  {/* Category badges */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedDetailExcipient.categoryIds && selectedDetailExcipient.categoryIds.length > 0 ? (
+                      selectedDetailExcipient.categoryIds.map((catId: string) => (
+                        <span key={catId} className={cn(
+                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border",
+                          isDarkMode ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                        )}>
+                          {categories.find(c => c.id === catId)?.name || 'Không rõ'}
+                        </span>
+                      ))
+                    ) : selectedDetailExcipient.categoryId ? (
+                      <span className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border",
+                        isDarkMode ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                      )}>
+                        {categories.find(c => c.id === selectedDetailExcipient.categoryId)?.name || 'Chưa phân loại'}
+                      </span>
+                    ) : (
+                      <span className={cn(
+                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border",
+                        isDarkMode ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-400 border-slate-200"
+                      )}>
+                        Chưa có phân loại
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Aliases */}
+                {((selectedDetailExcipient.aliases && selectedDetailExcipient.aliases.length > 0) || selectedDetailExcipient.alias) && (
+                  <div>
+                    <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi khác (Aliases)</h5>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(selectedDetailExcipient.aliases || (selectedDetailExcipient.alias ? [selectedDetailExcipient.alias] : [])).map((alias: string, idx: number) => (
+                        <span 
+                          key={`${alias}-${idx}`} 
+                          className={cn(
+                            "px-2.5 py-1 rounded-lg text-[11px] font-bold border",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200 text-slate-600"
+                          )}
+                        >
+                          {alias}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                <div>
+                  <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Mô tả tá dược</h5>
+                  <div className={cn(
+                    "p-3.5 rounded-2xl border text-xs sm:text-sm leading-relaxed font-semibold",
+                    isDarkMode ? "bg-slate-800/50 border-slate-800 text-slate-300" : "bg-slate-50 border-slate-100 text-slate-600"
+                  )}>
+                    {selectedDetailExcipient.description || "Chưa có thông tin mô tả chi tiết cho tá dược này."}
+                  </div>
+                </div>
+
+                {/* Associated Drugs */}
+                <div>
+                  <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center justify-between">
+                    <span>Thuốc có chứa tá dược này ({getDrugsWithExcipient(selectedDetailExcipient).length})</span>
+                  </h5>
+                  {(() => {
+                    const matchingDrugs = getDrugsWithExcipient(selectedDetailExcipient);
+                    if (matchingDrugs.length === 0) {
+                      return (
+                        <p className="text-xs text-slate-400 italic font-medium py-4 text-center">
+                          Chưa có thuốc nào trong hệ thống được định nghĩa chứa tá dược này.
+                        </p>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {matchingDrugs.map((d, index) => (
+                          <div
+                            key={d.id || index}
+                            className={cn(
+                              "p-3 rounded-xl border flex items-center justify-between transition-all group/item",
+                              isDarkMode ? "bg-slate-800/30 border-slate-800 hover:border-slate-700 hover:bg-slate-800/60" : "bg-white border-slate-100 hover:border-slate-200 shadow-sm"
+                            )}
+                          >
+                            <div className="flex items-center gap-2 overflow-hidden mr-2">
+                              <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-lg shrink-0">
+                                <Pill size={14} />
+                              </div>
+                              <span className={cn("text-xs font-bold truncate", isDarkMode ? "text-slate-200" : "text-slate-850")}>
+                                {d.name}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDetailExcipient(null);
+                                onDrugClick?.(d);
+                              }}
+                              className={cn(
+                                "px-2.5 py-1 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer shadow-sm border shrink-0",
+                                isDarkMode ? "bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-700" : "bg-indigo-50 border-indigo-100 text-indigo-700 hover:bg-indigo-100"
+                              )}
+                            >
+                              Xem chi tiết
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-4 sm:p-6 border-t flex justify-end",
+                isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-100 bg-slate-50"
+              )}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetailExcipient(null)}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95",
+                    isDarkMode ? "bg-slate-800 text-slate-200 hover:bg-slate-700" : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
+                  )}
+                >
+                  Đóng
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

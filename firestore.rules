@@ -402,7 +402,8 @@ service cloud.firestore {
 
     match /ingredients/{id} {
       allow read: if true;
-      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
     }
 
     match /ingredient_categories/{id} {
@@ -412,7 +413,8 @@ service cloud.firestore {
 
     match /excipients/{id} {
       allow read: if true;
-      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
     }
 
     match /excipient_categories/{id} {
@@ -422,7 +424,8 @@ service cloud.firestore {
 
     match /companies/{id} {
       allow read: if true;
-      allow write: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow create, update: if isOperator() && isValidCatalogEntry(request.resource.data);
+      allow delete: if isOperator();
     }
 
     // Prescriptions: Operators can create and read their own prescriptions. Admins can read all.

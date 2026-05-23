@@ -243,7 +243,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
 
       const { generateGeminiContent } = await import('../lib/gemini');
       const text = await generateGeminiContent(
-        "gemini-3-flash-preview",
+        "gemini-3.5-flash",
         [{ parts: [{ text: prompt }] }],
         {
           responseMimeType: "application/json",

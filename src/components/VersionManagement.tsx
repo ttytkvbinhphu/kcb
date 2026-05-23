@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { History, Plus, X, Save, Trash2, Calendar, FileText, CheckCircle2, AlertCircle, Info, Sparkles, Wrench, ChevronRight, Maximize2 } from 'lucide-react';
+import { History, Plus, X, Save, Trash2, Calendar, FileText, CheckCircle2, AlertCircle, Info, Sparkles, Wrench, ChevronRight, Maximize2, ChevronUp, ChevronDown } from 'lucide-react';
 import { db, collection, query, orderBy, onSnapshot, setDoc, doc, deleteDoc, serverTimestamp, handleFirestoreError, OperationType } from '../firebase';
 import { VersionLog, UserProfile } from '../types';
 import { cn, getBustedPhotoURL } from '../lib/utils';
@@ -43,6 +43,24 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
     });
     return () => unsubscribe();
   }, [isAdmin]);
+
+  const moveChange = (index: number, direction: 'up' | 'down') => {
+    if (!editingVersion || !editingVersion.changes) return;
+    const count = editingVersion.changes.length;
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === count - 1) return;
+
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    const updatedChanges = [...editingVersion.changes];
+    const temp = updatedChanges[index];
+    updatedChanges[index] = updatedChanges[newIndex];
+    updatedChanges[newIndex] = temp;
+
+    setEditingVersion({
+      ...editingVersion,
+      changes: updatedChanges
+    });
+  };
 
   const handleSave = async () => {
     if (!editingVersion?.versionName || !editingVersion?.releaseDate) return;
@@ -575,12 +593,42 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                             isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
                           )}
                         />
+                        <div className="flex flex-col justify-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => moveChange(idx, 'up')}
+                            className={cn(
+                              "p-1 rounded-md transition-all",
+                              idx === 0 
+                                ? "text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-20" 
+                                : "text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800"
+                            )}
+                            title="Di chuyển lên"
+                          >
+                            <ChevronUp size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === (editingVersion?.changes?.length || 0) - 1}
+                            onClick={() => moveChange(idx, 'down')}
+                            className={cn(
+                              "p-1 rounded-md transition-all",
+                              idx === (editingVersion?.changes?.length || 0) - 1 
+                                ? "text-slate-300 dark:text-slate-700 cursor-not-allowed opacity-20" 
+                                : "text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-slate-800"
+                            )}
+                            title="Di chuyển xuống"
+                          >
+                            <ChevronDown size={12} />
+                          </button>
+                        </div>
                         <button 
                           onClick={() => {
                             const changes = editingVersion?.changes?.filter((_, i) => i !== idx);
                             setEditingVersion({ ...editingVersion!, changes });
                           }}
-                          className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors"
+                          className="p-2 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors shrink-0"
                         >
                           <Trash2 size={16} />
                         </button>

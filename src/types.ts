@@ -31,6 +31,7 @@ export interface Drug {
   leafletUpdateDate?: string;
   isClosed?: boolean;
   isRx?: boolean;
+  isNew?: boolean;
   status?: 'active' | 'suspended';
   stockStatus?: 'available' | 'low' | 'out' | string;
   expiryStatus?: 'valid' | 'expiring' | 'expired' | string;

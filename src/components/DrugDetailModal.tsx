@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink, Briefcase, Lock, Pause } from 'lucide-react';
+import { X, Pill, ShieldAlert, AlertTriangle, Info, BookOpen, Activity, Clock, UserCheck, Zap, Star, FileText, RefreshCw, Calendar, Heart, Baby, Car, AlertCircle, ExternalLink, Briefcase, Lock, Pause, Sparkles } from 'lucide-react';
 import { Drug, ICD10, Ingredient } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -231,14 +231,21 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                   </button>
 
                   <div className="flex items-center gap-4 lg:gap-6">
-                    <div className={cn(
-                      "relative p-1 rounded-[20px] lg:rounded-[28px] shadow-2xl border overflow-hidden w-16 h-16 lg:w-24 lg:h-24 flex items-center justify-center shrink-0",
-                      isDarkMode ? "bg-white/10 border-white/20" : "bg-white border-slate-100"
-                    )}>
-                      {drug.avatarUrl ? (
-                        <img src={drug.avatarUrl} alt={drug.name} className="w-full h-full object-cover rounded-[18px] lg:rounded-[24px]" referrerPolicy="no-referrer" />
-                      ) : (
-                        <Pill size={32} className="text-blue-500" />
+                    <div className="relative shrink-0">
+                      <div className={cn(
+                        "relative p-1 rounded-[20px] lg:rounded-[28px] shadow-2xl border overflow-hidden w-16 h-16 lg:w-24 lg:h-24 flex items-center justify-center",
+                        isDarkMode ? "bg-white/10 border-white/20" : "bg-white border-slate-100"
+                      )}>
+                        {drug.avatarUrl ? (
+                          <img src={drug.avatarUrl} alt={drug.name} className="w-full h-full object-cover rounded-[18px] lg:rounded-[24px]" referrerPolicy="no-referrer" />
+                        ) : (
+                          <Pill size={32} className="text-blue-500" />
+                        )}
+                      </div>
+                      {drug.isNew && (
+                        <span className="absolute -top-1 -right-1 z-10 bg-emerald-500 text-white rounded-full text-[8.5px] font-black px-1.5 py-0.5 shadow-md flex items-center justify-center border border-white dark:border-slate-800 lg:hidden leading-none scale-90 origin-top-right">
+                          Mới
+                        </span>
                       )}
                     </div>
                     <div className="min-w-0">
@@ -260,6 +267,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         )}
                         {drug.isRx && (
                           <span className="shrink-0 px-2 py-0.5 bg-rose-500/20 text-rose-500 rounded-lg text-[10px] font-black border border-rose-500/30">Rx</span>
+                        )}
+                        {drug.isNew && (
+                          <span className="shrink-0 hidden lg:flex px-2 py-0.5 bg-emerald-500/20 text-emerald-500 rounded-lg text-[10px] font-black border border-emerald-500/30 items-center gap-1"><Sparkles size={10} />THUỐC MỚI</span>
                         )}
                         {drug.isClosed && (
                           <span className={cn(
