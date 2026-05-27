@@ -112,6 +112,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
   const toggleCategoryFilter = (category: string) => {
     setIcdCategoryFilter(prev => prev === category ? 'all' : category);
+    scrollToTop();
+  };
+
+  const scrollToTop = () => {
+    const scrollElement = document.querySelector('.drug-list-container') || document.querySelector('main');
+    if (scrollElement) {
+      scrollElement.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const [formData, setFormData] = useState<ICD10>({
@@ -590,7 +598,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   </button>
                 )}
                 <button
-                  onClick={() => setShowFilters(!showFilters)}
+                  onClick={() => {
+                    setShowFilters(!showFilters);
+                    scrollToTop();
+                  }}
                   className={cn(
                     "p-1 rounded-md transition-all",
                     showFilters 
@@ -636,7 +647,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 )}
               </div>
               <button
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={() => {
+                  setShowFilters(!showFilters);
+                  scrollToTop();
+                }}
                 className={cn(
                   "p-3 rounded-2xl border transition-all",
                   showFilters 
@@ -1079,7 +1093,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
                   )}
                 >
-                  Tất cả ICD-10
+                  Tất cả
                 </button>
                 {canSeeAppendixA2 && (
                   <button

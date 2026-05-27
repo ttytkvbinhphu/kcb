@@ -26,6 +26,84 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.post("/api/document/fetch-url", async (req, res) => {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "Yêu cầu cung cấp URL" });
+    }
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Lỗi tải trang: ${response.status} ${response.statusText}`);
+      }
+      const html = await response.text();
+      
+      // Basic text extraction from HTML to prevent overhead, scripts, and styling tags
+      let cleanText = html
+        .replace(/<script[^>]*>([\s\S]*?)<\/script>/gi, '')
+        .replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ') // Strip all HTML tags
+        .replace(/\s+/g, ' ')     // Collapse whitespace
+        .trim();
+        
+      if (cleanText.length > 150000) {
+        cleanText = cleanText.substring(0, 150000) + "\n\n[Nội dung đã được rút gọn do quá dài...]";
+      }
+      
+      res.json({ text: cleanText });
+    } catch (e: any) {
+      console.error("Fetch URL failed:", e);
+      res.status(500).json({ error: e.message || "Không thể tải nội dung từ liên kết này." });
+    }
+  });
+
+  app.post("/api/document/fetch-binary", async (req, res) => {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "Yêu cầu cung cấp URL" });
+    }
+    try {
+      let targetUrl = url.trim();
+      
+      // Automatically normalize Google Drive files for raw download
+      if (targetUrl.includes('drive.google.com')) {
+        let fileId = "";
+        if (targetUrl.includes('/file/d/')) {
+          const match = targetUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+          if (match && match[1]) fileId = match[1];
+        } else if (targetUrl.includes('?id=')) {
+          const match = targetUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          if (match && match[1]) fileId = match[1];
+        }
+        if (fileId) {
+          targetUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        }
+      }
+
+      const response = await fetch(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Lỗi tải tệp: ${response.status} ${response.statusText}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const base64 = buffer.toString('base64');
+      res.json({ base64 });
+    } catch (e: any) {
+      console.error("Fetch binary failed:", e);
+      res.status(500).json({ error: e.message || "Không thể tải tệp tin từ liên kết này." });
+    }
+  });
+
   app.post("/api/gemini/generate", async (req, res) => {
     if (!ai) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });

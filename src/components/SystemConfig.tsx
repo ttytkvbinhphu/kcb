@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles } from 'lucide-react';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -53,12 +53,14 @@ const TITLE_TABS = [
   { id: 'view_patients', label: 'Tra cứu bệnh nhân' },
   { id: 'view_prescription', label: 'Kê toa thử' },
   { id: 'view_todo', label: 'Việc cần làm' },
+  { id: 'view_doc_lookup', label: 'Tra cứu văn bản' },
 ];
 
 const ALL_FEATURES = [
   { id: 'dashboard', label: 'Workspace', icon: LayoutGrid, desc: 'Màn hình chính và thống kê' },
   { id: 'view_calendar', label: 'Lịch công tác', icon: Calendar, desc: 'Quản lý lịch trực và hội chẩn' },
   { id: 'view_notes', label: 'Ghi chú', icon: MessageSquare, desc: 'Ghi chú lâm sàng cá nhân' },
+  { id: 'view_doc_lookup', label: 'Tra cứu văn bản', icon: FileSearch, desc: 'Tóm tắt & phân tích tài liệu bằng AI' },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill, desc: 'Tra cứu & Quản lý danh mục thuốc' },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList, desc: 'Mã bệnh quốc tế' },
   { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert, desc: 'Kiểm tra tương tác thuốc' },
@@ -915,6 +917,116 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       </span>
                     </div>
                   </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/50 border-cyan-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
+                      Gợi ý Ghi liều — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showDosageSuggestionsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showDosageSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-amber-50/50 border-amber-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                      Phân loại Thận trọng — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.precautionTypeMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionTypeMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-teal-50/50 border-teal-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-teal-400" : "text-teal-700")}>
+                      <span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>
+                      Mức độ nghiêm trọng — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.precautionSeverityMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionSeverityMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      3 tháng thai kỳ (Đầu/Giữa/Cuối) — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.pregnancyTrimestersMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, pregnancyTrimestersMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-sky-50/50 border-sky-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-sky-400" : "text-sky-700")}>
+                      <span className="w-2 h-2 rounded-full bg-sky-500 inline-block"></span>
+                      Nhãn chọn nhanh Thận trọng — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.quickSelectTagsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, quickSelectTagsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -993,6 +1105,83 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               </div>
             )}
 
+            {feature.id === 'view_doc_lookup' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Internal Document Display Limit */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Hiển thị văn bản nội bộ
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showInternalDocsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showInternalDocsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Summary Limit */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Tóm tắt văn bản (AI)
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showSummaryMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showSummaryMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Highlights Limit */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                      Điểm nhấn y văn
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showHighlightsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showHighlightsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {feature.id === 'view_social' && (
               <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình Mạng xã hội</label>
@@ -1007,11 +1196,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Đang chờ duyệt' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
+                      const allOptions = Array.from(
+                        new Map(
+                          [
+                            ...roles,
+                            { id: 'unapproved', name: 'Đang chờ duyệt' },
+                            { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                          ].map(o => [o.id, o])
+                        ).values()
+                      );
                       return allOptions.map(role => {
                         const allowedRoles: string[] = settings.postingAllowedRoles || [];
                         const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
@@ -1054,11 +1247,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Đang chờ duyệt' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
+                      const allOptions = Array.from(
+                        new Map(
+                          [
+                            ...roles,
+                            { id: 'unapproved', name: 'Đang chờ duyệt' },
+                            { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                          ].map(o => [o.id, o])
+                        ).values()
+                      );
                       return allOptions.map(role => {
                         const allowedRoles: string[] = settings.commentingAllowedRoles || [];
                         const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
@@ -1101,11 +1298,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Đang chờ duyệt' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
+                      const allOptions = Array.from(
+                        new Map(
+                          [
+                            ...roles,
+                            { id: 'unapproved', name: 'Đang chờ duyệt' },
+                            { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                          ].map(o => [o.id, o])
+                        ).values()
+                      );
                       return allOptions.map(role => {
                         const allowedRoles: string[] = settings.moderatorRoles || [];
                         const isAllowed = allowedRoles.includes(role.id);
@@ -1150,11 +1351,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Đang chờ duyệt' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
+                      const allOptions = Array.from(
+                        new Map(
+                          [
+                            ...roles,
+                            { id: 'unapproved', name: 'Đang chờ duyệt' },
+                            { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                          ].map(o => [o.id, o])
+                        ).values()
+                      );
                       return allOptions.map(role => {
                         const catalogAllowedRoles: string[] = settings.catalogAllowedRoles || [];
                         const isAllowed = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(role.id);
@@ -1195,11 +1400,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const allOptions = [
-                        ...roles,
-                        { id: 'unapproved', name: 'Đang chờ duyệt' },
-                        { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
-                      ];
+                      const allOptions = Array.from(
+                        new Map(
+                          [
+                            ...roles,
+                            { id: 'unapproved', name: 'Đang chờ duyệt' },
+                            { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
+                          ].map(o => [o.id, o])
+                        ).values()
+                      );
                       return allOptions.map(role => {
                         const reportsAllowedRoles: string[] = settings.reportsAllowedRoles || [];
                         const isAllowed = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(role.id);
@@ -1257,6 +1466,105 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                       ⚡ Vai trò có điểm ≥ giá trị này mới được xem. Đặt 0 để cho phép tất cả (trừ khách).
                     </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            {feature.id === 'view_patients' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* showShortcutsMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                      Phím Tắt Nhanh — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showShortcutsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showShortcutsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để bật phím tắt nhanh của hồ sơ bệnh nhân. Đặt 0 để cho phép tất cả.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* groupManagementMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Quản lý nhóm đối tượng
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.groupManagementMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, groupManagementMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem và sử dụng tính năng quản lý nhóm đối tượng.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* manualEntryMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      Nhập hồ sơ thủ công
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.manualEntryMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, manualEntryMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để tự thiết lập hồ sơ bệnh nhân bằng tay.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* deletePatientMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      Xóa hồ sơ bệnh nhân
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.deletePatientMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, deletePatientMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-[#8b5cf6]" : "bg-white border-amber-200 text-[#8b5cf6]"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để có nút Xóa hồ sơ.
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1520,11 +1828,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             <p className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Vai trò</p>
             <div className="flex flex-wrap gap-1">
               {(() => {
-                const allOptions = [
-                  ...roles,
-                  { id: 'unapproved', name: 'Đang chờ duyệt' },
-                  { id: 'guest', name: 'Khách' }
-                ];
+                const allOptions = Array.from(
+                  new Map(
+                    [
+                      ...roles,
+                      { id: 'unapproved', name: 'Đang chờ duyệt' },
+                      { id: 'guest', name: 'Khách' }
+                    ].map(o => [o.id, o])
+                  ).values()
+                );
                 const allowedRoles = settings.allowedRoles || [];
                 if (allowedRoles.length === 0 || allowedRoles.length === allOptions.length) {
                   return <span className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-600")}>Tất cả vai trò</span>;
@@ -1753,7 +2065,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         {featureStateGroups.map(group => {
                           const featuresInGroup = sortedFeatures.filter(feature => {
                             const isInCorrectTab = homeSubTab === 'features_main'
-                              ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription'].includes(feature.id)
+                              ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
                               : ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo'].includes(feature.id);
 
                             return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
@@ -2384,7 +2696,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           if (!statusMatch) return false;
 
                           if (featureCategoryFilter === 'features_main') {
-                            return ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription'].includes(feature.id);
+                            return ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id);
                           }
                           if (featureCategoryFilter === 'utilities') {
                             return ['view_calendar', 'view_notes', 'view_social'].includes(feature.id);

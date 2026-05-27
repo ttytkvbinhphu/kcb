@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle, Info as InfoIcon } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { Reorder } from 'motion/react';
 import { db, collection, query, where, orderBy, limit, onSnapshot } from '../firebase';
@@ -102,6 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, section: 'member', group: 'general' },
       { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, section: 'member', group: 'general' },
       { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, section: 'member', group: 'general' },
+      { id: 'view_doc_lookup', label: featureSettings['view_doc_lookup']?.customTitle || 'Tra cứu văn bản', icon: FileSearch, section: 'member', group: 'general' },
       { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
       { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
@@ -122,6 +123,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'member', group: 'pharmacy' },
       { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'pharmacy' },
       { id: 'manage_adr', label: featureSettings['manage_adr']?.customTitle || 'Quản lý ADR', icon: AlertTriangle, section: 'member', group: 'pharmacy' },
+      { id: 'manage_doc_lookup', label: featureSettings['manage_doc_lookup']?.customTitle || 'Quản lý văn bản', icon: FileText, section: 'member', group: 'pharmacy' },
     ];
 
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
@@ -145,6 +147,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         if (featureSettings['view_interaction']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (item.id === 'manage_adr') {
         if (featureSettings['view_adr']?.hiddenLocations?.includes('sidebar')) return false;
+      } else if (item.id === 'manage_doc_lookup') {
+        if (featureSettings['view_doc_lookup']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (settings?.hiddenLocations?.includes('sidebar')) {
         return false;
       }
@@ -384,7 +388,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar */}
       <div className={cn(
-        "h-[100dvh] flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
+        "h-[100dvh] max-h-[100dvh] flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
         isCollapsed ? "w-[80px]" : "w-[260px]",
         isAdminMode 
           ? (isDarkMode ? "bg-slate-950 border-indigo-900/30 text-white" : "bg-white border-indigo-100 text-slate-900")

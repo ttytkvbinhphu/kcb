@@ -1,13 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Users, ChevronRight, X, Loader2, Check, AlertTriangle, Filter, Eye, Trash2, Pill, ClipboardList, Activity } from 'lucide-react';
+import { Search, Users, ChevronRight, X, Loader2, Check, AlertTriangle, Filter, Eye, Trash2, Pill, ClipboardList, Activity, Edit, Plus, Pin, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, writeBatch, where, getDocs } from '../firebase';
+import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, writeBatch, where, getDocs, auth, updateDoc } from '../firebase';
 import { Patient, PatientDrug, PatientSupply, PatientSubclinical } from '../types';
 
 interface PatientManagementProps {
   isDarkMode: boolean;
   canManage: boolean;
+  userProfile?: any;
+  featureSettings?: any;
+  userPowerPoints?: number;
+  hasDeletePower?: boolean;
+  hasGroupPower?: boolean;
+  hasManualPower?: boolean;
+  hasShortcutsPower?: boolean;
+  initialSearchTerm?: string | null;
+  onClearInitialSearch?: () => void;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -48,10 +57,98 @@ const HighlightText = ({ text, search, className }: { text: string; search: stri
   );
 };
 
-const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canManage }) => {
+const getBadgeColorClasses = (color: string) => {
+  const map: Record<string, { bg: string, text: string, border: string, dot: string }> = {
+    blue: {
+      bg: "bg-blue-50 dark:bg-blue-500/10",
+      text: "text-blue-600 dark:text-blue-400",
+      border: "border-blue-105 dark:border-blue-500/20",
+      dot: "bg-blue-500"
+    },
+    emerald: {
+      bg: "bg-emerald-50 dark:bg-emerald-500/10",
+      text: "text-emerald-600 dark:text-emerald-400",
+      border: "border-emerald-100 dark:border-emerald-500/20",
+      dot: "bg-emerald-500"
+    },
+    amber: {
+      bg: "bg-amber-50 dark:bg-amber-500/10",
+      text: "text-amber-600 dark:text-amber-400",
+      border: "border-amber-100 dark:border-amber-500/20",
+      dot: "bg-amber-500"
+    },
+    rose: {
+      bg: "bg-rose-50 dark:bg-rose-500/10",
+      text: "text-rose-600 dark:text-rose-400",
+      border: "border-rose-100 dark:border-rose-500/20",
+      dot: "bg-rose-500"
+    },
+    purple: {
+      bg: "bg-purple-50 dark:bg-purple-500/10",
+      text: "text-purple-600 dark:text-purple-400",
+      border: "border-purple-100 dark:border-purple-500/20",
+      dot: "bg-purple-500"
+    },
+    sky: {
+      bg: "bg-sky-50 dark:bg-sky-500/10",
+      text: "text-sky-600 dark:text-sky-450",
+      border: "border-sky-101 dark:border-sky-500/20",
+      dot: "bg-sky-500"
+    },
+    indigo: {
+      bg: "bg-indigo-50 dark:bg-indigo-500/10",
+      text: "text-indigo-600 dark:text-indigo-400",
+      border: "border-indigo-100 dark:border-indigo-500/20",
+      dot: "bg-indigo-500"
+    },
+    brown: {
+      bg: "bg-amber-950/5 dark:bg-amber-500/10",
+      text: "text-amber-800 dark:text-amber-300",
+      border: "border-amber-900/10 dark:border-amber-500/20",
+      dot: "bg-amber-700 dark:bg-amber-500"
+    },
+    gray: {
+      bg: "bg-slate-100 dark:bg-slate-800/60",
+      text: "text-slate-600 dark:text-slate-400",
+      border: "border-slate-200 dark:border-slate-800",
+      dot: "bg-slate-500"
+    },
+    pink: {
+      bg: "bg-pink-50 dark:bg-pink-500/10",
+      text: "text-pink-600 dark:text-pink-400",
+      border: "border-pink-100 dark:border-pink-500/20",
+      dot: "bg-pink-500"
+    }
+  };
+  return map[color] || map.blue;
+};
+
+const PatientManagement: React.FC<PatientManagementProps> = ({ 
+  isDarkMode, 
+  canManage,
+  userProfile,
+  featureSettings,
+  userPowerPoints,
+  hasDeletePower = canManage,
+  hasGroupPower = canManage,
+  hasManualPower = canManage,
+  hasShortcutsPower = canManage,
+  initialSearchTerm,
+  onClearInitialSearch
+}) => {
+  const canSeeShortcuts = hasShortcutsPower;
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '');
+
+  useEffect(() => {
+    if (initialSearchTerm) {
+      setSearchTerm(initialSearchTerm);
+      if (onClearInitialSearch) {
+        onClearInitialSearch();
+      }
+    }
+  }, [initialSearchTerm]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
@@ -61,6 +158,21 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     subclinical: PatientSubclinical[];
   }>({ drugs: [], supplies: [], subclinical: [] });
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  // Patient Groups states
+  const [patientGroups, setPatientGroups] = useState<{ id: string; name: string; code?: string; color: string; classification?: string }[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const [groupCodeInput, setGroupCodeInput] = useState('');
+  const [groupColorInput, setGroupColorInput] = useState('blue');
+  const [groupClassificationInput, setGroupClassificationInput] = useState('Độ tuổi');
+  const [savingGroup, setSavingGroup] = useState(false);
+
+  // Filtering criteria
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [isEditingPatient, setIsEditingPatient] = useState(false);
 
   // Manual Input state
   const [manualPatient, setManualPatient] = useState<Partial<Patient>>({
@@ -94,10 +206,12 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     CAN_NANG: '',
     MA_BAC_SI: '',
     TEN_BAC_SI: '',
-    NGAY_VAO: new Date().toISOString().split('T')[0]
+    NGAY_VAO: new Date().toISOString().split('T')[0],
+    MA_DOITUONG_KCB: ''
   });
   const [savingManual, setSavingManual] = useState(false);
 
+  // Subscribe to Patients
   useEffect(() => {
     const q = query(collection(db, 'patients'), orderBy('HO_TEN'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -111,6 +225,109 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     });
     return () => unsubscribe();
   }, []);
+
+  // Subscribe to Patient Groups (Nhóm đối tượng)
+  useEffect(() => {
+    const q = query(collection(db, 'patient_groups'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setPatientGroups(data);
+      setGroupsLoaded(true);
+    }, (error) => {
+      console.error("Error fetching patient groups:", error);
+      handleFirestoreError(error, OperationType.LIST, 'patient_groups');
+      setGroupsLoaded(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Initial seeding of standard Patient Groups with static IDs (Idempotent)
+  useEffect(() => {
+    if (groupsLoaded && patientGroups.length === 0 && hasGroupPower) {
+      const defaultGroups = [
+        { id: "tre_em", name: "Trẻ em", code: "TE", color: "blue", classification: "Độ tuổi" },
+        { id: "nguoi_cao_tuoi", name: "Người cao tuổi", code: "NCT", color: "rose", classification: "Độ tuổi" },
+        { id: "beo_phi", name: "Béo phì", code: "BP", color: "brown", classification: "Cân nặng" },
+        { id: "thieu_can", name: "Thiếu cân", code: "TC", color: "amber", classification: "Cân nặng" },
+        { id: "dai_thao_duong", name: "Đái tháo đường", code: "DTD", color: "emerald", classification: "Bệnh lý" },
+        { id: "tang_huyet_ap", name: "Tăng huyết áp", code: "THA", color: "indigo", classification: "Bệnh lý" },
+        { id: "tim_mach", name: "Tim mạch", code: "TM", color: "pink", classification: "Bệnh lý" }
+      ];
+      defaultGroups.forEach(async (g) => {
+        try {
+          const docRef = doc(db, 'patient_groups', g.id);
+          const { id, ...data } = g;
+          await setDoc(docRef, { ...data, createdAt: new Date().toISOString() });
+        } catch (e) {
+          console.error("Error seeding groups: ", e);
+          handleFirestoreError(e, OperationType.WRITE, 'patient_groups');
+        }
+      });
+    }
+  }, [groupsLoaded, patientGroups.length, hasGroupPower]);
+
+  const handleSaveGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!groupNameInput.trim()) {
+      alert("Vui lòng nhập tên nhóm đối tượng");
+      return;
+    }
+
+    setSavingGroup(true);
+    try {
+      const groupData = {
+        name: groupNameInput.trim(),
+        code: groupCodeInput.trim().toUpperCase(),
+        color: groupColorInput,
+        classification: groupClassificationInput,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (editingGroupId) {
+        await setDoc(doc(db, 'patient_groups', editingGroupId), groupData, { merge: true });
+      } else {
+        const newDocRef = doc(collection(db, 'patient_groups'));
+        await setDoc(newDocRef, { ...groupData, createdAt: new Date().toISOString() });
+      }
+
+      setGroupNameInput('');
+      setGroupCodeInput('');
+      setGroupColorInput('blue');
+      setGroupClassificationInput('Độ tuổi');
+      setEditingGroupId(null);
+    } catch (error) {
+      console.error("Error saving patient group:", error);
+      alert("Đã xảy ra lỗi khi lưu nhóm đối tượng");
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa nhóm đối tượng này? Các bệnh nhân thuộc nhóm này sẽ không còn liên kết.")) return;
+    try {
+      await deleteDoc(doc(db, 'patient_groups', groupId));
+    } catch (error) {
+      console.error("Error deleting patient group:", error);
+      alert("Đã xảy ra lỗi khi xóa nhóm đối tượng");
+    }
+  };
+
+  const handleStartEditGroup = (g: { id: string, name: string, code?: string, color: string, classification?: string }) => {
+    setEditingGroupId(g.id);
+    setGroupNameInput(g.name);
+    setGroupCodeInput(g.code || '');
+    setGroupColorInput(g.color);
+    setGroupClassificationInput(g.classification || 'Độ tuổi');
+  };
+
+  const handleCancelEditGroup = () => {
+    setEditingGroupId(null);
+    setGroupNameInput('');
+    setGroupCodeInput('');
+    setGroupColorInput('blue');
+    setGroupClassificationInput('Độ tuổi');
+  };
 
   const fetchPatientDetails = async (maLk: string) => {
     setDetailsLoading(true);
@@ -143,11 +360,73 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     fetchPatientDetails(patient.MA_LK);
   };
 
-  const filteredPatients = patients.filter(p => 
-    (p.HO_TEN || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (p.MA_BN || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (p.SO_CCCD || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-  );
+  const handleEditPatient = (patient: Patient) => {
+    setIsEditingPatient(true);
+    setManualPatient({ ...patient });
+    setIsManualModalOpen(true);
+  };
+
+  const pinnedIds = userProfile?.pinnedPatientIds || [];
+  const workspaceIds = userProfile?.workspacePatientIds || [];
+
+  const handleTogglePin = async (patient: Patient) => {
+    if (!userProfile || !auth.currentUser) return;
+    try {
+      const pinnedPatientIds = userProfile.pinnedPatientIds || [];
+      const newPinnedPatientIds = pinnedPatientIds.includes(patient.MA_LK) 
+        ? pinnedPatientIds.filter((id: string) => id !== patient.MA_LK)
+        : [...pinnedPatientIds, patient.MA_LK];
+      
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        pinnedPatientIds: newPinnedPatientIds,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+    }
+  };
+
+  const handleToggleWorkspace = async (patient: Patient) => {
+    if (!userProfile || !auth.currentUser) return;
+    try {
+      const workspacePatientIds = userProfile.workspacePatientIds || [];
+      const newWorkspacePatientIds = workspacePatientIds.includes(patient.MA_LK) 
+        ? workspacePatientIds.filter((id: string) => id !== patient.MA_LK)
+        : [...workspacePatientIds, patient.MA_LK];
+      
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        workspacePatientIds: newWorkspacePatientIds,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+    }
+  };
+
+  const filteredPatients = patients.filter(p => {
+    // 1. Text search validation
+    const matchesSearch = (p.HO_TEN || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+                          (p.MA_BN || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+                          (p.SO_CCCD || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+    if (!matchesSearch) return false;
+
+    // 2. Active Tab Filters
+    if (activeFilter === 'all') return true;
+    if (activeFilter === 'bhyt') return !!p.MA_THE_BHYT;
+    if (activeFilter === 'male') return p.GIOI_TINH === '1';
+    if (activeFilter === 'female') return p.GIOI_TINH === '2';
+
+    // 3. Dynamic Patient Group Filters
+    return p.MA_DOITUONG_KCB === activeFilter;
+  });
+
+  const displayPatients = [...filteredPatients].sort((a, b) => {
+    const aPinned = pinnedIds.includes(a.MA_LK);
+    const bPinned = pinnedIds.includes(b.MA_LK);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+    return 0;
+  });
 
   const handleDeletePatient = async (maLk: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa bệnh nhân này và tất cả dữ liệu liên quan?")) return;
@@ -171,6 +450,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
     try {
       await setDoc(doc(db, 'patients', manualPatient.MA_LK!), manualPatient);
       setIsManualModalOpen(false);
+      setIsEditingPatient(false);
       setManualPatient({
         MA_LK: '',
         MA_BN: '',
@@ -202,7 +482,8 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
         CAN_NANG: '',
         MA_BAC_SI: '',
         TEN_BAC_SI: '',
-        NGAY_VAO: new Date().toISOString().split('T')[0]
+        NGAY_VAO: new Date().toISOString().split('T')[0],
+        MA_DOITUONG_KCB: ''
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `patients/${manualPatient.MA_LK}`);
@@ -225,19 +506,72 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {canManage && (
-            <>
-              <button
-                onClick={() => setIsManualModalOpen(true)}
-                className={cn(
-                  "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all",
-                  isDarkMode ? "shadow-none" : "shadow-md shadow-emerald-200"
-                )}
-              >
-                <Users size={14} />
-                Nhập thủ công
-              </button>
-            </>
+          {hasGroupPower && (
+            <button
+              onClick={() => {
+                setEditingGroupId(null);
+                setGroupNameInput('');
+                setGroupCodeInput('');
+                setGroupColorInput('blue');
+                setIsGroupModalOpen(true);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 transition-all",
+                isDarkMode ? "shadow-none" : "shadow-md shadow-blue-200"
+              )}
+            >
+              <Plus size={14} />
+              Quản lý nhóm đối tượng
+            </button>
+          )}
+          {hasManualPower && (
+            <button
+              onClick={() => {
+                setIsEditingPatient(false);
+                setManualPatient({
+                  MA_LK: '',
+                  MA_BN: '',
+                  HO_TEN: '',
+                  NGAY_SINH: '',
+                  GIOI_TINH: '1',
+                  NHOM_MAU: '',
+                  MA_DANTOC: '',
+                  MA_NGHE_NGHIEP: '',
+                  SO_CCCD: '',
+                  DIEN_THOAI: '',
+                  DIA_CHI: '',
+                  MA_THE_BHYT: '',
+                  MA_DKBD: '',
+                  GT_THE_TU: '',
+                  GT_THE_DEN: '',
+                  LY_DO_VV: '',
+                  CHAN_DOAN_VAO: '',
+                  CHAN_DOAN_RV: '',
+                  MA_BENH_CHINH: '',
+                  MA_BENH_KT: '',
+                  MA_NOI_DI: '',
+                  MA_NOI_DEN: '',
+                  GIAY_CHUYEN_TUYEN: '',
+                  NGAYGIO_VAO: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                  NGAYGIO_RA: '',
+                  SO_NGAY_DIEU_TRI_3176: '',
+                  PP_DIEU_TRI: '',
+                  CAN_NANG: '',
+                  MA_BAC_SI: '',
+                  TEN_BAC_SI: '',
+                  NGAY_VAO: new Date().toISOString().split('T')[0],
+                  MA_DOITUONG_KCB: ''
+                });
+                setIsManualModalOpen(true);
+              }}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-all",
+                isDarkMode ? "shadow-none" : "shadow-md shadow-emerald-200"
+              )}
+            >
+              <Users size={14} />
+              Nhập thủ công
+            </button>
           )}
         </div>
       </div>
@@ -271,13 +605,14 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Bộ lọc danh sách</label>
                 <div className="space-y-1">
                   {[
-                    { id: 'all', label: 'Tất cả bệnh nhân', count: patients.length, active: true },
-                    { id: 'bhyt', label: 'Có BHYT', count: patients.filter(p => !!p.MA_THE_BHYT).length, active: false },
-                    { id: 'male', label: 'Bệnh nhân Nam', count: patients.filter(p => p.GIOI_TINH === '1').length, active: false },
-                    { id: 'female', label: 'Bệnh nhân Nữ', count: patients.filter(p => p.GIOI_TINH === '2').length, active: false }
+                    { id: 'all', label: 'Tất cả bệnh nhân', count: patients.length, active: activeFilter === 'all' },
+                    { id: 'bhyt', label: 'Có BHYT', count: patients.filter(p => !!p.MA_THE_BHYT).length, active: activeFilter === 'bhyt' },
+                    { id: 'male', label: 'Bệnh nhân Nam', count: patients.filter(p => p.GIOI_TINH === '1').length, active: activeFilter === 'male' },
+                    { id: 'female', label: 'Bệnh nhân Nữ', count: patients.filter(p => p.GIOI_TINH === '2').length, active: activeFilter === 'female' }
                   ].map(filter => (
                     <button 
                       key={filter.id}
+                      onClick={() => setActiveFilter(filter.id)}
                       className={cn(
                         "w-full px-4 py-3 rounded-2xl text-left text-xs font-black transition-all flex items-center justify-between group",
                         filter.active 
@@ -300,6 +635,77 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Nhóm đối tượng quản lý widget */}
+              <div className="border-t border-slate-100 dark:border-slate-800/60 pt-4">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Nhóm đối tượng</label>
+                  {canManage && (
+                    <button 
+                      onClick={() => {
+                        setEditingGroupId(null);
+                        setGroupNameInput('');
+                        setGroupCodeInput('');
+                        setGroupColorInput('blue');
+                        setIsGroupModalOpen(true);
+                      }}
+                      className="text-[10px] font-black text-blue-500 hover:underline uppercase tracking-wider"
+                    >
+                      Quản lý
+                    </button>
+                  )}
+                </div>
+                {patientGroups.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 italic px-1">Chưa có nhóm đối tượng</p>
+                ) : (
+                  <div className="space-y-1">
+                    {patientGroups.map(group => {
+                      const count = patients.filter(p => p.MA_DOITUONG_KCB === group.id).length;
+                      const isActive = activeFilter === group.id;
+                      const colorClasses = getBadgeColorClasses(group.color);
+                      return (
+                        <button 
+                          key={group.id}
+                          onClick={() => setActiveFilter(isActive ? 'all' : group.id)}
+                          className={cn(
+                            "w-full px-4 py-2.5 rounded-2xl text-left text-xs font-black transition-all flex items-center justify-between group border",
+                            isActive 
+                              ? (isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600")
+                              : (isDarkMode ? "border-transparent text-slate-500 hover:bg-slate-800/40" : "border-transparent text-slate-500 hover:bg-slate-50")
+                          )}
+                        >
+                          <span className="flex flex-col items-start gap-0.5">
+                            <span className="flex items-center gap-2">
+                              <span className={cn("w-2-half h-2-half rounded-full", colorClasses.dot)} style={{ width: '8px', height: '8px' }} />
+                              <span className="truncate max-w-[140px]">{group.name}</span>
+                            </span>
+                            {group.classification && (
+                              <span className="ml-4 text-[9px] opacity-65 font-black uppercase tracking-wider text-slate-400">
+                                {group.classification}
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            {group.code && (
+                              <span className="font-mono text-[9px] font-black uppercase opacity-60 tracking-wider">
+                                {group.code}
+                              </span>
+                            )}
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-lg text-[9px] font-black",
+                              isActive
+                                ? (isDarkMode ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-600")
+                                : (isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-100 text-slate-500")
+                            )}>
+                              {count}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className={cn("p-4 rounded-2xl border border-dashed text-center", isDarkMode ? "border-slate-800" : "border-slate-100")}>
@@ -329,20 +735,23 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Ngày sinh</th>
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Giới tính</th>
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Lịch sử</th>
+                    {canSeeShortcuts && (
+                      <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center">Phím tắt</th>
+                    )}
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="py-24 text-center">
+                      <td colSpan={canSeeShortcuts ? 6 : 5} className="py-24 text-center">
                         <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500 mb-4" />
                         <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Đang tải danh sách bệnh nhân...</p>
                       </td>
                     </tr>
-                  ) : filteredPatients.length === 0 ? (
+                  ) : displayPatients.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-24 text-center">
+                      <td colSpan={canSeeShortcuts ? 6 : 5} className="py-24 text-center">
                         <div className={cn(
                           "w-20 h-20 rounded-[32px] flex items-center justify-center mx-auto mb-4",
                           isDarkMode ? "bg-slate-800" : "bg-slate-50"
@@ -359,7 +768,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                       </td>
                     </tr>
                   ) : (
-                    filteredPatients.map((patient) => (
+                    displayPatients.map((patient) => (
                       <tr 
                         key={patient.MA_LK}
                         className={cn(
@@ -374,6 +783,22 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                               search={searchTerm} 
                               className={cn("text-[13px] font-black leading-tight", isDarkMode ? "text-slate-100" : "text-slate-900")}
                             />
+                            {patient.MA_DOITUONG_KCB && (
+                              <div className="mt-1 flex items-center">
+                                {(() => {
+                                  const group = patientGroups.find(g => g.id === patient.MA_DOITUONG_KCB);
+                                  const colorClasses = getBadgeColorClasses(group?.color || 'blue');
+                                  return (
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded-lg text-[9px] font-black border uppercase tracking-wider",
+                                      colorClasses.bg, colorClasses.text, colorClasses.border
+                                    )}>
+                                      {group?.name || patient.MA_DOITUONG_KCB}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            )}
                             <div className="flex items-center gap-3 mt-1.5">
                               <HighlightText 
                                 text={patient.MA_BN || ''} 
@@ -414,6 +839,39 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                             )}
                           </div>
                         </td>
+                        {canSeeShortcuts && (
+                          <td className="px-6 py-5 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {/* Pin To Shortcuts */}
+                              <button
+                                onClick={() => handleTogglePin(patient)}
+                                className={cn(
+                                  "p-2 rounded-xl transition-all shadow-sm hover:scale-110 active:scale-95 border",
+                                  pinnedIds.includes(patient.MA_LK)
+                                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300" : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-600")
+                                )}
+                                title={pinnedIds.includes(patient.MA_LK) ? "Gỡ khỏi Phím tắt nhanh" : "Ghim vào Phím tắt nhanh"}
+                              >
+                                <Pin size={14} className={pinnedIds.includes(patient.MA_LK) ? "fill-current" : ""} />
+                              </button>
+
+                              {/* Show on Workspace */}
+                              <button
+                                onClick={() => handleToggleWorkspace(patient)}
+                                className={cn(
+                                  "p-2 rounded-xl transition-all shadow-sm hover:scale-110 active:scale-95 border",
+                                  workspaceIds.includes(patient.MA_LK)
+                                    ? "bg-indigo-500/10 text-indigo-500 border-indigo-500/20"
+                                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-300" : "bg-slate-50 border-slate-100 text-slate-400 hover:text-slate-600")
+                                )}
+                                title={workspaceIds.includes(patient.MA_LK) ? "Gỡ ghim Workspace" : "Ghim hiển thị ở Workspace"}
+                              >
+                                <LayoutDashboard size={14} className={workspaceIds.includes(patient.MA_LK) ? "fill-current" : ""} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                         <td className="px-6 py-5 text-right">
                           <div className="flex items-center justify-end gap-2 pr-2">
                             <button 
@@ -428,11 +886,19 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                             </button>
                             {canManage && (
                               <button 
-                                onClick={() => {
-                                  if (confirm(`Bạn có chắc chắn muốn xóa hồ sơ của bệnh nhân ${patient.HO_TEN}?`)) {
-                                    deleteDoc(doc(db, 'patients', patient.MA_LK));
-                                  }
-                                }}
+                                onClick={() => handleEditPatient(patient)}
+                                className={cn(
+                                  "p-2 rounded-2xl transition-all shadow-sm hover:scale-110 active:scale-95",
+                                  isDarkMode ? "bg-slate-800 text-amber-400 hover:bg-slate-700" : "bg-slate-50 text-amber-600 hover:bg-white hover:shadow-md"
+                                )}
+                                title="Chỉnh sửa hồ sơ"
+                              >
+                                <Edit size={18} />
+                              </button>
+                            )}
+                            {hasDeletePower && (
+                              <button 
+                                onClick={() => handleDeletePatient(patient.MA_LK)}
                                 className={cn(
                                   "p-2 rounded-2xl transition-all shadow-sm hover:scale-110 active:scale-95",
                                   isDarkMode ? "bg-slate-800 text-rose-500 hover:bg-rose-500/20" : "bg-rose-50 text-rose-500 hover:bg-rose-100 hover:shadow-md shadow-rose-100"
@@ -475,7 +941,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
               )}
             >
               <div className="p-6 flex items-center justify-between">
-                <h3 className="text-xl font-black tracking-tight">Nhập thông tin bệnh nhân thủ công</h3>
+                <h3 className="text-xl font-black tracking-tight">{isEditingPatient ? "Chỉnh sửa thông tin bệnh nhân" : "Nhập thông tin bệnh nhân thủ công"}</h3>
                 <button onClick={() => !savingManual && setIsManualModalOpen(false)} className={cn(
                   "p-2 rounded-xl transition-colors",
                   isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
@@ -490,7 +956,8 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số phiếu (MA_LK) (Bắt buộc)</label>
                     <input 
                       type="text" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      disabled={isEditingPatient}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900", isEditingPatient && "opacity-60 cursor-not-allowed")}
                       value={manualPatient.MA_LK}
                       onChange={(e) => setManualPatient({...manualPatient, MA_LK: e.target.value})}
                     />
@@ -540,6 +1007,19 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                     >
                       <option value="1">Nam</option>
                       <option value="2">Nữ</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhóm đối tượng</label>
+                    <select 
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={manualPatient.MA_DOITUONG_KCB || ''}
+                      onChange={(e) => setManualPatient({...manualPatient, MA_DOITUONG_KCB: e.target.value})}
+                    >
+                      <option value="">-- Chọn nhóm đối tượng --</option>
+                      {patientGroups.map(g => (
+                        <option key={g.id} value={g.id}>{g.name} {g.code ? `(${g.code})` : ''}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -1030,6 +1510,236 @@ const PatientManagement: React.FC<PatientManagementProps> = ({ isDarkMode, canMa
                     Đóng
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Patient Group Management Modal */}
+      <AnimatePresence>
+        {isGroupModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 lg:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsGroupModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/60"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={cn(
+                "relative w-full max-w-3xl rounded-[32px] shadow-2xl overflow-hidden border transition-colors flex flex-col max-h-[90vh]",
+                isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900"
+              )}
+            >
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="text-xl font-black tracking-tight flex items-center gap-2">
+                    <Users size={20} className="text-blue-500" />
+                    Quản lý nhóm đối tượng
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Thêm, sửa, hoặc xóa các nhóm quản lý bệnh nhân</p>
+                </div>
+                <button onClick={() => setIsGroupModalOpen(false)} className={cn(
+                  "p-2 rounded-xl transition-colors",
+                  isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
+                )}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                  {/* Form Column */}
+                  <div className="md:col-span-5 space-y-4">
+                    <form onSubmit={handleSaveGroup} className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px]">Tên nhóm đối tượng (Bắt buộc)</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="Ví dụ: BHYT Trái tuyến"
+                          className={cn(
+                            "w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm",
+                            isDarkMode ? "bg-slate-800 text-white placeholder:text-slate-600" : "bg-slate-50 text-slate-900 placeholder:text-slate-400"
+                          )}
+                          value={groupNameInput}
+                          onChange={(e) => setGroupNameInput(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px]">Mã viết tắt</label>
+                        <input 
+                          type="text"
+                          placeholder="Ví dụ: BHYT_TT"
+                          className={cn(
+                            "w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm",
+                            isDarkMode ? "bg-slate-800 text-white placeholder:text-slate-600" : "bg-slate-50 text-slate-900 placeholder:text-slate-400"
+                          )}
+                          value={groupCodeInput}
+                          onChange={(e) => setGroupCodeInput(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px] block">Phân loại đối tượng</label>
+                        <select
+                          required
+                          className={cn(
+                            "w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-blue-500",
+                            isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                          )}
+                          value={groupClassificationInput}
+                          onChange={(e) => setGroupClassificationInput(e.target.value)}
+                        >
+                          <option value="Độ tuổi">Độ tuổi</option>
+                          <option value="Cân nặng">Cân nặng</option>
+                          <option value="Bệnh lý">Bệnh lý</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px] block">Màu sắc hiển thị</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['blue', 'emerald', 'amber', 'rose', 'purple', 'sky', 'indigo', 'brown', 'gray', 'pink'].map((color) => {
+                            const colorClasses = getBadgeColorClasses(color);
+                            const isSelected = groupColorInput === color;
+                            return (
+                              <button
+                                type="button"
+                                key={color}
+                                onClick={() => setGroupColorInput(color)}
+                                className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center transition-all border-2",
+                                  isSelected 
+                                    ? (isDarkMode ? "border-white scale-110" : "border-slate-900 scale-110") 
+                                    : "border-transparent hover:scale-105"
+                                )}
+                                title={color === 'brown' ? 'Nâu' : color === 'gray' ? 'Xám' : color === 'pink' ? 'Hồng' : color}
+                              >
+                                <span className={cn("w-5 h-5 rounded-full block", colorClasses.dot)} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={savingGroup}
+                          className={cn(
+                            "flex-1 py-2.5 px-4 rounded-xl text-xs font-black text-center text-white transition-all flex items-center justify-center gap-1.5",
+                            editingGroupId 
+                              ? "bg-amber-600 hover:bg-amber-700" 
+                              : "bg-blue-600 hover:bg-blue-700",
+                            savingGroup && "opacity-60"
+                          )}
+                        >
+                          {savingGroup ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                          {editingGroupId ? "Cập nhật nhóm" : "Thêm nhóm mới"}
+                        </button>
+                        {editingGroupId && (
+                          <button
+                            type="button"
+                            onClick={handleCancelEditGroup}
+                            className={cn(
+                              "px-3 py-2.5 rounded-xl text-xs font-bold border transition-all",
+                              isDarkMode ? "border-slate-800 hover:bg-slate-800 text-slate-300" : "border-slate-200 hover:bg-slate-50 text-slate-600"
+                            )}
+                          >
+                            Hủy
+                          </button>
+                        )}
+                      </div>
+                    </form>
+                  </div>
+
+                  {/* List Column */}
+                  <div className="md:col-span-7 flex flex-col min-h-[250px] border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 md:pl-6 pt-4 md:pt-0">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px] block mb-3">Danh sách nhóm hiện có ({patientGroups.length})</label>
+                    {patientGroups.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-8 text-center">Chưa có nhóm nào được tạo</p>
+                    ) : (
+                      <div className="space-y-2 overflow-y-auto max-h-[40vh] pr-1 custom-scrollbar">
+                        {patientGroups.map((group) => {
+                          const colorClasses = getBadgeColorClasses(group.color);
+                          const isBeingEdited = editingGroupId === group.id;
+                          return (
+                            <div 
+                              key={group.id}
+                              className={cn(
+                                "p-3 rounded-2xl border transition-all flex items-center justify-between",
+                                isBeingEdited 
+                                  ? (isDarkMode ? "bg-slate-800/60 border-amber-500/30" : "bg-amber-50/50 border-amber-200") 
+                                  : (isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50/50 border-slate-100")
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className={cn("w-2.5 h-2.5 rounded-full block", colorClasses.dot)} />
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black">{group.name}</span>
+                                    {group.code && (
+                                      <span className="font-mono text-[9px] font-black uppercase text-slate-400 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">
+                                        {group.code}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded uppercase", colorClasses.bg, colorClasses.text)}>
+                                    {group.classification || "Chưa phân loại"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleStartEditGroup(group)}
+                                  className={cn(
+                                    "p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95",
+                                    isDarkMode ? "bg-slate-800 text-amber-400 hover:bg-slate-700" : "bg-white border border-slate-100 text-amber-600 hover:bg-slate-100"
+                                  )}
+                                  title="Sửa nhóm"
+                                >
+                                  <Edit size={12} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteGroup(group.id)}
+                                  className={cn(
+                                    "p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95",
+                                    isDarkMode ? "bg-slate-800 text-rose-500 hover:bg-rose-500/20" : "bg-white border border-slate-100 text-rose-500 hover:bg-rose-50"
+                                  )}
+                                  title="Xóa nhóm"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-4 border-t shrink-0 flex justify-end",
+                isDarkMode ? "border-slate-800 bg-slate-800/30" : "border-slate-100 bg-slate-50"
+              )}>
+                <button 
+                  onClick={() => setIsGroupModalOpen(false)}
+                  className={cn(
+                    "px-6 py-2 text-white rounded-xl font-bold text-xs transition-all",
+                    isDarkMode ? "bg-slate-700 hover:bg-slate-600" : "bg-slate-900 hover:bg-slate-800"
+                  )}
+                >
+                  Đóng
+                </button>
               </div>
             </motion.div>
           </div>

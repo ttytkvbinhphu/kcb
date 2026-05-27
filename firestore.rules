@@ -365,6 +365,29 @@ service cloud.firestore {
              (!('changes' in data) || data.changes is list);
     }
 
+    function isValidClinicalDocument(data) {
+      return hasRequiredFields(['title', 'category', 'text']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 500 &&
+             data.category is string && data.category.size() > 0 && data.category.size() < 200 &&
+             data.text is string && data.text.size() > 0;
+    }
+
+    function isValidDocCategory(data) {
+      return hasRequiredFields(['id', 'name']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 200 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200;
+    }
+
+    function isValidPatientGroup(data) {
+      return hasRequiredFields(['name']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             (!('code' in data) || data.code is string) &&
+             (!('color' in data) || data.color is string) &&
+             (!('classification' in data) || data.classification is string) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -465,6 +488,11 @@ service cloud.firestore {
       allow delete: if isOperator();
     }
 
+    match /adr_categories/{catId} {
+      allow read: if isAuthenticated();
+      allow write: if isOperator();
+    }
+
     // Config: Only admins can manage
     match /config_titles/{itemId} {
       allow read: if isAuthenticated();
@@ -505,6 +533,10 @@ service cloud.firestore {
     match /patients/{maLk} {
       allow read: if isOperator();
       allow write: if isOperator();
+    }
+    match /patient_groups/{groupId} {
+      allow read: if true;
+      allow write: if isOperator() && isValidPatientGroup(request.resource.data);
     }
     match /patient_drugs/{id} {
       allow read: if isOperator();
@@ -602,6 +634,18 @@ service cloud.firestore {
     match /versions/{versionId} {
       allow get, list: if isAuthenticated();
       allow create, update: if isOperator() && isValidVersion(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /y_khoa_documents/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidClinicalDocument(request.resource.data);
+      allow delete: if isOperator();
+    }
+
+    match /y_khoa_categories/{catId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOperator() && isValidDocCategory(request.resource.data);
       allow delete: if isOperator();
     }
 

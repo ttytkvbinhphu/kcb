@@ -1,4 +1,5 @@
 import { db, collection, getDocs, setDoc, doc, getDoc, updateDoc, query, limit } from '../firebase';
+import { SAMPLE_DOCUMENTS } from './sampleDocs';
 const MOCK_DRUGS = [
   {
     id: '1',
@@ -186,18 +187,33 @@ export const seedInitialData = async (userId?: string) => {
     
     // Ensure specialized operator roles have permissions even if collection is not empty
     const requiredRolePerms = [
-      { roleId: 'admin', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_users', 'manage_staff', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'manage_config'] },
-      { roleId: 'operator_doctor', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients'] },
-      { roleId: 'operator_pharmacist', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients'] },
-      { roleId: 'member', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_patients'] },
+      { roleId: 'admin', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_users', 'manage_staff', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'manage_config', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'operator_doctor', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'operator_pharmacist', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'member', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_patients', 'view_doc_lookup'] },
       { roleId: 'unapproved', allowedTabs: [] }
     ];
 
     for (const perm of requiredRolePerms) {
       const permDoc = doc(db, 'role_permissions', perm.roleId);
       const permSnap = await getDoc(permDoc);
-      if (!permSnap.exists() || (perm.roleId === 'admin' && (!permSnap.data().allowedTabs.includes('manage_patients') || !permSnap.data().allowedTabs.includes('manage_staff')))) {
+      if (!permSnap.exists()) {
         await setDoc(permDoc, perm);
+      } else {
+        const currentTabs = permSnap.data().allowedTabs || [];
+        let updated = false;
+        const newTabs = [...currentTabs];
+        
+        for (const t of perm.allowedTabs) {
+          if (!newTabs.includes(t)) {
+            newTabs.push(t);
+            updated = true;
+          }
+        }
+        
+        if (updated) {
+          await setDoc(permDoc, { ...permSnap.data(), allowedTabs: newTabs });
+        }
       }
     }
 
@@ -205,25 +221,38 @@ export const seedInitialData = async (userId?: string) => {
     const titlePermsSnap = await getDocs(query(titlePermsRef, limit(1)));
     if (titlePermsSnap.empty) {
       const defaultTitlePerms = [
-        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
-        { titleId: 'Dược sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients'] },
-        { titleId: 'Điều dưỡng', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_patients'] }
+        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
+        { titleId: 'Dược sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
+        { titleId: 'Điều dưỡng', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_patients', 'view_doc_lookup'] }
       ];
       for (const perm of defaultTitlePerms) {
         await setDoc(doc(db, 'title_permissions', perm.titleId), perm);
       }
     } else {
-      // Migration: Ensure view_patients is added to existing title permissions
+      // Migration: Ensure view_patients and view_doc_lookup are added to existing title permissions
       const defaultTitleIds = ['Bác sĩ', 'Dược sĩ', 'Điều dưỡng'];
       for (const titleId of defaultTitleIds) {
         const permDoc = doc(db, 'title_permissions', titleId);
         const permSnap = await getDoc(permDoc);
         if (permSnap.exists()) {
           const data = permSnap.data();
-          if (!data.allowedTabs.includes('view_patients')) {
+          const currentTabs = data.allowedTabs || [];
+          let updated = false;
+          const newTabs = [...currentTabs];
+          
+          if (!newTabs.includes('view_patients')) {
+            newTabs.push('view_patients');
+            updated = true;
+          }
+          if (!newTabs.includes('view_doc_lookup')) {
+            newTabs.push('view_doc_lookup');
+            updated = true;
+          }
+          
+          if (updated) {
             await setDoc(permDoc, {
               ...data,
-              allowedTabs: [...data.allowedTabs, 'view_patients']
+              allowedTabs: newTabs
             });
           }
         }
@@ -358,6 +387,23 @@ export const seedInitialData = async (userId?: string) => {
         defaultRoleId: 'unapproved',
         defaultTitleId: ''
       });
+    }
+
+    // Seed y_khoa_documents
+    const docsRef = collection(db, 'y_khoa_documents');
+    const docsSnap = await getDocs(query(docsRef, limit(1)));
+    if (docsSnap.empty) {
+      for (const d of SAMPLE_DOCUMENTS) {
+        await setDoc(doc(db, 'y_khoa_documents', d.id), {
+          id: d.id,
+          title: d.title,
+          category: d.category,
+          text: d.text,
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
     }
   } catch (e) {
     console.warn("Could not seed initial data:", e);

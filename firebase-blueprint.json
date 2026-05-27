@@ -552,6 +552,47 @@
       },
       "required": ["id", "name"]
     },
+    "ClinicalDocument": {
+      "title": "ClinicalDocument",
+      "description": "Tài liệu y khoa, phác đồ điều trị, hướng dẫn lâm sàng.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất của tài liệu" },
+        "title": { "type": "string", "description": "Tiêu đề tài liệu" },
+        "category": { "type": "string", "description": "Phân loại tài liệu" },
+        "text": { "type": "string", "description": "Nội dung đầy đủ" },
+        "createdBy": { "type": "string", "description": "UID người tạo" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "category", "text"]
+    },
+    "DocCategory": {
+      "title": "DocCategory",
+      "description": "Nhóm loại văn bản y khoa hệ thống.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID duy nhất của phân loại" },
+        "name": { "type": "string", "description": "Tên loại văn bản" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "PatientGroup": {
+      "title": "PatientGroup",
+      "description": "Nhóm đối tượng quản lý bệnh nhân (Độ tuổi, Cân nặng, Bệnh lý).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "color": { "type": "string" },
+        "classification": { "type": "string", "enum": ["Độ tuổi", "Cân nặng", "Bệnh lý"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    }
+  },
   "firestore": {
     "/patients/{maLk}": {
       "schema": "Patient",
@@ -692,6 +733,18 @@
     "/companies/{id}": {
       "schema": "Company",
       "description": "Danh mục công ty dược phẩm."
+    },
+    "/y_khoa_documents/{docId}": {
+      "schema": "ClinicalDocument",
+      "description": "Danh mục tài liệu y khoa hệ thống."
+    },
+    "/y_khoa_categories/{catId}": {
+      "schema": "DocCategory",
+      "description": "Nhóm phân loại văn bản y khoa."
+    },
+    "/patient_groups/{groupId}": {
+      "schema": "PatientGroup",
+      "description": "Danh sách các nhóm đối tượng quản lý bệnh nhân."
     }
   }
 }

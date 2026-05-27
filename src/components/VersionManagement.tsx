@@ -165,12 +165,12 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                   setIsAdding(true);
                 }}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all",
+                  "p-2.5 rounded-2xl transition-all",
                   isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-900"
                 )}
+                title="Chỉnh sửa"
               >
-                <Wrench size={14} />
-                Chỉnh sửa
+                <Wrench size={18} />
               </button>
               <button 
                 onClick={() => handleDelete(v.id)}

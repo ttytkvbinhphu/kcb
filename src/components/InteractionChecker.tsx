@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCircle2, Info, Library, FileText, Edit2, Trash2, ChevronRight, MoreVertical, AlertOctagon, Heart, Activity } from 'lucide-react';
+import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCircle2, Info, Library, FileText, Edit2, Trash2, ChevronRight, ChevronLeft, MoreVertical, AlertOctagon, Heart, Activity } from 'lucide-react';
 import { Drug, InteractionResult, ManualInteraction, ICD10 } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -70,6 +70,14 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
   const [catalogSearch, setCatalogSearch] = useState('');
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
+
+  // Catalog Pagination State
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogItemsPerPage, setCatalogItemsPerPage] = useState(25);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [catalogSearch, filterSeverity, filterType]);
 
   const [formData, setFormData] = useState<Partial<ManualInteraction>>({
     type: 'Thuốc - Thuốc',
@@ -196,6 +204,28 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
     }
   };
 
+  // Derived catalog listings
+  const filteredCatalogInteractions = manualInteractions.filter(item => {
+    const searchLower = catalogSearch.toLowerCase();
+    const matchesSearch = !catalogSearch ||
+      item.sourceNames.some(name => name.toLowerCase().includes(searchLower)) ||
+      item.targetName?.toLowerCase().includes(searchLower) ||
+      item.description.toLowerCase().includes(searchLower) ||
+      item.type.toLowerCase().includes(searchLower);
+
+    const matchesSeverity = filterSeverity === 'all' || item.severity === filterSeverity;
+    const matchesType = filterType === 'all' || item.type === filterType;
+
+    return matchesSearch && matchesSeverity && matchesType;
+  });
+
+  const totalCatalogPages = Math.ceil(filteredCatalogInteractions.length / catalogItemsPerPage);
+  const activeCatalogPage = Math.min(catalogPage, Math.max(1, totalCatalogPages));
+  const paginatedCatalogInteractions = filteredCatalogInteractions.slice(
+    (activeCatalogPage - 1) * catalogItemsPerPage,
+    activeCatalogPage * catalogItemsPerPage
+  );
+
   const checkInteractions = async () => {
     if (selectedDrugs.length < 2) return;
 
@@ -276,22 +306,68 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
       "p-1 lg:p-6 max-w-full mx-auto min-h-screen transition-colors",
       isDarkMode ? "bg-slate-950/30" : "bg-white"
     )}>
-      <div className="mb-2 lg:mb-10 space-y-4">
-        <div className="hidden lg:block space-y-6">
-          <div className={cn(
-            "inline-flex items-center gap-4 px-6 py-3 rounded-[32px] border-2 transition-all",
-            isDarkMode 
-              ? "bg-rose-500/5 border-rose-500/20 text-rose-400 shadow-lg shadow-rose-500/5" 
-              : "bg-rose-50 border-rose-100 text-rose-600 shadow-xl shadow-rose-500/10"
-          )}>
-            <div className="p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20">
-              <ShieldAlert size={32} />
+      <div className="mb-6 lg:mb-10 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="hidden lg:block">
+            <div className={cn(
+              "inline-flex items-center gap-4 px-6 py-3 rounded-[32px] border-2 transition-all",
+              isDarkMode 
+                ? "bg-rose-500/5 border-rose-500/20 text-rose-400 shadow-lg shadow-rose-500/5" 
+                : "bg-rose-50 border-rose-100 text-rose-600 shadow-xl shadow-rose-500/10"
+            )}>
+              <div className="p-2 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-600/20">
+                <ShieldAlert size={32} />
+              </div>
+              <span className="text-[35px] font-black tracking-tighter uppercase">
+                {featureSettings?.customTitle || (canManage ? "Quản lý tương tác thuốc" : "Tương tác thuốc")}
+              </span>
             </div>
-            <span className="text-[35px] font-black tracking-tighter uppercase">
-              {featureSettings?.customTitle || (canManage ? "Quản lý tương tác thuốc" : "Tương tác thuốc")}
-            </span>
+          </div>
+
+          {/* Tabs - Inline and floated right with title */}
+          <div className={cn(
+            "flex gap-1 lg:gap-2 p-1 rounded-xl lg:rounded-2xl w-full lg:w-fit transition-all border overflow-x-auto shrink-0",
+            isDarkMode
+              ? "bg-slate-900 border-slate-800"
+              : "bg-white border-slate-100 shadow-sm shadow-slate-100"
+          )}>
+            <button
+              type="button"
+              onClick={() => setActiveTab('checker')}
+              className={cn(
+                "flex-1 lg:flex-none px-4 lg:px-8 py-2 lg:py-3 rounded-lg lg:rounded-xl text-[11px] lg:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap",
+                activeTab === 'checker'
+                  ? (isDarkMode ? "bg-slate-800 text-blue-400 shadow-sm" : "bg-blue-50 text-blue-600 shadow-sm")
+                  : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+              )}
+            >
+              {canManage ? <Sparkles size={14} /> : <Search size={14} />}
+              Kiểm tra tương tác
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('catalog')}
+              className={cn(
+                "flex-1 lg:flex-none px-4 lg:px-8 py-2 lg:py-3 rounded-lg lg:rounded-xl text-[11px] lg:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap",
+                activeTab === 'catalog'
+                  ? (isDarkMode ? "bg-slate-800 text-emerald-400 shadow-sm" : "bg-emerald-50 text-emerald-600 shadow-sm")
+                  : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+              )}
+            >
+              <Library size={14} />
+              Danh mục tương tác
+              <span className={cn(
+                "ml-1 px-2 py-0.5 rounded-full text-[9px] lg:text-[10px]",
+                activeTab === 'catalog'
+                  ? "bg-emerald-100 text-emerald-600"
+                  : (isDarkMode ? "bg-slate-900 text-slate-500" : "bg-slate-100 text-slate-500")
+              )}>
+                {manualInteractions.length}
+              </span>
+            </button>
           </div>
         </div>
+
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 lg:gap-8">
           <div className="hidden lg:block">
             <p className={cn(
@@ -317,49 +393,6 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
             </button>
           )}
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className={cn(
-        "flex gap-1 lg:gap-2 mb-6 lg:mb-10 p-1 rounded-xl lg:rounded-2xl w-full lg:w-fit transition-all border overflow-x-auto",
-        isDarkMode
-          ? "bg-slate-900 border-slate-800"
-          : "bg-white border-slate-100 shadow-sm shadow-slate-100"
-      )}>
-        <button
-          type="button"
-          onClick={() => setActiveTab('checker')}
-          className={cn(
-            "flex-1 lg:flex-none px-4 lg:px-8 py-2 lg:py-3 rounded-lg lg:rounded-xl text-[11px] lg:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap",
-            activeTab === 'checker'
-              ? (isDarkMode ? "bg-slate-800 text-blue-400 shadow-sm" : "bg-blue-50 text-blue-600 shadow-sm")
-              : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
-          )}
-        >
-          {canManage ? <Sparkles size={14} /> : <Search size={14} />}
-          Kiểm tra tương tác
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('catalog')}
-          className={cn(
-            "flex-1 lg:flex-none px-4 lg:px-8 py-2 lg:py-3 rounded-lg lg:rounded-xl text-[11px] lg:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap",
-            activeTab === 'catalog'
-              ? (isDarkMode ? "bg-slate-800 text-emerald-400 shadow-sm" : "bg-emerald-50 text-emerald-600 shadow-sm")
-              : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
-          )}
-        >
-          <Library size={14} />
-          Danh mục tương tác
-          <span className={cn(
-            "ml-1 px-2 py-0.5 rounded-full text-[9px] lg:text-[10px]",
-            activeTab === 'catalog'
-              ? "bg-emerald-100 text-emerald-600"
-              : (isDarkMode ? "bg-slate-900 text-slate-500" : "bg-slate-100 text-slate-500")
-          )}>
-            {manualInteractions.length}
-          </span>
-        </button>
       </div>
 
       {activeTab === 'checker' ? (
@@ -703,34 +736,16 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
             </div>
 
             <AnimatePresence mode="popLayout">
-              {(() => {
-                const filtered = manualInteractions.filter(item => {
-                  const searchLower = catalogSearch.toLowerCase();
-                  const matchesSearch = !catalogSearch ||
-                    item.sourceNames.some(name => name.toLowerCase().includes(searchLower)) ||
-                    item.targetName?.toLowerCase().includes(searchLower) ||
-                    item.description.toLowerCase().includes(searchLower) ||
-                    item.type.toLowerCase().includes(searchLower);
-
-                  const matchesSeverity = filterSeverity === 'all' || item.severity === filterSeverity;
-                  const matchesType = filterType === 'all' || item.type === filterType;
-
-                  return matchesSearch && matchesSeverity && matchesType;
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div className={cn(
-                      "py-20 text-center rounded-3xl border-2 border-dashed transition-colors",
-                      isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
-                    )}>
-                      <Search size={48} className="mx-auto mb-4 opacity-20" />
-                      <p className="font-bold">Không tìm thấy tương tác nào phù hợp với bộ lọc</p>
-                    </div>
-                  );
-                }
-
-                return filtered.map((item) => (
+              {filteredCatalogInteractions.length === 0 ? (
+                <div className={cn(
+                  "py-20 text-center rounded-3xl border-2 border-dashed transition-colors w-full",
+                  isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
+                )}>
+                  <Search size={48} className="mx-auto mb-4 opacity-20" />
+                  <p className="font-bold">Không tìm thấy tương tác nào phù hợp với bộ lọc</p>
+                </div>
+              ) : (
+                paginatedCatalogInteractions.map((item) => (
                   <motion.div
                     key={item.id}
                     layout
@@ -963,7 +978,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                     </div>
                   </motion.div>
                 ))
-              })()}
+              )}
             </AnimatePresence>
 
             {manualInteractions.length === 0 && (
@@ -975,6 +990,100 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                   <Library size={32} className="text-slate-400" />
                 </div>
                 <p className={cn("font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>Chưa có dữ liệu tương tác</p>
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {filteredCatalogInteractions.length > 0 && (
+              <div className={cn(
+                "mt-6 flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl lg:rounded-3xl border shadow-sm",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+              )}>
+                <div className="flex items-center gap-2">
+                  <span className={cn("text-[9px] font-bold uppercase tracking-wider", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mỗi trang:</span>
+                  <select
+                    value={catalogItemsPerPage}
+                    onChange={(e) => {
+                      setCatalogItemsPerPage(Number(e.target.value));
+                      setCatalogPage(1);
+                    }}
+                    className={cn(
+                      "text-[10px] font-bold py-1 px-2 rounded-md border appearance-none cursor-pointer outline-none transition-all",
+                      isDarkMode
+                        ? "bg-slate-800 border-slate-700 text-slate-300 hover:border-blue-500"
+                        : "bg-white border-slate-200 text-slate-600 hover:border-blue-400 shadow-sm"
+                    )}
+                  >
+                    {[10, 25, 50, 100].map(val => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
+                  </select>
+                  <span className={cn("text-[10px] font-bold ml-2", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                    Hiển thị {Math.min(filteredCatalogInteractions.length, (activeCatalogPage - 1) * catalogItemsPerPage + 1)} - {Math.min(activeCatalogPage * catalogItemsPerPage, filteredCatalogInteractions.length)} / {filteredCatalogInteractions.length}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar animate-fade-in">
+                  <button
+                    type="button"
+                    disabled={activeCatalogPage === 1}
+                    onClick={() => {
+                      setCatalogPage(prev => Math.max(1, prev - 1));
+                    }}
+                    className={cn(
+                      "p-1.5 lg:p-2 rounded-lg lg:rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
+                      isDarkMode ? "border-slate-800 hover:bg-slate-800 text-slate-400" : "border-slate-100 hover:bg-slate-50 text-slate-500"
+                    )}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalCatalogPages }, (_, i) => i + 1).map((page) => {
+                      const shouldShow = page === 1 || page === totalCatalogPages || Math.abs(page - activeCatalogPage) <= 1;
+                      const isBreak = page !== 1 && page !== totalCatalogPages && !shouldShow && (Math.abs(page - activeCatalogPage) === 2);
+
+                      if (shouldShow) {
+                        return (
+                          <button
+                            key={page}
+                            type="button"
+                            onClick={() => {
+                              setCatalogPage(page);
+                            }}
+                            className={cn(
+                              "w-8 h-8 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl text-[10px] lg:text-sm font-black transition-all active:scale-90 flex items-center justify-center border",
+                              activeCatalogPage === page
+                                ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20"
+                                : isDarkMode
+                                  ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700"
+                                  : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                            )}
+                          >
+                            {page}
+                          </button>
+                        );
+                      } else if (isBreak) {
+                        return <span key={page} className="text-slate-400 font-bold px-1">...</span>;
+                      }
+                      return null;
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={activeCatalogPage === totalCatalogPages}
+                    onClick={() => {
+                      setCatalogPage(prev => Math.min(totalCatalogPages, prev + 1));
+                    }}
+                    className={cn(
+                      "p-2 rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
+                      isDarkMode ? "border-slate-800 hover:bg-slate-800 text-slate-400" : "border-slate-100 hover:bg-slate-50 text-slate-500"
+                    )}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             )}
           </div>

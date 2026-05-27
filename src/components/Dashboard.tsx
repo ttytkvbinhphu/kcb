@@ -1,11 +1,11 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight, ChevronLeft, X, Sparkles, FileSearch } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc } from '../firebase';
-import { UserProfile, Notification, ICD10, Drug } from '../types';
+import { UserProfile, Notification, ICD10, Drug, Patient } from '../types';
 import DrugDetailModal from './DrugDetailModal';
 
 import {
@@ -43,6 +43,7 @@ interface DashboardProps {
   uid?: string;
   onLogout?: () => void;
   setExternalIcdSearchQuery?: (query: string | null) => void;
+  setExternalPatientSearchQuery?: (query: string | null) => void;
 }
 
 interface SortableItemProps {
@@ -117,6 +118,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   uid,
   onLogout,
   setExternalIcdSearchQuery,
+  setExternalPatientSearchQuery,
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isCustomizing, setIsCustomizing] = useState(false);
@@ -149,21 +151,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'view_calendar', label: featureSettings['view_calendar']?.customTitle || 'Lịch công tác', icon: Calendar, desc: 'Quản lý lịch trực, hội chẩn', color: 'bg-blue-600', group: 'management' },
     { id: 'view_notes', label: featureSettings['view_notes']?.customTitle || 'Ghi chú', icon: MessageSquare, desc: 'Ghi chú lâm sàng cá nhân', color: 'bg-violet-600', group: 'management' },
     { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, desc: 'Danh sách công việc cần làm', color: 'bg-emerald-500', group: 'utility' },
+    { id: 'view_doc_lookup', label: featureSettings['view_doc_lookup']?.customTitle || 'Tra cứu văn bản', icon: FileSearch, desc: 'Tóm tắt & phân tích tài liệu bằng AI', color: 'bg-indigo-600', group: 'utility' },
     { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Workspace Social', icon: Globe, desc: 'Trao đổi chuyên môn nội bộ', color: 'bg-pink-600', group: 'social' },
     { id: 'view_calculator', label: featureSettings['view_calculator']?.customTitle || 'Máy tính', icon: Calculator, desc: 'Máy tính liều lượng & cân nặng', color: 'bg-slate-700', group: 'utility' },
   ];
 
   const [quickActions, setQuickActions] = useState<any[]>([]);
   const [workspaceIcds, setWorkspaceIcds] = useState<ICD10[]>([]);
+  const [workspacePatients, setWorkspacePatients] = useState<Patient[]>([]);
   const [drugsByIcd, setDrugsByIcd] = useState<Record<string, string[]>>({});
+  const [newDrugs, setNewDrugs] = useState<Drug[]>([]);
   const [showUtilityDrawer, setShowUtilityDrawer] = useState(false);
 
   useEffect(() => {
     if (!isApproved) return;
     const unsubscribe = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       const map: Record<string, string[]> = {};
+      const newDrugsList: Drug[] = [];
       snapshot.docs.forEach(doc => {
-        const drug = doc.data();
+        const drug = doc.data() as Drug;
+        if (drug.isNew) {
+          newDrugsList.push(drug);
+        }
         const codes = new Set<string>();
 
         // Check indications for ICD-10 codes
@@ -181,8 +190,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         // Keep legacy check just in case
-        if (drug.icdCodes && Array.isArray(drug.icdCodes)) {
-          drug.icdCodes.forEach((code: string) => {
+        const legacyDrug = drug as any;
+        if (legacyDrug.icdCodes && Array.isArray(legacyDrug.icdCodes)) {
+          legacyDrug.icdCodes.forEach((code: string) => {
             if (code) codes.add(code.trim().toUpperCase());
           });
         }
@@ -195,6 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         });
       });
       setDrugsByIcd(map);
+      setNewDrugs(newDrugsList);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'drugs_mapping');
     });
@@ -221,6 +232,27 @@ const Dashboard: React.FC<DashboardProps> = ({
     });
     return () => unsubscribe();
   }, [isApproved, uid, userProfile?.workspaceIcdCodes]);
+
+  useEffect(() => {
+    if (!isApproved || !uid || !userProfile?.workspacePatientIds || userProfile.workspacePatientIds.length === 0) {
+      setWorkspacePatients([]);
+      return;
+    }
+
+    // Fetch the actual Patient details for the IDs in userProfile.workspacePatientIds
+    const q = query(
+      collection(db, 'patients'),
+      where('MA_LK', 'in', userProfile.workspacePatientIds.slice(0, 10))
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(doc => doc.data() as Patient);
+      setWorkspacePatients(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'patients_workspace');
+    });
+    return () => unsubscribe();
+  }, [isApproved, uid, userProfile?.workspacePatientIds]);
 
   useEffect(() => {
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
@@ -332,10 +364,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const mainActions = activeActions.filter(a => !(featureSettings[a.id]?.hiddenLocations || []).includes('home_grid'));
   const utilityWidgets = activeActions.filter(a => (featureSettings[a.id]?.hiddenLocations || []).includes('utilities_box'));
 
-  // Filter out actions that are maintenance or closed for the customization list too
+  // Filter out actions that are closed for the customization list too, but show even if in maintenance
   const configurableActions = allActions.filter(action => {
     const status = featureStates[action.id];
-    return status !== 'closed' && status !== 'maintenance';
+    return status !== 'closed';
   });
 
   const clinicalActions = mainActions.filter(a => a.group === 'clinical');
@@ -919,6 +951,123 @@ const Dashboard: React.FC<DashboardProps> = ({
             </section>
           )}
 
+          {/* Thuốc mới Section */}
+          <section className="space-y-4">
+            <h3 className={cn(
+              "text-base lg:text-lg font-black flex items-center gap-2 transition-colors mb-4 uppercase tracking-widest text-[#a855f7]",
+            )}>
+              <div className="w-1.5 h-6 bg-[#a855f7] rounded-full" />
+              Điểm tin Thuốc mới
+              <span className="ml-auto px-2 py-0.5 rounded bg-[#a855f7]/10 text-[#a855f7] text-[10px] font-black border border-[#a855f7]/20">
+                {newDrugs.length}
+              </span>
+            </h3>
+
+            {newDrugs.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {newDrugs.map((drug, idx) => (
+                  <div
+                    key={drug.id || idx}
+                    className={cn(
+                      "p-5 rounded-3xl border transition-all flex flex-col justify-between group",
+                      isDarkMode
+                        ? "bg-slate-900 border-slate-800 hover:border-[#a855f7]/30 shadow-2xl shadow-indigo-500/5"
+                        : "bg-white border-slate-100 shadow-xl shadow-slate-200/50 hover:border-[#a855f7]"
+                    )}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-md font-black text-[9px] uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/20",
+                            )}>
+                              MỚI
+                            </span>
+                            {drug.isRx && (
+                              <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                                Rx
+                              </span>
+                            )}
+                          </div>
+                          <h4 className={cn("text-sm sm:text-base font-extrabold leading-tight transition-colors group-hover:text-[#a855f7]", isDarkMode ? "text-white" : "text-slate-900")}>
+                            {drug.name}
+                          </h4>
+                          {drug.dosageForm && (
+                            <p className={cn("text-[10px] sm:text-xs font-bold uppercase tracking-wide opacity-60", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                              {drug.dosageForm}
+                            </p>
+                          )}
+                        </div>
+                        <div className={cn(
+                          "w-10 h-10 rounded-2xl flex items-center justify-center text-[#a855f7] border transition-all shrink-0",
+                          isDarkMode ? "bg-slate-800 border-slate-700" : "bg-[#a855f7]/5 border-[#a855f7]/10"
+                        )}>
+                          <Pill size={20} />
+                        </div>
+                      </div>
+
+                      {/* Active Ingredients */}
+                      {drug.activeIngredients && drug.activeIngredients.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Hoạt chất chính</p>
+                          <div className="flex flex-wrap gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300">
+                            {drug.activeIngredients.map((ai, aiIdx) => (
+                              <span key={aiIdx} className={cn(
+                                "text-[10px] font-bold px-2 py-0.5 rounded-lg border",
+                                isDarkMode ? "bg-slate-950/40 border-slate-800" : "bg-slate-50 border-slate-100"
+                              )}>
+                                {ai.name} {ai.amount}{ai.unit}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {drug.manufacturer && (
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-medium opacity-60">
+                          <span className="font-bold opacity-80 uppercase tracking-wide text-slate-400">Nhà SX:</span>
+                          <span className={isDarkMode ? "text-white" : "text-slate-800"}>{drug.manufacturer}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between">
+                      <span className="text-[10px] font-mono opacity-50">
+                        {drug.registrationNumber ? `SĐK: ${drug.registrationNumber}` : ''}
+                      </span>
+                      <button
+                        onClick={() => setQuickDrugModal({ drug, isOpen: true })}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border",
+                          isDarkMode
+                            ? "bg-slate-800 border-slate-700 hover:bg-[#a855f7] hover:text-white"
+                            : "bg-[#a855f7]/5 border-[#a855f7]/10 hover:bg-[#a855f7] text-[#a855f7] hover:text-white"
+                        )}
+                      >
+                        <Eye size={12} />
+                        Chi tiết
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={cn(
+                "p-10 rounded-3xl border border-dashed text-center transition-colors shadow-inner",
+                isDarkMode ? "border-slate-800 bg-slate-900/10" : "border-slate-200 bg-slate-50/30"
+              )}>
+                <Sparkles size={32} className="mx-auto text-slate-400 mb-3 animate-pulse" />
+                <h4 className={cn("text-xs sm:text-sm font-extrabold mb-1 uppercase tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                  Không có thuốc mới nào được đánh dấu
+                </h4>
+                <p className="text-[10px] font-bold text-slate-400 max-w-sm mx-auto uppercase tracking-wide leading-relaxed">
+                  Bạn có thể đánh dấu thuốc mới trong giao diện "Tra cứu thuốc" &gt; chỉnh sửa thông tin thuốc của mình
+                </p>
+              </div>
+            )}
+          </section>
+
           {/* Workspace ICD-10 Section */}
           {workspaceIcds.length > 0 && (
             <section className="space-y-4">
@@ -938,7 +1087,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                       <th className="pb-2 pl-4">Mã</th>
                       <th className="pb-2">Mô tả bệnh</th>
                       <th className="pb-2">Thuốc gợi ý</th>
-                      <th className="pb-2">Ghi chú</th>
                       <th className="pb-2 text-right pr-4">Thao tác</th>
                     </tr>
                   </thead>
@@ -960,9 +1108,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </td>
                         <td className="py-2 border-y border-transparent group-hover:border-primary/20 min-w-[200px]">
-                          <h4 className={cn("text-xs font-black transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>
+                          <h4 className={cn("text-[13px] font-bold transition-colors font-sans", isDarkMode ? "text-white" : "text-slate-900")}>
                             {icd.description}
                           </h4>
+                          {icd.notes && (
+                            <p className={cn("text-[11px] font-medium opacity-60 mt-0.5 italic", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                              {icd.notes}
+                            </p>
+                          )}
                         </td>
                         <td className="py-2 border-y border-transparent group-hover:border-primary/20">
                           <div className="flex flex-wrap gap-1">
@@ -985,7 +1138,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       key={idx}
                                       onClick={() => handleOpenDrugModal(drugName)}
                                       className={cn(
-                                        "text-[8px] font-black px-1.5 py-0.5 rounded-full border uppercase whitespace-normal break-words transition-all hover:scale-105 cursor-pointer",
+                                        "text-[9px] font-black px-1.5 py-0.5 rounded-full border uppercase whitespace-normal break-words transition-all hover:scale-105 cursor-pointer",
                                         isDarkMode
                                           ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/50 hover:bg-indigo-500 hover:text-white hover:border-indigo-500"
                                           : "bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white hover:border-indigo-600"
@@ -999,11 +1152,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                               );
                             })()}
                           </div>
-                        </td>
-                        <td className="py-2 border-y border-transparent group-hover:border-primary/20">
-                          <p className={cn("text-[10px] font-bold line-clamp-1 opacity-60 max-w-[150px]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                            {icd.notes || "---"}
-                          </p>
                         </td>
                         <td className="py-2 pr-4 rounded-r-xl border-y border-transparent text-right group-hover:border-primary/20">
                           <div className="flex items-center justify-end gap-2">
@@ -1061,7 +1209,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           )}>
                             {icd.code}
                           </div>
-                          <h4 className={cn("text-[13px] font-black leading-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                          <h4 className={cn("text-[13px] font-bold leading-tight font-sans", isDarkMode ? "text-white" : "text-slate-900")}>
                             {icd.description}
                           </h4>
                         </div>
@@ -1131,6 +1279,169 @@ const Dashboard: React.FC<DashboardProps> = ({
                             </button>
                           ));
                         })()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Workspace Patients Section */}
+          {workspacePatients.length > 0 && (
+            <section className="space-y-4">
+              <h3 className={cn(
+                "text-base lg:text-lg font-black flex items-center gap-2 transition-colors mb-4 uppercase tracking-widest text-[#059669]",
+              )}>
+                <div className="w-1.5 h-6 bg-[#059669] rounded-full" />
+                Bệnh nhân nhanh (Workspace)
+                <span className="ml-auto px-2 py-0.5 rounded bg-[#059669]/10 text-[#059669] text-[10px] font-black border border-[#059669]/20">
+                  {workspacePatients.length}
+                </span>
+              </h3>
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full border-separate border-spacing-y-2">
+                  <thead>
+                    <tr className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-left">
+                      <th className="pb-2 pl-4">Họ và tên</th>
+                      <th className="pb-2">Mã BN</th>
+                      <th className="pb-2">Ngày sinh / Giới tính</th>
+                      <th className="pb-2">Số CCCD</th>
+                      <th className="pb-2 text-right pr-4">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workspacePatients.map((patient, idx) => (
+                      <tr
+                        key={`${patient.MA_LK}-${idx}`}
+                        className={cn(
+                          "group transition-all",
+                          isDarkMode ? "bg-slate-900/50 hover:bg-slate-900" : "bg-white hover:bg-slate-50 shadow-sm"
+                        )}
+                      >
+                        <td className="py-3 pl-4 rounded-l-xl border-y border-transparent group-hover:border-primary/20">
+                          <div className={cn("text-[13px] font-black leading-tight", isDarkMode ? "text-slate-100" : "text-slate-900")}>
+                            {patient.HO_TEN}
+                          </div>
+                        </td>
+                        <td className="py-3 border-y border-transparent group-hover:border-primary/20">
+                          <div className="font-mono text-[10px] font-black text-blue-500 tracking-tighter">
+                            {patient.MA_BN || '---'}
+                          </div>
+                        </td>
+                        <td className="py-3 border-y border-transparent group-hover:border-primary/20">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider">{patient.NGAY_SINH}</span>
+                            <span className={cn(
+                              "px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
+                              patient.GIOI_TINH === '1'
+                                ? "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                                : "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                            )}>
+                              {patient.GIOI_TINH === '1' ? 'Nam' : 'Nữ'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 border-y border-transparent group-hover:border-primary/20">
+                          <span className="text-xs font-bold text-slate-400">
+                            {patient.SO_CCCD || '---'}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 rounded-r-xl border-y border-transparent text-right group-hover:border-primary/20">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setExternalPatientSearchQuery?.(patient.HO_TEN || patient.MA_BN || patient.MA_LK);
+                                setActiveTab('view_patients');
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all border",
+                                isDarkMode ? "bg-slate-800 border-slate-700 text-primary hover:bg-primary hover:text-white" : "bg-slate-50 border-slate-100 text-primary hover:bg-primary hover:text-white shadow-sm"
+                              )}
+                              title="Xem hồ sơ"
+                            >
+                              <Search size={14} />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!userProfile || !uid) return;
+                                const newWorkspacePatientIds = (userProfile.workspacePatientIds || []).filter(id => id !== patient.MA_LK);
+                                await updateDoc(doc(db, 'users', uid), { workspacePatientIds: newWorkspacePatientIds });
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all border",
+                                isDarkMode ? "bg-slate-800 border-slate-700 text-rose-500 hover:bg-rose-50 hover:text-white" : "bg-slate-50 border-slate-100 text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm"
+                              )}
+                              title="Gỡ ghim"
+                            >
+                              <PinOff size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Mobile Layout */}
+              <div className="sm:hidden grid grid-cols-1 gap-4">
+                {workspacePatients.map((patient, idx) => (
+                  <div
+                    key={`${patient.MA_LK}-${idx}`}
+                    className={cn(
+                      "p-5 rounded-3xl border transition-all space-y-4",
+                      isDarkMode
+                        ? "bg-slate-900 border-slate-800 hover:border-emerald-500/30 shadow-2xl shadow-emerald-500/5"
+                        : "bg-white border-slate-100 shadow-xl shadow-slate-200/50 hover:border-emerald-200"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 space-y-1.5">
+                        <h4 className={cn("text-[13px] font-black leading-tight font-sans", isDarkMode ? "text-white" : "text-slate-900")}>
+                          {patient.HO_TEN}
+                        </h4>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-[9px] font-black text-blue-500 tracking-tighter">{patient.MA_BN}</span>
+                          <span className="text-[10px] text-slate-400 font-bold">{patient.NGAY_SINH}</span>
+                          <span className={cn(
+                            "px-1 py-0.2 rounded text-[8px] font-black border uppercase",
+                            patient.GIOI_TINH === '1' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                          )}>
+                            {patient.GIOI_TINH === '1' ? 'Nam' : 'Nữ'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setExternalPatientSearchQuery?.(patient.HO_TEN || patient.MA_BN || patient.MA_LK);
+                            setActiveTab('view_patients');
+                          }}
+                          className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all",
+                            isDarkMode
+                              ? "bg-slate-800 border-slate-700 text-primary"
+                              : "bg-slate-50 border-slate-200 text-primary"
+                          )}
+                        >
+                          <Search size={16} />
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!userProfile || !uid) return;
+                            const newWorkspacePatientIds = (userProfile.workspacePatientIds || []).filter(id => id !== patient.MA_LK);
+                            await updateDoc(doc(db, 'users', uid), { workspacePatientIds: newWorkspacePatientIds });
+                          }}
+                          className={cn(
+                            "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all text-rose-500",
+                            isDarkMode
+                              ? "bg-rose-500/10 border-rose-500/20 hover:bg-rose-500 hover:text-white"
+                              : "bg-rose-50 border-rose-100 hover:bg-rose-500 hover:text-white"
+                          )}
+                        >
+                          <PinOff size={16} />
+                        </button>
                       </div>
                     </div>
                   </div>

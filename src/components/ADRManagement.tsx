@@ -24,7 +24,9 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  ExternalLink
+  ExternalLink,
+  Edit2,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -115,6 +117,88 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmData, setConfirmData] = useState<{ id: string, type: 'report' | 'catalog', name?: string } | null>(null);
 
+  const [categoryObjects, setCategoryObjects] = useState<{ id: string, name: string, createdAt?: string }[]>([]);
+  const adrCategories = categoryObjects.length > 0 ? categoryObjects.map(c => c.name) : ADR_CATEGORIES;
+
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    setIsAddingCategory(true);
+    try {
+      const catId = `cat_${Date.now()}`;
+      await setDoc(doc(db, 'adr_categories', catId), {
+        id: catId,
+        name: newCategoryName.trim(),
+        createdAt: new Date().toISOString()
+      });
+      setNewCategoryName('');
+    } catch (error) {
+      console.error("Error adding category:", error);
+    } finally {
+      setIsAddingCategory(false);
+    }
+  };
+
+  const handleUpdateCategory = async (catId: string, oldName: string) => {
+    if (!editingCategoryName.trim() || editingCategoryName.trim() === oldName) {
+      setEditingCategoryId(null);
+      return;
+    }
+    setIsUpdatingCategory(true);
+    try {
+      const newName = editingCategoryName.trim();
+      
+      await setDoc(doc(db, 'adr_categories', catId), {
+        id: catId,
+        name: newName,
+        createdAt: categoryObjects.find(c => c.id === catId)?.createdAt || new Date().toISOString()
+      }, { merge: true });
+
+      if (catalogFormData.category === oldName) {
+        setCatalogFormData(prev => ({ ...prev, category: newName }));
+      }
+
+      // Also updates any catalog items that reference this renamed category!
+      const itemsToUpdate = catalogItems.filter(item => item.category === oldName);
+      for (const item of itemsToUpdate) {
+        if (item.id) {
+          await setDoc(doc(db, 'adr_catalog', item.id), {
+            category: newName
+          }, { merge: true });
+        }
+      }
+
+      setEditingCategoryId(null);
+      setEditingCategoryName('');
+    } catch (error) {
+      console.error("Error updating category:", error);
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    try {
+      await deleteDoc(doc(db, 'adr_categories', catId));
+      setDeleteConfirmId(null);
+      if (catalogFormData.category === catName) {
+        const remaining = categoryObjects.filter(c => c.id !== catId);
+        const fallback = remaining.length > 0 ? remaining[0].name : ADR_CATEGORIES[0];
+        setCatalogFormData({ ...catalogFormData, category: fallback });
+      }
+    } catch (error) {
+      console.error("Error deleting category:", error);
+    }
+  };
+
   // Form state for ADR Report
   const [formData, setFormData] = useState<Partial<ADRReport>>({
     patientInitials: '',
@@ -194,10 +278,34 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       console.error("Error fetching ADR catalog:", error);
     });
 
+    const unsubscribeCategories = onSnapshot(collection(db, 'adr_categories'), (snapshot) => {
+      if (snapshot.empty) {
+        const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
+        if (isPrivileged) {
+          ADR_CATEGORIES.forEach(async (cat, idx) => {
+            const catId = `cat_${idx}`;
+            await setDoc(doc(db, 'adr_categories', catId), { 
+              id: catId, 
+              name: cat, 
+              createdAt: new Date(Date.now() + idx * 1000).toISOString()
+            });
+          });
+        }
+      } else {
+        const loaded = snapshot.docs
+          .map(doc => doc.data() as { id: string, name: string, createdAt?: string })
+          .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+        setCategoryObjects(loaded);
+      }
+    }, (error) => {
+      console.error("Error fetching ADR categories:", error);
+    });
+
     return () => {
       unsubscribeReports();
       unsubscribeDrugs();
       unsubscribeCatalog();
+      unsubscribeCategories();
     };
   }, [userRole, currentUserUid]);
 
@@ -341,7 +449,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
     return matchesSearch && matchesFilter;
   });
 
-  const groupedCatalog = ADR_CATEGORIES.reduce((acc, cat) => {
+  const groupedCatalog = adrCategories.reduce((acc, cat) => {
     const items = filteredCatalog.filter(item => item.category === cat);
     if (items.length > 0) {
       acc.push({ category: cat, items });
@@ -349,17 +457,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
     return acc;
   }, [] as { category: string, items: ADRCatalogItem[] }[]);
 
-  const categories = ['Tất cả', ...ADR_CATEGORIES];
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'Nhẹ': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'Trung bình': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-      case 'Nặng': return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
-      case 'Nghiêm trọng': return 'bg-rose-500/10 text-rose-500 border-rose-500/20';
-      default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
-    }
-  };
+  const categories = ['Tất cả', ...adrCategories];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -626,15 +724,9 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                 </div>
 
                 <div className={cn(
-                  "flex items-center justify-between pt-4 border-t transition-colors",
+                  "flex items-center justify-end pt-4 border-t transition-colors",
                   isDarkMode ? "border-slate-800" : "border-slate-100"
                 )}>
-                  <div className={cn(
-                    "px-2.5 py-1 rounded-lg text-[10px] font-bold border",
-                    getSeverityColor(report.severity)
-                  )}>
-                    {report.severity}
-                  </div>
                   <div className="flex items-center gap-2 text-slate-400">
                     <Clock size={12} />
                     <span className="text-[10px] font-bold">
@@ -688,7 +780,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                           "px-2.5 lg:px-3 py-0.5 lg:py-1 rounded-full text-[9px] lg:text-[10px] font-black uppercase tracking-wider border transition-colors",
                           isDarkMode ? "bg-emerald-900/30 text-emerald-400 border-emerald-900/50" : "bg-emerald-50 text-emerald-600 border-emerald-100"
                         )}>
-                          {item.reactionName}
+                          {item.category}
                         </div>
                         <div className="flex items-center gap-1">
                           {isPharmacist && (
@@ -713,12 +805,6 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                           <h3 className={cn("font-black text-base truncate mb-1", isDarkMode ? "text-white" : "text-black")}>
                             {item.reactionName}
                           </h3>
-                          <div className={cn(
-                            "px-2 py-0.5 rounded-lg text-[9px] font-bold border w-fit",
-                            getSeverityColor(item.severityLevel)
-                          )}>
-                            {item.severityLevel}
-                          </div>
                         </div>
                       </div>
 
@@ -750,8 +836,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                           onClick={() => {
                             setFormData({
                               ...formData,
-                              reactionDescription: item.description,
-                              severity: item.severityLevel as any
+                              reactionDescription: item.description
                             });
                             setActiveSubTab('reports');
                             setIsModalOpen(true);
@@ -786,12 +871,12 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                "w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
+                "w-full max-w-2xl max-h-[90vh] flex flex-col rounded-[32px] sm:rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}
             >
               <div className={cn(
-                "p-8 border-b flex items-center justify-between transition-colors",
+                "p-6 sm:p-8 border-b flex items-center justify-between transition-colors shrink-0",
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}>
                 <div className="flex items-center gap-4">
@@ -802,16 +887,16 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     <AlertTriangle size={24} />
                   </div>
                   <div>
-                    <h3 className={cn("text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                    <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                       {editingReport ? 'Chi tiết báo cáo ADR' : 'Báo cáo ADR mới'}
                     </h3>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Thông tin phản ứng có hại của thuốc</p>
+                    <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-widest">Thông tin phản ứng có hại của thuốc</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsModalOpen(false)}
                   className={cn(
-                    "p-3 rounded-2xl transition-colors text-slate-400",
+                    "p-2.5 sm:p-3 rounded-2xl transition-colors text-slate-400",
                     isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
                   )}
                 >
@@ -819,168 +904,150 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                 </button>
               </div>
 
-              <form onSubmit={handleSave} className={cn("p-8 transition-colors", isDarkMode ? "bg-slate-900" : "bg-white")}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                  {/* Patient Info */}
-                  <div className="space-y-6">
-                    <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Thông tin bệnh nhân</h4>
-                    <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tên viết tắt</label>
-                      <input
-                        type="text"
-                        required
-                        className={cn(
-                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold",
-                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                        )}
-                        value={formData.patientInitials}
-                        onChange={(e) => setFormData({...formData, patientInitials: e.target.value})}
-                        placeholder="VD: N.V.A"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSave} className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Patient Info */}
+                    <div className="space-y-6">
+                      <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-2">Thông tin bệnh nhân</h4>
                       <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tuổi</label>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tên viết tắt</label>
                         <input
-                          type="number"
+                          type="text"
                           required
                           className={cn(
                             "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold",
                             isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                           )}
-                          value={formData.patientAge}
-                          onChange={(e) => setFormData({...formData, patientAge: parseInt(e.target.value)})}
+                          value={formData.patientInitials}
+                          onChange={(e) => setFormData({...formData, patientInitials: e.target.value})}
+                          placeholder="VD: N.V.A"
                         />
                       </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tuổi</label>
+                          <input
+                            type="number"
+                            required
+                            className={cn(
+                              "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold",
+                              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                            )}
+                            value={formData.patientAge}
+                            onChange={(e) => setFormData({...formData, patientAge: parseInt(e.target.value)})}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Giới tính</label>
+                          <select
+                            className={cn(
+                              "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
+                              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                            )}
+                            value={formData.patientGender}
+                            onChange={(e) => setFormData({...formData, patientGender: e.target.value as any})}
+                          >
+                            <option value="Nam">Nam</option>
+                            <option value="Nữ">Nữ</option>
+                            <option value="Khác">Khác</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Drug Info */}
+                    <div className="space-y-6">
+                      <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-2">Thuốc nghi ngờ</h4>
                       <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Giới tính</label>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Chọn thuốc</label>
                         <select
+                          required
                           className={cn(
                             "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
                             isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                           )}
-                          value={formData.patientGender}
-                          onChange={(e) => setFormData({...formData, patientGender: e.target.value as any})}
+                          value={formData.drugId}
+                          onChange={(e) => setFormData({...formData, drugId: e.target.value})}
                         >
-                          <option value="Nam">Nam</option>
-                          <option value="Nữ">Nữ</option>
-                          <option value="Khác">Khác</option>
+                          <option value="">-- Chọn thuốc --</option>
+                          {drugs.map(drug => (
+                            <option key={drug.id} value={drug.id}>{drug.name} ({drug.activeIngredients?.[0]?.name || 'N/A'})</option>
+                          ))}
                         </select>
                       </div>
                     </div>
                   </div>
 
-                  {/* Drug Info */}
                   <div className="space-y-6">
-                    <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Thuốc nghi ngờ</h4>
+                    <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em]">Chi tiết phản ứng</h4>
                     <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Chọn thuốc</label>
-                      <select
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mô tả phản ứng</label>
+                      <AutoExpandingTextarea
                         required
+                        rows={3}
                         className={cn(
-                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
+                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-medium",
                           isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                         )}
-                        value={formData.drugId}
-                        onChange={(e) => setFormData({...formData, drugId: e.target.value})}
-                      >
-                        <option value="">-- Chọn thuốc --</option>
-                        {drugs.map(drug => (
-                          <option key={drug.id} value={drug.id}>{drug.name} ({drug.activeIngredients?.[0]?.name || 'N/A'})</option>
-                        ))}
-                      </select>
+                        value={formData.reactionDescription}
+                        onChange={(e) => setFormData({...formData, reactionDescription: e.target.value})}
+                        placeholder="Mô tả chi tiết các triệu chứng, thời gian xuất hiện..."
+                      />
                     </div>
-                    <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mức độ nghiêm trọng</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['Nhẹ', 'Trung bình', 'Nặng', 'Nghiêm trọng'].map((sev) => (
-                          <button
-                            key={sev}
-                            type="button"
-                            onClick={() => setFormData({...formData, severity: sev as any})}
-                            className={cn(
-                              "py-3 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all",
-                              formData.severity === sev
-                                ? cn("bg-blue-600 border-blue-600 text-white", isDarkMode ? "shadow-none" : "shadow-lg shadow-blue-200")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600" : "bg-white border-slate-100 text-slate-500 hover:border-slate-200")
-                            )}
-                          >
-                            {sev}
-                          </button>
-                        ))}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Kết quả</label>
+                        <select
+                          className={cn(
+                            "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
+                            isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                          )}
+                          value={formData.outcome}
+                          onChange={(e) => setFormData({...formData, outcome: e.target.value as any})}
+                        >
+                          <option value="Hồi phục">Hồi phục</option>
+                          <option value="Đang hồi phục">Đang hồi phục</option>
+                          <option value="Có di chứng">Có di chứng</option>
+                          <option value="Tử vong">Tử vong</option>
+                          <option value="Không rõ">Không rõ</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Trạng thái xử lý</label>
+                        <select
+                          className={cn(
+                            "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
+                            isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                          )}
+                          value={formData.status}
+                          onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                        >
+                          <option value="Mới">Mới</option>
+                          <option value="Đang xử lý">Đang xử lý</option>
+                          <option value="Đã hoàn thành">Đã hoàn thành</option>
+                        </select>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6 mb-8">
-                  <h4 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-4">Chi tiết phản ứng</h4>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mô tả phản ứng</label>
-                    <AutoExpandingTextarea
-                      required
-                      rows={3}
-                      className={cn(
-                        "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-medium",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                      )}
-                      value={formData.reactionDescription}
-                      onChange={(e) => setFormData({...formData, reactionDescription: e.target.value})}
-                      placeholder="Mô tả chi tiết các triệu chứng, thời gian xuất hiện..."
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Kết quả</label>
-                      <select
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Ghi chú thêm</label>
+                      <AutoExpandingTextarea
+                        rows={2}
                         className={cn(
-                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
+                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-medium",
                           isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                         )}
-                        value={formData.outcome}
-                        onChange={(e) => setFormData({...formData, outcome: e.target.value as any})}
-                      >
-                        <option value="Hồi phục">Hồi phục</option>
-                        <option value="Đang hồi phục">Đang hồi phục</option>
-                        <option value="Có di chứng">Có di chứng</option>
-                        <option value="Tử vong">Tử vong</option>
-                        <option value="Không rõ">Không rõ</option>
-                      </select>
+                        value={formData.notes}
+                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                        placeholder="Các thông tin bổ sung khác..."
+                      />
                     </div>
-                    <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Trạng thái xử lý</label>
-                      <select
-                        className={cn(
-                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-bold appearance-none",
-                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                        )}
-                        value={formData.status}
-                        onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                      >
-                        <option value="Mới">Mới</option>
-                        <option value="Đang xử lý">Đang xử lý</option>
-                        <option value="Đã hoàn thành">Đã hoàn thành</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Ghi chú thêm</label>
-                    <AutoExpandingTextarea
-                      rows={2}
-                      className={cn(
-                        "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-blue-500 transition-all font-medium",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                      )}
-                      value={formData.notes}
-                      onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                      placeholder="Các thông tin bổ sung khác..."
-                    />
                   </div>
                 </div>
 
                 <div className={cn(
-                  "flex flex-col md:flex-row gap-4 pt-6 border-t transition-colors",
-                  isDarkMode ? "border-slate-800" : "border-slate-100"
+                  "p-6 sm:p-8 border-t flex flex-col md:flex-row gap-4 transition-colors shrink-0",
+                  isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-slate-50/50"
                 )}>
                   <button
                     type="button"
@@ -996,7 +1063,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDelete(editingReport.id)}
-                      className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-2"
+                      className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-2 shrink-0"
                     >
                       <Trash2 size={20} />
                     </button>
@@ -1006,7 +1073,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     disabled={isSaving}
                     className={cn(
                       "flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50",
-                      isDarkMode ? "shadow-none" : "shadow-lg shadow-blue-200"
+                      isDarkMode ? "shadow-none" : "shadow-lg shadow-blue-250"
                     )}
                   >
                     {isSaving ? (
@@ -1038,12 +1105,12 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                "w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
+                "w-full max-w-2xl max-h-[90vh] flex flex-col rounded-[32px] sm:rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}
             >
               <div className={cn(
-                "p-8 border-b flex items-center justify-between transition-colors",
+                "p-6 sm:p-8 border-b flex items-center justify-between transition-colors shrink-0",
                 isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
               )}>
                 <div className="flex items-center gap-4">
@@ -1054,16 +1121,16 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     <Library size={24} />
                   </div>
                   <div>
-                    <h3 className={cn("text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                    <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                       {editingCatalogItem ? 'Chỉnh sửa danh mục' : 'Thêm danh mục ADR'}
                     </h3>
-                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Thông tin tham khảo phản ứng ADR</p>
+                    <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-widest">Thông tin tham khảo phản ứng ADR</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setIsCatalogModalOpen(false)}
                   className={cn(
-                    "p-3 rounded-2xl transition-colors text-slate-400",
+                    "p-2.5 sm:p-3 rounded-2xl transition-colors text-slate-400",
                     isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
                   )}
                 >
@@ -1071,8 +1138,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                 </button>
               </div>
 
-              <form onSubmit={handleSaveCatalog} className={cn("p-8 transition-colors", isDarkMode ? "bg-slate-900" : "bg-white")}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <form onSubmit={handleSaveCatalog} className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar">
                   <div className="space-y-6">
                     <div>
                       <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Tên phản ứng</label>
@@ -1089,78 +1156,193 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Phân loại</label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Phân loại</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowCategoryManager(!showCategoryManager)}
+                          className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1 active:scale-95 transition-transform"
+                        >
+                          {showCategoryManager ? "Ẩn quản lý" : "Thêm/Xóa phân loại"}
+                        </button>
+                      </div>
+                      
                       <select
                         required
                         className={cn(
                           "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold appearance-none",
                           isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
                         )}
-                        value={catalogFormData.category}
+                        value={catalogFormData.category || ''}
                         onChange={(e) => setCatalogFormData({...catalogFormData, category: e.target.value})}
                       >
-                        {ADR_CATEGORIES.map(cat => (
+                        {adrCategories.map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
                       </select>
+
+                      {showCategoryManager && (
+                        <div className={cn(
+                          "mt-3 p-4 rounded-2xl border space-y-3 transition-all duration-200",
+                          isDarkMode ? "bg-slate-850/50 border-slate-800/80" : "bg-slate-50 border-slate-200"
+                        )}>
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Thêm phân loại mới</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                placeholder="VD: Rối loạn hệ miễn dịch"
+                                className={cn(
+                                  "flex-1 px-3 py-2 rounded-xl text-xs font-bold border focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                                )}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddCategory}
+                                disabled={isAddingCategory || !newCategoryName.trim()}
+                                className="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 active:scale-95 transition-transform shrink-0"
+                              >
+                                Thêm
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Danh sách phân loại</label>
+                            <div className="max-h-36 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                              {categoryObjects.map((catObj) => (
+                                <div key={catObj.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-500/5 dark:bg-white/5 transition-colors">
+                                  {editingCategoryId === catObj.id ? (
+                                    <div className="flex items-center gap-1.5 w-full">
+                                      <input
+                                        type="text"
+                                        className={cn(
+                                          "flex-1 px-2.5 py-1.5 rounded-lg text-xs font-bold border focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all",
+                                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                                        )}
+                                        value={editingCategoryName}
+                                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                                        placeholder="Sửa tên phân loại..."
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleUpdateCategory(catObj.id, catObj.name);
+                                          } else if (e.key === 'Escape') {
+                                            setEditingCategoryId(null);
+                                          }
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateCategory(catObj.id, catObj.name)}
+                                        disabled={isUpdatingCategory || !editingCategoryName.trim()}
+                                        className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-bold shrink-0 shadow-sm"
+                                        title="Lưu"
+                                      >
+                                        {isUpdatingCategory ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingCategoryId(null)}
+                                        className="p-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-[9px] font-bold shrink-0"
+                                        title="Hủy"
+                                      >
+                                        <X size={11} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate mr-2">{catObj.name}</span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingCategoryId(catObj.id);
+                                            setEditingCategoryName(catObj.name);
+                                          }}
+                                          className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg active:scale-95 transition-colors"
+                                          title="Sửa phân loại"
+                                        >
+                                          <Edit2 size={13} />
+                                        </button>
+                                        {deleteConfirmId === catObj.id ? (
+                                          <div className="flex items-center gap-1.5 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteCategory(catObj.id, catObj.name)}
+                                              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] font-black shadow-sm"
+                                            >
+                                              Xóa
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setDeleteConfirmId(null)}
+                                              className="px-2 py-1 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-[9px] font-black"
+                                            >
+                                              Hủy
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeleteConfirmId(catObj.id)}
+                                            className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg active:scale-95 transition-colors shrink-0"
+                                            title="Xóa phân loại"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                              {categoryObjects.length === 0 && (
+                                <p className="text-[10px] italic text-slate-500 py-1">Đang tải phân loại...</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
+
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mức độ thường gặp</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['Nhẹ', 'Trung bình', 'Nặng', 'Nghiêm trọng'].map((sev) => (
-                          <button
-                            key={sev}
-                            type="button"
-                            onClick={() => setCatalogFormData({...catalogFormData, severityLevel: sev as any})}
-                            className={cn(
-                              "py-3 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all",
-                              catalogFormData.severityLevel === sev
-                                ? cn("bg-emerald-600 border-emerald-600 text-white", isDarkMode ? "shadow-none" : "shadow-lg shadow-emerald-200")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:border-emerald-800" : "bg-white border-slate-100 text-slate-500 hover:border-emerald-200")
-                            )}
-                          >
-                            {sev}
-                          </button>
-                        ))}
-                      </div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mô tả chi tiết</label>
+                      <AutoExpandingTextarea
+                        rows={3}
+                        className={cn(
+                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium",
+                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                        )}
+                        value={catalogFormData.description}
+                        onChange={(e) => setCatalogFormData({...catalogFormData, description: e.target.value})}
+                        placeholder="Mô tả các triệu chứng lâm sàng đặc trưng..."
+                      />
                     </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6 mb-8">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Mô tả chi tiết</label>
-                    <AutoExpandingTextarea
-                      rows={3}
-                      className={cn(
-                        "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                      )}
-                      value={catalogFormData.description}
-                      onChange={(e) => setCatalogFormData({...catalogFormData, description: e.target.value})}
-                      placeholder="Mô tả các triệu chứng lâm sàng đặc trưng..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Hướng dẫn xử trí</label>
-                    <AutoExpandingTextarea
-                      rows={3}
-                      className={cn(
-                        "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                      )}
-                      value={catalogFormData.management}
-                      onChange={(e) => setCatalogFormData({...catalogFormData, management: e.target.value})}
-                      placeholder="Các bước xử lý cấp cứu hoặc điều trị..."
-                    />
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Hướng dẫn xử trí</label>
+                      <AutoExpandingTextarea
+                        rows={3}
+                        className={cn(
+                          "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium",
+                          isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                        )}
+                        value={catalogFormData.management}
+                        onChange={(e) => setCatalogFormData({...catalogFormData, management: e.target.value})}
+                        placeholder="Các bước xử lý cấp cứu hoặc điều trị..."
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className={cn(
-                  "flex flex-col md:flex-row gap-4 pt-6 border-t transition-colors",
-                  isDarkMode ? "border-slate-800" : "border-slate-100"
+                  "p-6 sm:p-8 border-t flex flex-col md:flex-row gap-4 transition-colors shrink-0",
+                  isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-slate-50/50"
                 )}>
                   <button
                     type="button"
@@ -1176,7 +1358,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDeleteCatalog(editingCatalogItem.id, editingCatalogItem.reactionName)}
-                      className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-2"
+                      className="px-6 py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition-all flex items-center justify-center gap-2 shrink-0"
                     >
                       <Trash2 size={20} />
                     </button>
@@ -1186,7 +1368,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     disabled={isSaving}
                     className={cn(
                       "flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50",
-                      isDarkMode ? "shadow-none" : "shadow-lg shadow-emerald-200"
+                      isDarkMode ? "shadow-none" : "shadow-lg shadow-emerald-250"
                     )}
                   >
                     {isSaving ? (

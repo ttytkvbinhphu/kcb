@@ -1,6 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Serif:ital,opsz,wght@0,8..144,100..900;1,8..144,100..900&display=swap');
 @import "tailwindcss";
 
 @theme {
+  --font-sans: "Inter", sans-serif;
+  --font-manrope: "Manrope", sans-serif;
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --font-times: "Times New Roman", Times, Georgia, serif;
+  --font-roboto-serif: "Roboto Serif", serif;
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-light: var(--primary-light);
@@ -16,9 +22,12 @@
 }
 
 html, body {
-  overflow-x: hidden;
-  position: relative;
+  overflow: hidden;
+  height: 100%;
   width: 100%;
+  margin: 0;
+  padding: 0;
+  position: relative;
 }
 
 .dark {

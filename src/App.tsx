@@ -1,24 +1,26 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import ConfirmModal from './components/ConfirmModal';
-const Sidebar = lazy(() => import('./components/Sidebar'));
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const DrugDirectory = lazy(() => import('./components/DrugDirectory'));
-const InteractionChecker = lazy(() => import('./components/InteractionChecker'));
-const PrescriptionForm = lazy(() => import('./components/PrescriptionForm'));
-const ICD10Management = lazy(() => import('./components/ICD10Management'));
-const UserManagement = lazy(() => import('./components/UserManagement'));
-const Calendar = lazy(() => import('./components/Calendar'));
-const Notes = lazy(() => import('./components/Notes'));
-const CalculatorWidget = lazy(() => import('./components/Calculator'));
-const TodoWidget = lazy(() => import('./components/TodoList'));
-const ADRManagement = lazy(() => import('./components/ADRManagement'));
-const SystemConfig = lazy(() => import('./components/SystemConfig'));
-const SocialWall = lazy(() => import('./components/SocialWall'));
-const PatientManagement = lazy(() => import('./components/PatientManagement'));
-const StaffManagement = lazy(() => import('./components/StaffManagement'));
+import Sidebar from './components/Sidebar';
+import Dashboard from './components/Dashboard';
+import DrugDirectory from './components/DrugDirectory';
+import InteractionChecker from './components/InteractionChecker';
+import PrescriptionForm from './components/PrescriptionForm';
+import ICD10Management from './components/ICD10Management';
+import UserManagement from './components/UserManagement';
+import Calendar from './components/Calendar';
+import Notes from './components/Notes';
+import CalculatorWidget from './components/Calculator';
+import TodoWidget from './components/TodoList';
+import DocumentLookup from './components/DocumentLookup';
+import DocumentManagement from './components/DocumentManagement';
+import ADRManagement from './components/ADRManagement';
+import SystemConfig from './components/SystemConfig';
+import SocialWall from './components/SocialWall';
+import PatientManagement from './components/PatientManagement';
+import StaffManagement from './components/StaffManagement';
 import UpdateNotification from './components/UpdateNotification';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
@@ -31,6 +33,7 @@ const ALL_TABS = [
   { id: 'view_calendar', label: 'Lịch công tác', icon: CalendarIcon },
   { id: 'view_notes', label: 'Ghi chú', icon: MessageSquare },
   { id: 'view_todo', label: 'Việc cần làm', icon: ListTodo },
+  { id: 'view_doc_lookup', label: 'Tra cứu văn bản', icon: FileSearch },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList },
   { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert },
@@ -46,6 +49,7 @@ const ALL_TABS = [
   { id: 'manage_icd10', label: 'Quản lý ICD-10', icon: ClipboardList },
   { id: 'manage_interaction', label: 'Quản lý tương tác thuốc', icon: ShieldAlert },
   { id: 'manage_adr', label: 'Quản lý ADR', icon: AlertTriangle },
+  { id: 'manage_doc_lookup', label: 'Quản lý văn bản', icon: FileText },
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
@@ -167,6 +171,7 @@ export default function App() {
   });
   const [externalSelectedDrugId, setExternalSelectedDrugId] = useState<string | null>(null);
   const [externalIcdSearchQuery, setExternalIcdSearchQuery] = useState<string | null>(null);
+  const [externalPatientSearchQuery, setExternalPatientSearchQuery] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('isAdminMode', isAdminMode.toString());
@@ -1399,7 +1404,8 @@ export default function App() {
     'view_icd10',
     'view_interaction',
     'view_adr',
-    'view_prescription'
+    'view_prescription',
+    'view_doc_lookup'
   ];
 
   const userRole = userProfile.role;
@@ -1584,6 +1590,7 @@ export default function App() {
           uid={user?.uid || ''}
           onLogout={handleLogout}
           setExternalIcdSearchQuery={setExternalIcdSearchQuery}
+          setExternalPatientSearchQuery={setExternalPatientSearchQuery}
         />;
       case 'calendar':
         return <Calendar isDarkMode={isDarkMode} />;
@@ -1665,8 +1672,32 @@ export default function App() {
         />;
       case 'patients':
       case 'view_patients':
+        const patientSettings = featureSettings['view_patients'] || {};
+        const configUserPowerPoints = userProfile ? (configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0) : 0;
+        
+        // Use custom power levels if defined under the feature settings
+        const hasDeletePower = configUserPowerPoints >= (patientSettings.deletePatientMinPower ?? 0);
+        const hasGroupPower = configUserPowerPoints >= (patientSettings.groupManagementMinPower ?? 0);
+        const hasManualPower = configUserPowerPoints >= (patientSettings.manualEntryMinPower ?? 0);
+        const hasShortcutsPower = configUserPowerPoints >= (patientSettings.showShortcutsMinPower ?? 0);
+
         const canManagePatients = isManagementMode || ['admin', 'operator', 'operator_doctor'].includes(userProfile?.role);
-        return <PatientManagement isDarkMode={isDarkMode} canManage={canManagePatients} />;
+
+        return (
+          <PatientManagement 
+            isDarkMode={isDarkMode} 
+            userProfile={userProfile}
+            featureSettings={patientSettings}
+            userPowerPoints={configUserPowerPoints}
+            canManage={canManagePatients}
+            hasDeletePower={isManagementMode || hasDeletePower}
+            hasGroupPower={isManagementMode || hasGroupPower}
+            hasManualPower={isManagementMode || hasManualPower}
+            hasShortcutsPower={isManagementMode || hasShortcutsPower}
+            initialSearchTerm={externalPatientSearchQuery}
+            onClearInitialSearch={() => setExternalPatientSearchQuery(null)}
+          />
+        );
       case 'staff':
         return <StaffManagement isDarkMode={isDarkMode} canManage={isManagementMode} />;
       case 'social':
@@ -1691,6 +1722,32 @@ export default function App() {
       case 'todo':
       case 'view_todo':
         return <TodoWidget isDarkMode={isDarkMode} onClose={() => setActiveTab('dashboard')} />;
+      case 'doc_lookup':
+      case 'view_doc_lookup':
+        if (activeTab === 'manage_doc_lookup') {
+          return <DocumentManagement
+            isDarkMode={isDarkMode}
+            currentUserUid={userProfile.uid}
+            currentUserName={userProfile.displayName || userProfile.email || 'Bác sĩ'}
+            onNavigateToTab={setActiveTab}
+          />;
+        }
+        return <DocumentLookup
+          isDarkMode={isDarkMode}
+          currentUserUid={userProfile.uid}
+          currentUserName={userProfile.displayName || userProfile.email || 'Bác sĩ'}
+          userRole={userProfile.role}
+          onNavigateToTab={setActiveTab}
+          featureSettings={featureSettings['view_doc_lookup']}
+          userPowerPoints={userPowerPoints}
+        />;
+      case 'manage_doc_lookup':
+        return <DocumentManagement
+          isDarkMode={isDarkMode}
+          currentUserUid={userProfile.uid}
+          currentUserName={userProfile.displayName || userProfile.email || 'Bác sĩ'}
+          onNavigateToTab={setActiveTab}
+        />;
       case 'profile':
       case 'view_profile':
         return <SocialWall
@@ -1741,7 +1798,7 @@ export default function App() {
     <>
       <UpdateNotification isDarkMode={isDarkMode} uid={user?.uid} />
       <div className={cn(
-        "h-[100dvh] font-sans transition-colors duration-300 flex overflow-hidden",
+        "h-[100dvh] max-h-[100dvh] font-sans transition-colors duration-300 flex overflow-hidden",
         isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
       )}>
         <Suspense fallback={<div className="h-[100dvh] flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary" /></div>}>
@@ -1777,7 +1834,7 @@ export default function App() {
           <main 
             ref={(el) => { mainScrollRef.current = el; }} 
             className={cn(
-              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300",
+              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300 drug-list-container",
               isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
             )}
             style={{ touchAction: 'pan-y' }}

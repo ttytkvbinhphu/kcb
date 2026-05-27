@@ -215,6 +215,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
       if (type === 'company') {
         if (formData.address) saveData.address = formData.address.trim();
         if (formData.phone) saveData.phone = formData.phone.trim();
+        if (formData.fax) saveData.fax = formData.fax.trim();
       }
       
       if ((type === 'ingredient' || type === 'excipient')) {
@@ -331,7 +332,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             <button
               type="button"
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-all text-slate-400 hover:text-rose-500"
+              className={cn(
+                "absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all text-slate-400 hover:text-rose-500",
+                isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-200"
+              )}
             >
               <X size={16} />
             </button>
@@ -356,7 +360,8 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 }}
                 className={cn(
                   "p-4 rounded-2xl border transition-all group relative",
-                  type === 'excipient' && "cursor-pointer hover:shadow-md hover:bg-slate-50/50 dark:hover:bg-slate-800/20",
+                  type === 'excipient' && "cursor-pointer hover:shadow-md",
+                  type === 'excipient' && (isDarkMode ? "hover:bg-slate-800/20" : "hover:bg-slate-50/50"),
                   isDarkMode ? "bg-slate-900 border-slate-800 hover:border-indigo-900/50" : "bg-white border-slate-100 hover:border-indigo-200 shadow-sm"
                 )}
               >
@@ -364,7 +369,10 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                   <div className="flex-1 overflow-hidden pr-8">
                      <h4 className={cn("font-bold text-sm mb-1 flex flex-wrap items-center gap-2", isDarkMode ? "text-white" : "text-slate-900")}>
                         {type === 'excipient' ? (
-                          <span className="text-left font-bold text-sm hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">
+                          <span className={cn(
+                            "text-left font-bold text-sm hover:underline transition-colors",
+                            isDarkMode ? "hover:text-indigo-400" : "hover:text-indigo-600"
+                          )}>
                             {item.name}
                           </span>
                         ) : (
@@ -439,16 +447,21 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                        </div>
                      )}
 
-                    {type === 'company' && (item.address || item.phone) && (
-                      <div className="flex flex-col gap-0.5 mb-1">
-                        {item.address && (
-                          <p className="text-[10px] text-slate-500 italic truncate">Đ/c: {item.address}</p>
-                        )}
-                        {item.phone && (
-                          <p className="text-[10px] font-black text-indigo-500">SĐT: {item.phone}</p>
-                        )}
-                      </div>
-                    )}
+                     {type === 'company' && (item.address || item.phone || item.fax) && (
+                       <div className="flex flex-col gap-0.5 mb-1">
+                         {item.address && (
+                           <p className="text-[10px] text-slate-500 italic truncate">Đ/c: {item.address}</p>
+                         )}
+                         <div className="flex flex-wrap gap-x-2 text-[10px]">
+                           {item.phone && (
+                             <p className="font-black text-indigo-500">SĐT: {item.phone}</p>
+                           )}
+                           {item.fax && (
+                             <p className="font-bold text-slate-400">Fax: {item.fax}</p>
+                           )}
+                         </div>
+                       </div>
+                     )}
                     {item.description && (
                       <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
                     )}
@@ -697,18 +710,33 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                           placeholder="Địa chỉ công ty..."
                         />
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại</label>
-                        <input
-                          type="text"
-                          className={cn(
-                            "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
-                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                          )}
-                          value={formData.phone || ''}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          placeholder="Số điện thoại liên hệ..."
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại</label>
+                          <input
+                            type="text"
+                            className={cn(
+                              "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                            )}
+                            value={formData.phone || ''}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            placeholder="Số điện thoại liên hệ..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số Fax</label>
+                          <input
+                            type="text"
+                            className={cn(
+                              "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                            )}
+                            value={formData.fax || ''}
+                            onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
+                            placeholder="Số Fax..."
+                          />
+                        </div>
                       </div>
                     </>
                   )}

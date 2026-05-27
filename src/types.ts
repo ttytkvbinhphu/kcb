@@ -4,7 +4,10 @@ export interface Drug {
   activeIngredients: { name: string; amount: string; unit: string }[];
   atcCode?: string;
   dosageForm: string;
+  detailedDosageForm?: string;
   excipients?: string;
+  excipientsList?: { name: string; amount: string; unit: string }[];
+  tabletWeight?: string;
   manufacturer: string;
   mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
   pharmacology?: string; // Thông tin dược lý chi tiết
@@ -27,6 +30,8 @@ export interface Drug {
   bannerUrl?: string;
   pdfUrl?: string;
   registrationNumber?: string;
+  lotNumber?: string;
+  lots?: { lotNumber: string; expiryDate: string }[];
   leafletVersion?: string;
   leafletUpdateDate?: string;
   isClosed?: boolean;
@@ -36,25 +41,80 @@ export interface Drug {
   stockStatus?: 'available' | 'low' | 'out' | string;
   expiryStatus?: 'valid' | 'expiring' | 'expired' | string;
   expiryDate?: string;
+  expiryAlertMonths?: number;
   generalAdministration?: string; // Common usage instructions (e.g., before/after food)
   administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
     category: string; 
     content: string;
-    morning?: string;
-    noon?: string;
-    afternoon?: string;
-    night?: string;
+    patientGroups?: string[];
+    ageMin?: number;         // Tuổi tối thiểu cho đối tượng này
+    ageMax?: number | null;  // Tuổi tối đa, null = không giới hạn trên
+    weightMin?: number;      // Cân nặng tối thiểu (kg)
+    weightMax?: number | null; // Cân nặng tối đa (kg)
+    periodStart?: string;    // Từ ngày (Legacy)
+    periodEnd?: string;      // Đến ngày (Legacy)
+    morning?: string;        // Sáng (Legacy)
+    noon?: string;           // Trưa (Legacy)
+    afternoon?: string;      // Chiều (Legacy)
+    night?: string;          // Tối (Legacy)
+    totalDay?: string;       // Tổng/Ngày (Legacy)
+    schedules?: {            // Mảng các lộ trình dùng thuốc
+      periodStart?: string;
+      periodEnd?: string;
+      
+      // Tab 1: Số lượng
+      quantityUnit?: string;
+      morning?: string;
+      noon?: string;
+      afternoon?: string;
+      night?: string;
+      totalDay?: string;
+
+      // Tab 2: Hàm lượng
+      dosageUnit?: string;
+      dosageMorning?: string;
+      dosageNoon?: string;
+      dosageAfternoon?: string;
+      dosageNight?: string;
+      dosageTotalDay?: string;
+    }[];
   }[];
-  precautions?: string;
+  precautions?: string | { 
+    title?: string; 
+    content: string; 
+    type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
+    severity?: 'Cần theo dõi điều trị' | 'Cần theo dõi người bệnh' | 'Cần cân nhắc lợi, hại' | 'Phối hợp nguy hiểm' | '';
+    icd10s?: string[];
+    ageConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'years' | 'months';
+    };
+  }[];
   pregnancy?: string;
   lactation?: string;
   driving?: string;
   interactions?: string;
+  incompatibilities?: string;
   specificInteractions?: { target: string; content: string }[];
   pharmacodynamics?: string | { category: string; content: string }[];
   pharmacokinetics?: string | { category: string; content: string }[];
   overdose?: string;
+  overdoseManagement?: string;
+  pregnancyStatus1?: string;
+  pregnancyStatus2?: string;
+  pregnancyStatus3?: string;
+  pregnancyNotes?: string;
+  lactationStatus?: string;
+  lactationNotes?: string;
+  drivingStatus?: string;
+  drivingNotes?: string;
+  isWHOGMP?: boolean;
+  isTCCS?: boolean;
+  storageCondition?: string;
+  storageTemperature?: string;
+  shelfLife?: string;
   updatedAt?: string;
   updatedBy?: string;
   createdAt?: string;
@@ -137,6 +197,8 @@ export interface UserProfile {
   isHidden?: boolean;
   pinnedIcdCodes?: string[];
   workspaceIcdCodes?: string[];
+  pinnedPatientIds?: string[];
+  workspacePatientIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
