@@ -984,6 +984,28 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   </div>
 
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                      Gợi ý & Mức độ Tương tác cụ thể — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.interactionSuggestionsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, interactionSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
                   <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
                     <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
                       <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>

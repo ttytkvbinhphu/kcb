@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link, Pause, MoreVertical } from 'lucide-react';
+import { Search, Info, ChevronRight, ChevronLeft, Pill, Filter, ShieldAlert, Plus, Edit2, Trash2, X, Save, FileText, ExternalLink, Eye, EyeOff, Loader2, Check, Clock, RefreshCw, Heart, Baby, Car, AlertTriangle, Activity, Zap, FolderTree, Folder, Scissors, Settings, Briefcase, MoveRight, ChevronUp, ChevronDown, Star, Database, AlertCircle, Calendar, Sparkles, Hash, FileSearch, Lightbulb, Link, Pause, MoreVertical, Lock } from 'lucide-react';
 import { Drug, DrugGroup, Ingredient, ManualInteraction } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,6 +13,27 @@ import ImageEditorModal from './ImageEditorModal';
 import DrugDetailModal from './DrugDetailModal';
 
 import ConfirmModal from './ConfirmModal';
+
+const isIngredientMatch = (ing1?: string, ing2?: string, list: Ingredient[] = []) => {
+  if (!ing1 || !ing2) return false;
+  if (ing1 === ing2) return true;
+  const i1 = ing1.toLowerCase().trim();
+  const i2 = ing2.toLowerCase().trim();
+  if (i1 === i2 || i1.includes(i2) || i2.includes(i1)) return true;
+
+  // Check from list
+  const ai1 = list.find(ai => ai.name && ai.name.toLowerCase() === i1);
+  if (ai1) {
+    if (ai1.alias && i2.includes(ai1.alias.toLowerCase())) return true;
+    if (ai1.aliases && ai1.aliases.some(alias => alias && i2.includes(alias.toLowerCase()))) return true;
+  }
+  const ai2 = list.find(ai => ai.name && ai.name.toLowerCase() === i2);
+  if (ai2) {
+    if (ai2.alias && i1.includes(ai2.alias.toLowerCase())) return true;
+    if (ai2.aliases && ai2.aliases.some(alias => alias && i1.includes(alias.toLowerCase()))) return true;
+  }
+  return false;
+};
 
 const parseStatusAndNotes = (storedValue: string, options: string[]) => {
   if (!storedValue) return { status: options[0] || '', notes: '' };
@@ -29,7 +50,7 @@ const parseStatusAndNotes = (storedValue: string, options: string[]) => {
 const parsePregnancyTrimesters = (storedValue: string) => {
   const defaultRes = { status1: 'Cân nhắc lợi hại', status2: 'Cân nhắc lợi hại', status3: 'Cân nhắc lợi hại', notes: '' };
   if (!storedValue) return defaultRes;
-  const match = storedValue.match(/^3T đầu:\s*([^|]+)\s*\|\s*3T giữa:\s*([^|]+)\s*\|\s*3T cuối:\s*([^-]+)(?:\s*-\s*(.*))?$/);
+  const match = storedValue.match(/^3T đầu:\s*([^|]+)\s*\|\s*3T giữa:\s*([^|]+)\s*\|\s*3T cuối:\s*([^-]+)(?:\s*-\s*([\s\S]*))?$/);
   if (match) {
     return {
       status1: match[1].trim(),
@@ -143,7 +164,6 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
 
   return (
     <div className="select-none">
-      {/* Labels row */}
       <div className="flex items-center justify-between mb-3">
         <div className={cn(
           "flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-black",
@@ -165,12 +185,9 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
           )}
         </div>
       </div>
-
-      {/* Track */}
       <div ref={trackRef} className="relative h-2 rounded-full cursor-pointer mx-2"
         style={{ background: isDarkMode ? '#1e293b' : '#e2e8f0' }}
       >
-        {/* Active fill */}
         <div
           className="absolute top-0 h-2 rounded-full"
           style={{
@@ -179,8 +196,6 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
             background: 'linear-gradient(90deg, #3b82f6, #6366f1)'
           }}
         />
-
-        {/* Tick marks */}
         {ticks.map(t => (
           <div
             key={t}
@@ -193,8 +208,6 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
             )}
           </div>
         ))}
-
-        {/* Min handle */}
         <div
           className={cn(
             "absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 shadow-md cursor-grab active:cursor-grabbing transition-transform hover:scale-110 z-10",
@@ -205,8 +218,6 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
           onTouchStart={startDrag('min')}
           title={`Tuổi tối thiểu: ${ageMin}`}
         />
-
-        {/* Max handle (conditionally shown) */}
         {hasMax && (
           <div
             className={cn(
@@ -220,8 +231,6 @@ const AgeRangeSlider: React.FC<AgeRangeSliderProps> = ({ ageMin, ageMax, onChang
           />
         )}
       </div>
-
-      {/* Toggle max button */}
       <div className="flex items-center justify-end mt-6 gap-2">
         <button
           type="button"
@@ -473,6 +482,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const canSeePrecautionSeverity = userPowerPoints >= (featureSettings?.precautionSeverityMinPower ?? 0);
   const canSeePregnancyTrimesters = userPowerPoints >= (featureSettings?.pregnancyTrimestersMinPower ?? 0);
   const canSeeQuickSelectTags = userPowerPoints >= (featureSettings?.quickSelectTagsMinPower ?? 0);
+  const canSeeInteractionSuggestions = userPowerPoints >= (featureSettings?.interactionSuggestionsMinPower ?? 0);
 
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [drugGroups, setDrugGroups] = useState<DrugGroup[]>([]);
@@ -594,8 +604,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
   const [catalogAddTrigger, setCatalogAddTrigger] = useState(0);
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'general' | 'dosage' | 'warnings' | 'interactions' | 'overdose' | 'pharmacology' | 'company'>('company');
+  const [activeTab, setActiveTab] = useState<'general' | 'dosage' | 'warnings' | 'side_effects_tab' | 'interactions' | 'overdose' | 'pharmacology' | 'company'>('company');
   const [activeSubTab, setActiveSubTab] = useState<string>('');
+  const [activeSideEffectIngTab, setActiveSideEffectIngTab] = useState<string>('all');
   const [scheduleTabs, setScheduleTabs] = useState<Record<string, 'quantity' | 'dosage'>>({});
 
   useEffect(() => {
@@ -604,6 +615,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       general: 'info',
       dosage: 'indications',
       warnings: 'contra',
+      side_effects_tab: 'adr',
       interactions: 'interactions',
       overdose: 'overdose_management',
       pharmacology: 'properties',
@@ -624,7 +636,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     warnings: [
       { id: 'contra', label: 'Chống chỉ định' },
       { id: 'special', label: 'Thận trọng' },
-      { id: 'adr', label: 'Tác dụng phụ' }
+      { id: 'special_subjects', label: 'Đối tượng đặc biệt' }
+    ],
+    side_effects_tab: [
+      { id: 'adr', label: 'Tác dụng phụ' },
+      { id: 'adr_management', label: 'Xử trí ADR' }
     ],
     interactions: [
       { id: 'interactions', label: 'Tương tác' },
@@ -676,6 +692,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     isClosed: false,
     isRx: false,
     isNew: false,
+    isUpdated: false,
     status: 'active',
     stockStatus: 'available',
     expiryStatus: 'valid',
@@ -700,6 +717,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     pharmacokinetics: [],
     overdose: '',
     overdoseManagement: '',
+    adrManagement: '',
     isWHOGMP: false,
     isTCCS: false,
     storageCondition: '',
@@ -727,6 +745,14 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [showIngredientSuggestions, setShowIngredientSuggestions] = useState(false);
   const [focusedIngredientIndex, setFocusedIngredientIndex] = useState(-1);
   const [activeIngredientRowIndex, setActiveIngredientRowIndex] = useState<number | null>(null);
+
+  // States for interaction specific drug/active-ingredient/group pairing
+  const [partnerSearchQueries, setPartnerSearchQueries] = useState<Record<number, string>>({});
+  const [partnerSearchType, setPartnerSearchType] = useState<Record<number, 'ingredient' | 'group'>>({});
+  const [selectedSelfIngredient, setSelectedSelfIngredient] = useState<Record<number, string>>({});
+  const [partnerInputText, setPartnerInputText] = useState<Record<number, string>>({});
+  const [activePartnerSuggestRowIdx, setActivePartnerSuggestRowIdx] = useState<number | null>(null);
+  const [selectedInteractionIngredient, setSelectedInteractionIngredient] = useState<string>('all');
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     indications: true,
@@ -1200,6 +1226,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       if (aNew && !bNew) return -1;
       if (!aNew && bNew) return 1;
 
+      // Prioritize updated drugs (isUpdated) below new drugs, but above others
+      const aUpdated = !!a.isUpdated;
+      const bUpdated = !!b.isUpdated;
+      if (aUpdated && !bUpdated) return -1;
+      if (!aUpdated && bUpdated) return 1;
+
       // Sort "Hết hàng" (out of stock) to the bottom
       const aOut = a.stockStatus === 'out';
       const bOut = b.stockStatus === 'out';
@@ -1273,6 +1305,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     setFormGroupSearch('');
     setExcipientFormSearch('');
     setActiveTab('company');
+    setSelectedSelfIngredient({});
+    setPartnerSearchType({});
+    setPartnerSearchQueries({});
+    setPartnerInputText({});
+    setSelectedInteractionIngredient('all');
+    setActiveSideEffectIngTab('all');
     if (drug) {
       // Deep clone the drug first to prevent mutating the original reference in-memory
       const clonedDrug = JSON.parse(JSON.stringify(drug)) as Drug;
@@ -1287,6 +1325,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         administrationRoute: clonedDrug.administrationRoute || '',
         isRx: !!clonedDrug.isRx,
         isNew: !!clonedDrug.isNew,
+        isUpdated: !!clonedDrug.isUpdated,
         stockStatus: clonedDrug.stockStatus || 'available',
         expiryStatus: clonedDrug.expiryStatus || 'valid',
         activeIngredients: (clonedDrug.activeIngredients || []).map((ing: any) => {
@@ -1295,13 +1334,15 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             return {
               name: ing.name,
               amount: match ? match[1] : ing.strength,
-              unit: match ? match[2] : ''
+              unit: match ? match[2] : '',
+              sideEffectsNote: ing.sideEffectsNote || ''
             };
           }
           return {
             name: ing.name,
             amount: ing.amount || '',
-            unit: ing.unit || ''
+            unit: ing.unit || '',
+            sideEffectsNote: ing.sideEffectsNote || ''
           };
         }),
         generalAdministration: clonedDrug.generalAdministration || '',
@@ -1323,6 +1364,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         sideEffects: (clonedDrug.sideEffects || []).map((se: any) =>
           typeof se === 'string' ? { frequency: 'Chung', content: se } : se
         ),
+        sideEffectsType: clonedDrug.sideEffectsType || ((clonedDrug.activeIngredients || []).length > 1 ? 'by_ingredient' : 'general'),
         dosageAndAdministration: clonedDrug.dosageAndAdministration || [],
         precautions: Array.isArray(clonedDrug.precautions)
           ? clonedDrug.precautions
@@ -1345,6 +1387,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         specificInteractions: clonedDrug.specificInteractions || [],
         overdose: clonedDrug.overdose || '',
         overdoseManagement: clonedDrug.overdoseManagement || '',
+        adrManagement: clonedDrug.adrManagement || '',
         lots: clonedDrug.lots || (clonedDrug.lotNumber || clonedDrug.expiryDate ? [{ lotNumber: clonedDrug.lotNumber || '', expiryDate: clonedDrug.expiryDate || '' }] : []),
         expiryAlertMonths: clonedDrug.expiryAlertMonths ?? 3,
         isWHOGMP: !!clonedDrug.isWHOGMP,
@@ -1372,6 +1415,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         indications: [{ content: '', icd10s: [], defaultIcd10s: [] }],
         contraindications: [{ content: '', type: 'Other' }],
         sideEffects: [],
+        sideEffectsType: 'general',
         groupId: '',
         groupIds: [],
         avatarUrl: '',
@@ -1385,6 +1429,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         isClosed: false,
         isRx: false,
         isNew: false,
+        isUpdated: false,
         generalAdministration: '',
         dosageAndAdministration: [],
         precautions: '',
@@ -1396,6 +1441,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         pharmacokinetics: [],
         overdose: '',
         overdoseManagement: '',
+        adrManagement: '',
         isWHOGMP: false,
         isTCCS: false,
         storageCondition: '',
@@ -2150,7 +2196,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       "p-0 sm:p-1.5 lg:px-8 lg:pb-8 lg:pt-8 max-w-full mx-auto min-h-screen transition-colors text-slate-900 dark:text-slate-200",
       isDarkMode ? "lg:bg-slate-950/30" : "lg:bg-slate-50/50"
     )}>
-      {/* Mobile Subheader Portal - live lookup prevents stale node references */}
       {(() => {
         const portalNode = getPortalNode();
         return portalNode ? createPortal(
@@ -2914,7 +2959,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         <div className={cn(
           "w-full flex flex-col gap-6 transition-all duration-500 min-h-screen drug-list-container"
         )}>
-          {/* Quick Search in Sticky Column - Only visible when main search bar is scrolled out */}
           <AnimatePresence>
             {showStickySearch && viewMode === 'drugs' && (
               <motion.div
@@ -2955,8 +2999,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             "p-1",
             "flex flex-col gap-3"
           )}>
-
-            {/* Top Pagination Controls */}
             {totalPages > 1 && (
               <div className={cn(
                 "flex flex-wrap items-center justify-between gap-4 p-3 lg:p-4 rounded-2xl lg:rounded-3xl border shadow-sm mb-2",
@@ -3025,8 +3067,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 </div>
               </div>
             )}
-
-            {/* List Header - Hidden on mobile */}
             {paginatedDrugs.length > 0 && (
               <div className={cn(
                 "hidden md:grid grid-cols-12 gap-4 px-8 py-2 text-[10px] font-black uppercase tracking-widest transition-colors",
@@ -3123,6 +3163,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                         )}
                         {drug.isNew && (
                           <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded-md font-black border border-emerald-500/20 flex items-center gap-0.5"><Sparkles size={8} className="text-emerald-500" />Mới</span>
+                        )}
+                        {drug.isUpdated && (
+                          <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-indigo-500/10 text-indigo-500 rounded-md font-black border border-indigo-500/20 flex items-center gap-0.5"><Sparkles size={8} className="text-indigo-500" />Mới cập nhật</span>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -3341,8 +3384,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       </div>
                     )}
                   </div>
-
-                  {/* Nút Sửa/Xóa - absolute trên mobile */}
                   {canSeeActionsColumn && (
                     <div className="absolute top-2 right-2 flex items-center gap-1 md:hidden">
                       {drug.pdfUrl && (
@@ -3461,8 +3502,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 </button>
               </div>
             )}
-
-            {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className={cn(
                 "mt-4 flex flex-wrap items-center justify-between gap-4 p-3 lg:p-4 rounded-2xl lg:rounded-3xl border shadow-sm",
@@ -3559,8 +3598,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           </div>
         </div>
       )}
-
-      {/* Management Modal */}
       <AnimatePresence>
         {isModalOpen && (
           <div className={cn(
@@ -3645,6 +3682,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                   { id: 'general', label: 'Chung', fullLabel: 'Thông tin chung', icon: <Pill size={18} /> },
                   { id: 'dosage', label: 'Liều dùng', fullLabel: 'Chỉ định & Liều dùng', icon: <Clock size={18} /> },
                   { id: 'warnings', label: 'Cảnh báo', fullLabel: 'Thận trọng & Cảnh báo', icon: <ShieldAlert size={18} /> },
+                  { id: 'side_effects_tab', label: 'ADR', fullLabel: 'Tác dụng phụ & Xử trí', icon: <AlertCircle size={18} /> },
                   { id: 'interactions', label: 'Tương tác', fullLabel: 'Tương tác & Tương kỵ', icon: <Zap size={18} /> },
                   { id: 'overdose', label: 'Quá liều', fullLabel: 'Quá liều & Xử trí', icon: <AlertTriangle size={18} /> },
                   { id: 'pharmacology', label: 'Dược lý', fullLabel: 'Dược lý', icon: <Activity size={18} /> },
@@ -3669,12 +3707,23 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 ))}
               </div>
 
-              <form id="drug-form" onSubmit={handleSave} className="flex-1 overflow-hidden flex flex-col">
+              <form
+                id="drug-form"
+                onSubmit={handleSave}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const target = e.target as HTMLElement;
+                    if (target && target.tagName !== 'TEXTAREA') {
+                      e.preventDefault();
+                    }
+                  }
+                }}
+                className="flex-1 overflow-hidden flex flex-col"
+              >
                 <div className={cn(
                   "flex-1 overflow-y-auto p-3 sm:p-8 space-y-6 sm:space-y-8 transition-colors custom-scrollbar",
                   isDarkMode ? "bg-slate-900" : "bg-white"
                 )}>
-                  {/* Sub Tabs Navigator */}
                   <div className={cn(
                     "flex gap-1 p-1 rounded-xl sticky top-0 z-30 transition-colors shadow-sm mb-6",
                     isDarkMode ? "bg-slate-800/80 backdrop-blur-md border border-slate-700" : "bg-slate-100/80 backdrop-blur-md border border-slate-200"
@@ -3756,8 +3805,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest mb-1.5 transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                                 Nhóm thuốc <span className="text-rose-500">*</span>
                               </label>
-
-                              {/* Selected Groups Chips */}
                               {formData.groupIds && formData.groupIds.length > 0 && (
                                 <div className="flex flex-wrap gap-2 mb-3">
                                   {formData.groupIds.map(id => {
@@ -4152,8 +4199,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               ))}
                             </div>
                           </div>
-
-                          {/* Tá dược (Excipients List) */}
                           <div className="space-y-3 sm:space-y-4 relative">
                             <div>
                               <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest transition-colors mb-1.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
@@ -4186,11 +4231,20 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                       const addedNames = new Set<string>();
 
                                       availableExcipients.forEach(ae => {
+                                        const gradesList = Array.from(
+                                          new Set([
+                                            ...(ae.grades || []),
+                                            ...(ae.grade ? [ae.grade] : [])
+                                          ])
+                                        ).filter(Boolean) as string[];
+
                                         const nameMatch = ae.name.toLowerCase().includes(trimSegment);
                                         const aliasMatch = ae.alias && ae.alias.toLowerCase().includes(trimSegment);
                                         const aliasesMatch = ae.aliases && ae.aliases.some((a: string) => a.toLowerCase().includes(trimSegment));
+                                        const gradeMatch = gradesList.some(g => g.toLowerCase().includes(trimSegment));
+                                        const combinedMatch = gradesList.some(g => `${ae.name} ${g}`.toLowerCase().includes(trimSegment));
                                         
-                                        if (nameMatch || aliasMatch || aliasesMatch) {
+                                        if (nameMatch || aliasMatch || aliasesMatch || gradeMatch || combinedMatch) {
                                           const uniqueAliasesList = Array.from(
                                             new Set(
                                               [ae.alias, ...(ae.aliases || [])]
@@ -4211,6 +4265,20 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                             });
                                             addedNames.add(ae.name.toLowerCase());
                                           }
+
+                                          // Add suggestions for each grade
+                                          gradesList.forEach(g => {
+                                            const combinedName = `${ae.name} ${g}`;
+                                            if (!addedNames.has(combinedName.toLowerCase())) {
+                                              suggestionsList.push({
+                                                id: `${ae.id}-grade-${g}`,
+                                                name: combinedName,
+                                                displayName: combinedName,
+                                                subText: `Tá dược (Grade: ${g})`
+                                              });
+                                              addedNames.add(combinedName.toLowerCase());
+                                            }
+                                          });
                                           
                                           // Add the single alias if not identical to main name
                                           if (ae.alias && ae.alias.toLowerCase() !== ae.name.toLowerCase() && !addedNames.has(ae.alias.toLowerCase())) {
@@ -4222,6 +4290,22 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                             });
                                             addedNames.add(ae.alias.toLowerCase());
                                           }
+
+                                          // Add aliases with grades if relevant
+                                          uniqueAliasesList.forEach(alias => {
+                                            gradesList.forEach(g => {
+                                              const combinedAlias = `${alias} ${g}`;
+                                              if (!addedNames.has(combinedAlias.toLowerCase())) {
+                                                suggestionsList.push({
+                                                  id: `${ae.id}-alias-grade-${alias}-${g}`,
+                                                  name: combinedAlias,
+                                                  displayName: combinedAlias,
+                                                  subText: `Tên gọi khác (Grade: ${g})`
+                                                });
+                                                addedNames.add(combinedAlias.toLowerCase());
+                                              }
+                                            });
+                                          });
                                           
                                           // Add multi aliases if not identical to main name
                                           if (ae.aliases && ae.aliases.length > 0) {
@@ -4287,8 +4371,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </div>
                             </div>
                           </div>
-
-                          {/* Dạng bào chế & Khối lượng viên thuốc */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                             <div>
                               <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest mb-1.5 transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
@@ -4701,14 +4783,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
                       {activeSubTab === 'settings' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                          {/* Modern PDF Upload & AI Tool */}
                           <div className={cn(
                             "md:col-span-2 group relative overflow-hidden rounded-[32px] border transition-all duration-500 mb-2",
                             isDarkMode
                               ? "bg-slate-900/40 border-slate-800 hover:border-indigo-500/50"
                               : "bg-white border-slate-200 hover:border-indigo-400 hover:shadow-xl shadow-sm shadow-indigo-100/20"
                           )}>
-                            {/* Decorative background for AI mode */}
                             {extracting && (
                               <div className="absolute inset-0 overflow-hidden">
                                 <motion.div
@@ -4872,8 +4952,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               )}
                             </div>
                           </div>
-
-                          {/* Visibility Setting */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-[24px] border transition-all",
                             isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
@@ -4921,8 +4999,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </button>
                             </div>
                           </div>
-
-                          {/* Status Setting */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-[24px] border transition-all",
                             isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
@@ -4970,8 +5046,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </button>
                             </div>
                           </div>
-
-                          {/* Stock Status Setting */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-[24px] border transition-all",
                             isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
@@ -5033,8 +5107,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </button>
                             </div>
                           </div>
-
-                          {/* Expiry Status Setting */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-[24px] border transition-all",
                             isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
@@ -5189,8 +5261,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </div>
                             </div>
                           </div>
-
-                          {/* New Drug Marking Setting */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-[24px] border transition-all",
                             isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
@@ -5238,6 +5308,54 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </button>
                             </div>
                           </div>
+
+                          <div className={cn(
+                            "p-4 sm:p-6 rounded-[24px] border transition-all mt-6",
+                            isDarkMode ? "bg-slate-800/40 border-slate-700" : "bg-slate-50 border-slate-100 shadow-sm"
+                          )}>
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className={cn(
+                                "p-2.5 rounded-xl",
+                                isDarkMode ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-50 text-indigo-600"
+                              )}>
+                                <Sparkles size={20} />
+                              </div>
+                              <div>
+                                <h4 className={cn("text-sm font-black uppercase tracking-widest", isDarkMode ? "text-slate-200" : "text-slate-700")}>Đánh dấu Thuốc mới cập nhật</h4>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Hiển thị nhãn mới cập nhật cho người dùng</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, isUpdated: true })}
+                                className={cn(
+                                  "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all",
+                                  formData.isUpdated
+                                    ? (isDarkMode ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-md translate-y-[-2px]")
+                                    : (isDarkMode ? "bg-slate-900/50 border-slate-800 text-slate-500" : "bg-white border-slate-200 text-slate-400 hover:border-indigo-300")
+                                )}
+                              >
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest", formData.isUpdated ? "opacity-100" : "opacity-40")}>Đánh dấu Cập nhật</span>
+                                <div className={cn("w-1.5 h-1.5 rounded-full", formData.isUpdated ? "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" : "bg-slate-300")} />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, isUpdated: false })}
+                                className={cn(
+                                  "flex-1 flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all",
+                                  !formData.isUpdated
+                                    ? (isDarkMode ? "bg-slate-700/50 border-slate-600 text-slate-300" : "bg-slate-100 border-slate-300 text-slate-600 shadow-sm translate-y-[-2px]")
+                                    : (isDarkMode ? "bg-slate-900/50 border-slate-800 text-slate-500" : "bg-white border-slate-200 text-slate-400 hover:border-slate-300")
+                                )}
+                              >
+                                <span className={cn("text-[10px] font-black uppercase tracking-widest", !formData.isUpdated ? "opacity-100" : "opacity-40")}>Không gắn nhãn</span>
+                                <div className={cn("w-1.5 h-1.5 rounded-full", !formData.isUpdated ? "bg-slate-500 shadow-[0_0_8px_rgba(100,116,139,0.5)]" : "bg-slate-300")} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </motion.div>
@@ -5251,7 +5369,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     >
                       {activeSubTab === 'indications' && (
                         <div className="pt-2 animate-in fade-in slide-in-from-left-4 duration-300 space-y-4 sm:space-y-5">
-                          {/* Cơ chế tác dụng */}
                           <div className={cn(
                             "p-4 sm:p-5 rounded-2xl border transition-colors",
                             isDarkMode ? "bg-violet-900/10 border-violet-900/30" : "bg-violet-50/50 border-violet-100"
@@ -5792,7 +5909,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mt-2">
-                                  {/* Age Slider */}
                                   <div className={cn(
                                     "p-3 rounded-xl border transition-colors flex flex-col",
                                     isDarkMode ? "bg-slate-900/40 border-slate-800/40" : "bg-slate-50 border-slate-200"
@@ -5847,8 +5963,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                       </div>
                                     )}
                                   </div>
-
-                                  {/* Weight Slider */}
                                   <div className={cn(
                                     "p-3 rounded-xl border transition-colors flex flex-col",
                                     isDarkMode ? "bg-slate-900/40 border-slate-800/40" : "bg-slate-50 border-slate-200"
@@ -5917,7 +6031,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                           "p-3 rounded-xl border border-dashed transition-colors mt-4 relative group/schedule",
                                           isDarkMode ? "bg-slate-900/30 border-slate-800" : "bg-slate-50/50 border-slate-200"
                                         )}>
-                                          {/* Delete Schedule Button */}
                                           {currentSchedules.length > 1 && (
                                             <button
                                               type="button"
@@ -6030,8 +6143,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
 
                                             return (
                                               <>
-                                                {/* Tabs Toggle */}
-                                                <div className={cn(
+                                                 <div className={cn(
                                                   "flex items-center gap-2 mb-3 p-1 rounded-lg w-full max-w-sm mx-auto",
                                                   isDarkMode ? "bg-slate-800" : "bg-slate-100"
                                                 )}>
@@ -6061,7 +6173,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                   </button>
                                                 </div>
 
-                                                {/* Unit Name Input */}
                                                 <div className="flex items-center justify-end mb-3 gap-2">
                                                   <label className="text-[10px] font-bold text-slate-400">Đơn vị:</label>
                                                   <input
@@ -6275,8 +6386,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                     "Nhập nội dung chi tiết..."
                                             }
                                           />
+                                        </div>
 
-                                          {contra.type === 'Age' && (
+                                        {contra.type === 'Age' && (
                                             <div className="mt-3 p-3 rounded-xl border border-dashed flex flex-wrap items-center gap-4 animate-in fade-in slide-in-from-top-1 duration-300"
                                               style={{ borderColor: isDarkMode ? 'rgba(244, 63, 94, 0.4)' : 'rgba(225, 29, 72, 0.2)' }}>
                                               <div className="space-y-1 w-24">
@@ -6502,148 +6614,303 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                           )}
                                         </div>
                                       </div>
+                                      <div className="flex flex-col gap-1 mt-5 sm:mt-6">
+                                        <button
+                                          type="button"
+                                          onClick={() => moveArrayItem('contraindications', index, 'up')}
+                                          disabled={index === 0}
+                                          className={cn(
+                                            "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                            index === 0 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
+                                          )}
+                                        >
+                                          <ChevronUp size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => moveArrayItem('contraindications', index, 'down')}
+                                          disabled={index === formData.contraindications.length - 1}
+                                          className={cn(
+                                            "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                            index === formData.contraindications.length - 1 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
+                                          )}
+                                        >
+                                          <ChevronDown size={14} />
+                                        </button>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newList = formData.contraindications.filter((_, i) => i !== index);
+                                          setFormData({ ...formData, contraindications: newList });
+                                        }}
+                                        className={cn(
+                                          "mt-5 sm:mt-6 p-1.5 sm:p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100",
+                                          isDarkMode ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/20" : "text-slate-400 hover:text-rose-500 hover:bg-rose-50"
+                                        )}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
                                     </div>
                                   </div>
-                                  <div className="flex flex-col gap-1 mt-5 sm:mt-6">
-                                    <button
-                                      type="button"
-                                      onClick={() => moveArrayItem('contraindications', index, 'up')}
-                                      disabled={index === 0}
-                                      className={cn(
-                                        "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                        index === 0 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
-                                      )}
-                                    >
-                                      <ChevronUp size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveArrayItem('contraindications', index, 'down')}
-                                      disabled={index === formData.contraindications.length - 1}
-                                      className={cn(
-                                        "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                        index === formData.contraindications.length - 1 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
-                                      )}
-                                    >
-                                      <ChevronDown size={14} />
-                                    </button>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newList = formData.contraindications.filter((_, i) => i !== index);
-                                      setFormData({ ...formData, contraindications: newList });
-                                    }}
-                                    className={cn(
-                                      "mt-5 sm:mt-6 p-1.5 sm:p-2 rounded-lg transition-all opacity-0 group-hover:opacity-100",
-                                      isDarkMode ? "text-slate-500 hover:text-rose-400 hover:bg-rose-900/20" : "text-slate-400 hover:text-rose-500 hover:bg-rose-50"
-                                    )}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
+                          )}
+                        </motion.div>
                       )}
 
-                      {activeSubTab === 'adr' && (
-                        <div className="pt-2 sm:pt-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                          <div className="flex items-center justify-between mb-3 sm:mb-4">
-                            <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
-                              <Info size={16} />
-                              Tác dụng không mong muốn (ADR)
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const current = (Array.isArray(formData.sideEffects) ? formData.sideEffects : []) as any[];
-                                setFormData({
-                                  ...formData,
-                                  sideEffects: [...current, { frequency: '', content: '' }]
-                                });
-                              }}
-                              className={cn(
-                                "text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold transition-all flex items-center gap-1",
-                                isDarkMode ? "bg-amber-900/30 text-amber-400 hover:bg-amber-900/50" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
-                              )}
-                            >
-                              <Plus size={12} /> Thêm nhóm
-                            </button>
-                          </div>
+                      {activeTab === 'side_effects_tab' && (
+                        <motion.div
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="space-y-6 sm:space-y-8"
+                        >
+                          {activeSubTab === 'adr' && (() => {
+                        const selfActiveIngs = (formData.activeIngredients || []).map(ai => ai.name).filter(Boolean);
+                        const allSideEffects = (Array.isArray(formData.sideEffects) ? (formData.sideEffects as any[]) : []) as any[];
+                        const sideEffectsType = formData.sideEffectsType || 'general';
+                        const currentIngTab = selfActiveIngs.includes(activeSideEffectIngTab)
+                          ? activeSideEffectIngTab
+                          : (selfActiveIngs[0] || 'all');
 
-                          <div className="space-y-4">
-                            {(Array.isArray(formData.sideEffects) ? (formData.sideEffects as any[]) : []).map((se, index) => (
-                              <div key={index} className={cn(
-                                "p-4 rounded-2xl border shadow-sm space-y-3 relative group transition-colors",
-                                isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
-                              )}>
-                                <div className="flex flex-col gap-1 absolute top-3 right-10">
-                                  <button
-                                    type="button"
-                                    onClick={() => moveArrayItem('sideEffects', index, 'up')}
-                                    disabled={index === 0}
-                                    className={cn(
-                                      "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                      index === 0 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
-                                    )}
-                                  >
-                                    <ChevronUp size={14} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => moveArrayItem('sideEffects', index, 'down')}
-                                    disabled={index === (formData.sideEffects as any[]).length - 1}
-                                    className={cn(
-                                      "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                      index === (formData.sideEffects as any[]).length - 1 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
-                                    )}
-                                  >
-                                    <ChevronDown size={14} />
-                                  </button>
+                        return (
+                          <div className="pt-2 sm:pt-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                              {selfActiveIngs.length > 0 && (
+                                <div className={cn(
+                                  "flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl mb-4 border transition-all duration-200",
+                                  isDarkMode ? "bg-slate-900/60 border-slate-800" : "bg-slate-50 border-slate-200"
+                                )}>
+                                  <div className="space-y-0.5">
+                                    <span className={cn(
+                                      "text-xs font-black uppercase tracking-wider block",
+                                      isDarkMode ? "text-slate-400" : "text-slate-500"
+                                    )}>
+                                      Tùy chọn ghi nhận tác dụng phụ (ADR)
+                                    </span>
+                                    <span className={cn(
+                                      "text-[10px] block leading-relaxed max-w-xl",
+                                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                                    )}>
+                                      Chọn hình thức ghi nhận: chung cho toàn bộ thuốc (đơn giản, nhanh chóng) hoặc chi tiết theo từng hoạt chất (chính xác khoa học).
+                                    </span>
+                                  </div>
+                                  <div className={cn(
+                                    "flex p-1 rounded-xl border shrink-0 self-start sm:self-center",
+                                    isDarkMode ? "bg-slate-950 border-slate-800/80" : "bg-slate-200/60 border-slate-250"
+                                  )}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setFormData({ ...formData, sideEffectsType: 'general' })}
+                                      className={cn(
+                                        "px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-sm",
+                                        sideEffectsType === 'general'
+                                          ? "bg-amber-500 text-white shadow-md shadow-amber-500/10"
+                                          : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800")
+                                      )}
+                                    >
+                                      Chung cho thuốc
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setFormData({ ...formData, sideEffectsType: 'by_ingredient' })}
+                                      className={cn(
+                                        "px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-sm",
+                                        sideEffectsType === 'by_ingredient'
+                                          ? "bg-amber-500 text-white shadow-md shadow-amber-500/10"
+                                          : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800")
+                                      )}
+                                    >
+                                      Theo hoạt chất
+                                    </button>
+                                  </div>
                                 </div>
+                              )}
+
+                              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                                <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                                  <Info size={16} />
+                                  Tác dụng không mong muốn (ADR)
+                                </label>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const newList = [...(formData.sideEffects as any[])];
-                                    newList.splice(index, 1);
-                                    setFormData({ ...formData, sideEffects: newList });
+                                    const current = (Array.isArray(formData.sideEffects) ? formData.sideEffects : []) as any[];
+                                    const targetIng = sideEffectsType === 'general'
+                                      ? ''
+                                      : ((currentIngTab !== 'all' && currentIngTab !== 'unassigned')
+                                        ? currentIngTab 
+                                        : (selfActiveIngs.length === 1 ? selfActiveIngs[0] : ''));
+                                    setFormData({
+                                      ...formData,
+                                      sideEffects: [...current, { frequency: '', content: '', ingredient: targetIng }]
+                                    });
                                   }}
                                   className={cn(
-                                    "absolute top-3 right-3 p-1.5 text-slate-400 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100 rounded-lg",
-                                    isDarkMode ? "hover:bg-rose-900/20" : "hover:bg-rose-50"
+                                    "text-[10px] sm:text-xs px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold transition-all flex items-center gap-1",
+                                    isDarkMode ? "bg-amber-900/30 text-amber-400 hover:bg-amber-900/50" : "bg-amber-50 text-amber-600 hover:bg-amber-100"
                                   )}
                                 >
-                                  <X size={14} />
+                                  <Plus size={12} /> Thêm nhóm
                                 </button>
+                              </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                  <div className="sm:col-span-1">
-                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Tần suất</label>
-                                    <select
-                                      value={se.frequency || ''}
+                              {/* Active Ingredient Tab Strip - Only active ingredients, no All or Unassigned tabs */}
+                              {selfActiveIngs.length > 0 && sideEffectsType === 'by_ingredient' && (
+                                <div className={cn(
+                                  "flex flex-wrap gap-2 pb-4 mb-4 border-b border-dashed",
+                                  isDarkMode ? "border-slate-800" : "border-slate-200"
+                                )}>
+                                  {selfActiveIngs.map((ingName, idx) => {
+                                    const count = allSideEffects.filter((item: any) => {
+                                      if (!item) return false;
+                                      if (item.ingredient === ingName) return true;
+                                      // If this is the first tab, also include unassigned ones
+                                      if (idx === 0 && (!item.ingredient || !selfActiveIngs.includes(item.ingredient))) return true;
+                                      return false;
+                                    }).length;
+                                    return (
+                                      <button
+                                        key={ingName}
+                                        type="button"
+                                        onClick={() => setActiveSideEffectIngTab(ingName)}
+                                        className={cn(
+                                          "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 cursor-pointer border shadow-sm",
+                                          currentIngTab === ingName
+                                            ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
+                                            : (isDarkMode
+                                              ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-750 hover:text-slate-200"
+                                              : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200 hover:text-slate-900")
+                                        )}
+                                      >
+                                        <Pill size={14} className={currentIngTab === ingName ? "text-white" : "text-amber-500"} />
+                                        {ingName} ({count})
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Input section for notes/details on side effects of the active ingredient */}
+                              {selfActiveIngs.length > 0 && sideEffectsType === 'by_ingredient' && currentIngTab && (() => {
+                                const ingIndex = (formData.activeIngredients || []).findIndex(
+                                  ai => ai && ai.name && ai.name.toLowerCase() === currentIngTab.toLowerCase()
+                                );
+                                if (ingIndex === -1) return null;
+                                const activeIng = formData.activeIngredients[ingIndex];
+                                return (
+                                  <div className={cn(
+                                    "p-4 rounded-2xl border mb-5 space-y-2.5 transition-all shadow-sm",
+                                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50/50 border-slate-200"
+                                  )}>
+                                    <div className="flex items-center gap-2">
+                                      <FileText size={15} className="text-amber-500" />
+                                      <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-450">
+                                        Thông tin ghi chú về tác dụng phụ của hoạt chất: <strong className={isDarkMode ? "text-amber-400" : "text-amber-700"}>{currentIngTab}</strong>
+                                      </span>
+                                    </div>
+                                    <textarea
+                                      value={activeIng.sideEffectsNote || ''}
                                       onChange={(e) => {
-                                        const newList = [...(formData.sideEffects as any[])];
-                                        newList[index] = { ...newList[index], frequency: e.target.value };
-                                        setFormData({ ...formData, sideEffects: newList });
+                                        const newList = [...(formData.activeIngredients || [])];
+                                        newList[ingIndex] = { ...newList[ingIndex], sideEffectsNote: e.target.value };
+                                        setFormData({ ...formData, activeIngredients: newList });
                                       }}
+                                      placeholder={`Nhập thông tin, lưu ý đặc biệt, hoặc ghi chú thêm về tác dụng phụ (ADR) của hoạt chất ${currentIngTab}...`}
+                                      rows={3}
                                       className={cn(
-                                        "w-full px-3 py-2.5 sm:py-3.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold transition-colors",
-                                        isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200"
+                                        "w-full px-4 py-3 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors font-medium",
+                                        isDarkMode 
+                                          ? "bg-slate-950 border-slate-700 text-slate-200 placeholder-slate-600 focus:border-amber-500" 
+                                          : "bg-white border-slate-250 text-slate-800 placeholder-slate-400 focus:border-amber-500"
                                       )}
-                                    >
-                                      <option value="">-- Chọn tần suất --</option>
-                                      <option value="Rất thường gặp (ADR ≥ 1/10)">Rất thường gặp (ADR ≥ 1/10)</option>
-                                      <option value="Thường gặp (1/100 ≤ ADR < 1/10)">Thường gặp (1/100 ≤ ADR &lt; 1/10)</option>
-                                      <option value="Ít gặp (1/1.000 ≤ ADR < 1/100)">Ít gặp (1/1.000 ≤ ADR &lt; 1/100)</option>
-                                      <option value="Hiếm gặp (1/10.000 ≤ ADR < 1/1.000)">Hiếm gặp (1/10.000 ≤ ADR &lt; 1/1.000)</option>
-                                      <option value="Rất hiếm gặp (ADR < 1/10.000)">Rất hiếm gặp (ADR &lt; 1/10.000)</option>
-                                      <option value="Chưa rõ tần suất">Chưa rõ tần suất</option>
-                                    </select>
+                                    />
                                   </div>
-                                  <div className="sm:col-span-2">
-                                    <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Nội dung tác dụng phụ</label>
+                                );
+                              })()}
+
+                              <div className="space-y-4">
+                                {allSideEffects
+                                  .map((se, index) => ({ se, index }))
+                                  .filter(({ se }) => {
+                                    if (sideEffectsType === 'general' || selfActiveIngs.length === 0) return true;
+                                    if (se.ingredient === currentIngTab) return true;
+                                    // Map unassigned or outdated active ingredients to the first tab
+                                    if (currentIngTab === selfActiveIngs[0] && (!se.ingredient || !selfActiveIngs.includes(se.ingredient))) return true;
+                                    return false;
+                                  })
+                                  .map(({ se, index }) => (
+                                 <div key={index} className={cn(
+                                   "p-4 rounded-2xl border shadow-sm space-y-3 relative group transition-colors",
+                                   isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+                                 )}>
+                                   <div className="flex flex-col gap-1 absolute top-3 right-10">
+                                     <button
+                                       type="button"
+                                       onClick={() => moveArrayItem('sideEffects', index, 'up')}
+                                       disabled={index === 0}
+                                       className={cn(
+                                         "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                         index === 0 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
+                                       )}
+                                     >
+                                       <ChevronUp size={14} />
+                                     </button>
+                                     <button
+                                       type="button"
+                                       onClick={() => moveArrayItem('sideEffects', index, 'down')}
+                                       disabled={index === (formData.sideEffects as any[]).length - 1}
+                                       className={cn(
+                                         "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                         index === (formData.sideEffects as any[]).length - 1 ? "invisible" : (isDarkMode ? "text-slate-500 hover:text-blue-400 hover:bg-blue-900/20" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50")
+                                       )}
+                                     >
+                                       <ChevronDown size={14} />
+                                     </button>
+                                   </div>
+                                   <button
+                                     type="button"
+                                     onClick={() => {
+                                       const newList = [...(formData.sideEffects as any[])];
+                                       newList.splice(index, 1);
+                                       setFormData({ ...formData, sideEffects: newList });
+                                     }}
+                                     className={cn(
+                                       "absolute top-3 right-3 p-1.5 text-slate-400 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100 rounded-lg",
+                                       isDarkMode ? "hover:bg-rose-900/20" : "hover:bg-rose-50"
+                                     )}
+                                   >
+                                     <X size={14} />
+                                   </button>
+
+                                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                     <div className="sm:col-span-1">
+                                       <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Tần suất</label>
+                                       <select
+                                         value={se.frequency || ''}
+                                         onChange={(e) => {
+                                           const newList = [...(formData.sideEffects as any[])];
+                                           newList[index] = { ...newList[index], frequency: e.target.value };
+                                           setFormData({ ...formData, sideEffects: newList });
+                                         }}
+                                         className={cn(
+                                           "w-full px-3 py-2.5 sm:py-3.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold transition-colors",
+                                           isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200"
+                                         )}
+                                       >
+                                         <option value="">-- Chọn tần suất --</option>
+                                         <option value="Rất thường gặp (ADR ≥ 1/10)">Rất thường gặp (ADR ≥ 1/10)</option>
+                                         <option value="Thường gặp (1/100 ≤ ADR < 1/10)">Thường gặp (1/100 ≤ ADR &lt; 1/10)</option>
+                                         <option value="Ít gặp (1/1.000 ≤ ADR < 1/100)">Ít gặp (1/1.000 ≤ ADR &lt; 1/100)</option>
+                                         <option value="Hiếm gặp (1/10.000 ≤ ADR < 1/1.000)">Hiếm gặp (1/10.000 ≤ ADR &lt; 1/1.000)</option>
+                                         <option value="Rất hiếm gặp (ADR < 1/10.000)">Rất hiếm gặp (ADR &lt; 1/10.000)</option>
+                                         <option value="Chưa rõ tần suất">Chưa rõ tần suất</option>
+                                       </select>
+                                     </div>
+
+                                     <div className="sm:col-span-2">
+                                       <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Nội dung tác dụng phụ</label>
                                     {(() => {
                                       const selectedReactions = (se.content || '')
                                         .split(',')
@@ -6697,14 +6964,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                             )}
                                           </div>
 
-                                          {/* Input search / select */}
                                           <div className="relative">
                                             <input
                                               type="text"
                                               value={searchQuery}
                                               onFocus={() => setActiveIndexDropdown(index)}
                                               onBlur={() => {
-                                                // Delicate delay to allow click event listeners inside the dropdown to run
                                                 setTimeout(() => {
                                                   setActiveIndexDropdown(prev => prev === index ? null : prev);
                                                 }, 200);
@@ -6716,7 +6981,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                 });
                                                 setActiveIndexDropdown(index);
                                               }}
-                                              placeholder="Tìm và chọn từ danh một quản lý ADR..."
+                                              placeholder="Tìm và chọn từ danh mục quản lý ADR..."
                                               className={cn(
                                                 "w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all text-xs sm:text-sm font-medium",
                                                 isDarkMode
@@ -6758,7 +7023,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                           isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
                                                         )}
                                                       >
-                                                        {name} <span className="text-[10px] font-normal text-slate-400 dark:text-slate-500 ml-1.5">({cat.category || "Chưa phân loại"})</span>
+                                                        {name} <span className="text-[10px] font-normal text-slate-450 dark:text-slate-500 ml-1.5">({cat.category || "Chưa phân loại"})</span>
                                                       </button>
                                                     );
                                                   })
@@ -6799,11 +7064,56 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             )}
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
+                      {activeSubTab === 'adr_management' && (
+                        <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300 pt-2">
+                          <div className={cn(
+                            "p-4 sm:p-6 rounded-3xl border transition-colors",
+                            isDarkMode ? "bg-amber-950/15 border-amber-900/30" : "bg-amber-50/40 border-amber-100"
+                          )}>
+                            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                              <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest flex items-center gap-2 transition-colors", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                                <AlertCircle size={16} className="sm:w-[18px] sm:h-[18px]" />
+                                Hướng dẫn xử trí phản ứng có hại (ADR)
+                              </label>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Hướng dẫn xử trí ADR</label>
+                                <AutoExpandingTextarea
+                                  rows={6}
+                                  value={formData.adrManagement || ''}
+                                  onChange={(e) => setFormData({ ...formData, adrManagement: e.target.value })}
+                                  placeholder="Ví dụ: Với các tác dụng phụ nhẹ như mẩn ngứa, có thể dùng kháng histamin. Khi có triệu chứng nặng như hội chứng Steven-Johnson hoặc sốc phản vệ, cần dừng thuốc ngay lập tức và đưa bệnh nhân đi cấp cứu..."
+                                  className={cn(
+                                    "w-full px-4 py-4 border rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all resize-none text-xs sm:text-sm font-medium leading-relaxed",
+                                    isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-white border-slate-200"
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <p className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 flex items-start gap-1.5 leading-relaxed bg-slate-500/5 dark:bg-white/5 p-3 rounded-xl italic mt-4">
+                              <Info size={14} className="shrink-0 text-amber-500 mt-0.5" />
+                              Lưu ý: Hướng dẫn xử trí ADR cung cấp định hướng lâm sàng quan trọng để giải quyết và hạn chế tối đa các hậu quả của phản ứng có hại khi bệnh nhân dùng thuốc.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+
+                  {activeTab === 'warnings' && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="space-y-6 sm:space-y-8"
+                    >
                       {activeSubTab === 'special' && (
                         <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                          {/* Nhóm Nhập Thận trọng Nhiều Mục */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-3xl border transition-colors",
                             isDarkMode ? "bg-amber-950/10 border-amber-900/20" : "bg-amber-50/30 border-amber-100"
@@ -6840,7 +7150,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                   isDarkMode ? "bg-slate-800/80 border-slate-700/50" : "bg-white border-slate-100 shadow-sm"
                                 )}>
                                   <div className="flex-1 space-y-2 sm:space-y-3">
-                                    {/* Selectors for Type & Severity */}
                                     {(canSeePrecautionType || canSeePrecautionSeverity) && (
                                       <div className={cn(
                                         "grid gap-2 sm:gap-3",
@@ -6902,8 +7211,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         )}
                                       </div>
                                     )}
-
-                                    {/* Optional Precaution Title */}
                                     <div className="grid grid-cols-1 gap-2">
                                       <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tiêu đề thận trọng (Tùy chọn)</label>
@@ -6923,8 +7230,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         />
                                       </div>
                                     </div>
-
-                                    {/* Content Area */}
                                     <div className="space-y-1">
                                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nội dung thận trọng</label>
                                       <AutoExpandingTextarea
@@ -6947,8 +7252,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         )}
                                       />
                                     </div>
-
-                                    {/* Type Age config */}
                                     {item.type === 'Age' && (
                                       <div className="mt-3 p-3 rounded-xl border border-dashed flex flex-wrap items-center gap-4 animate-in fade-in slide-in-from-top-1 duration-300"
                                         style={{ borderColor: isDarkMode ? 'rgba(245, 158, 11, 0.4)' : 'rgba(217, 119, 6, 0.2)' }}>
@@ -7032,8 +7335,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         </div>
                                       </div>
                                     )}
-
-                                    {/* Type ICD-10 config */}
                                     {item.type === 'ICD-10' && (
                                       <div className="space-y-1 mt-2">
                                         <div className="flex items-center justify-between ml-1">
@@ -7108,10 +7409,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               ))}
                             </div>
                           </div>
+                        </div>
+                      )}
 
-                          {/* Các trường thận trọng khác */}
+                      {activeSubTab === 'special_subjects' && (
+                        <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                           <div className="space-y-6">
-                            {/* Phụ nữ có thai */}
                             <div className={cn(
                               "p-4 sm:p-5 rounded-2xl border transition-colors space-y-3",
                               isDarkMode ? "bg-rose-950/10 border-rose-900/20" : "bg-rose-50/20 border-rose-100"
@@ -7120,8 +7423,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 <Heart size={14} />
                                 Phụ nữ có thai
                               </label>
-                              
-                              {/* 3 Trimester Dropdowns in a Grid */}
                               {canSeePregnancyTrimesters && (
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                   {[
@@ -7147,24 +7448,77 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                   ))}
                                 </div>
                               )}
+                              {(() => {
+                                const notesList = (formData.pregnancyNotes || '').split('\n');
 
-                              {/* Detailed pregnancy notes */}
-                              <div className="space-y-1 mt-3">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nội dung chi tiết</label>
-                                <AutoExpandingTextarea
-                                  rows={2}
-                                  value={formData.pregnancyNotes || ''}
-                                  onChange={(e) => setFormData({ ...formData, pregnancyNotes: e.target.value })}
-                                  placeholder="Nhập ghi chú chi tiết cho phụ nữ có thai..."
-                                  className={cn(
-                                    "w-full px-3 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all resize-none text-xs sm:text-sm font-medium",
-                                    isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-white border-slate-200"
-                                  )}
-                                />
-                              </div>
+                                const updateNoteItem = (index: number, val: string) => {
+                                  const updated = [...notesList];
+                                  updated[index] = val;
+                                  setFormData({ ...formData, pregnancyNotes: updated.join('\n') });
+                                };
+
+                                const addNoteItem = () => {
+                                  const updated = [...notesList, ''];
+                                  setFormData({ ...formData, pregnancyNotes: updated.join('\n') });
+                                };
+
+                                const removeNoteItem = (index: number) => {
+                                  const updated = notesList.filter((_, i) => i !== index);
+                                  setFormData({ ...formData, pregnancyNotes: updated.join('\n') });
+                                };
+
+                                return (
+                                  <div className="space-y-2 mt-3">
+                                    <div className="flex items-center justify-between">
+                                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        Nội dung chi tiết
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={addNoteItem}
+                                        className={cn(
+                                          "flex items-center gap-1 px-2 py-1 text-[9px] font-bold text-white bg-rose-500 hover:bg-rose-600 rounded-lg shadow-sm transition-all uppercase tracking-wider"
+                                        )}
+                                      >
+                                        <Plus size={11} /> Thêm ghi chú
+                                      </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      {notesList.map((item, idx) => (
+                                        <div key={idx} className="flex gap-2 items-start group">
+                                          <div className="flex-1">
+                                            <AutoExpandingTextarea
+                                              rows={1}
+                                              value={item}
+                                              onChange={(e) => updateNoteItem(idx, e.target.value)}
+                                              placeholder={`Nhập ghi chú chi tiết phần ${idx + 1} cho phụ nữ có thai...`}
+                                              className={cn(
+                                                "w-full px-3 py-2 border rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 transition-all resize-none text-xs sm:text-sm font-medium",
+                                                isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-white border-slate-200"
+                                              )}
+                                            />
+                                          </div>
+                                          {notesList.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => removeNoteItem(idx)}
+                                              className={cn(
+                                                "p-2 rounded-xl border opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer self-center shrink-0",
+                                                isDarkMode ? "bg-slate-900 hover:bg-slate-800 text-rose-400 border-slate-700/50" : "bg-white hover:bg-rose-50 text-rose-600 border-rose-100"
+                                              )}
+                                              title="Xóa dòng"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
-
-                            {/* Phụ nữ cho con bú & Vận hành máy móc */}
                             {[
                               { 
                                 label: 'Phụ nữ cho con bú', 
@@ -7237,115 +7591,686 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       animate={{ opacity: 1, x: 0 }}
                       className="space-y-6 sm:space-y-8"
                     >
-                      {activeSubTab === 'interactions' && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
-                          {/* Tương tác cụ thể */}
-                          <div className={cn(
-                            "p-4 sm:p-6 rounded-2xl border transition-colors",
-                            isDarkMode ? "bg-indigo-900/10 border-indigo-900/20" : "bg-indigo-50/30 border-indigo-100"
-                          )}>
-                            <div className="flex items-center justify-between mb-4">
-                              <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest flex items-center gap-2 transition-colors", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
-                                <Zap size={16} className="sm:w-[18px] sm:h-[18px]" />
-                                Tương tác thuốc cụ thể
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const newList = [...(formData.specificInteractions || [])];
-                                  newList.push({ target: '', content: '' });
-                                  setFormData({ ...formData, specificInteractions: newList });
-                                }}
-                                className={cn(
-                                  "flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition-all",
-                                  isDarkMode ? "text-indigo-400 bg-indigo-900/30 hover:bg-indigo-900/50" : "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
-                                )}
-                              >
-                                <Plus size={12} /> Thêm
-                              </button>
-                            </div>
-                            <div className="space-y-2 sm:space-y-3">
-                              {(formData.specificInteractions || []).map((item, index) => (
-                                <div key={index} className={cn(
-                                  "p-3 sm:p-4 rounded-2xl border shadow-sm space-y-2 sm:space-y-3 relative group transition-colors",
-                                  isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+                      {activeSubTab === 'interactions' && (() => {
+                        const selfActiveIngs = (formData.activeIngredients || []).map(ing => ing.name).filter(Boolean);
+                        return (
+                          <div className="space-y-6 sm:space-y-8 pt-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <div className={cn(
+                              "p-4 sm:p-6 rounded-3xl border transition-colors",
+                              isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                            )}>
+                              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                                <label className={cn("block text-[10px] sm:text-sm font-black uppercase tracking-widest flex items-center gap-2 transition-colors", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                                  <Zap size={18} />
+                                  Các tương tác thuốc cụ thể
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const current = formData.specificInteractions || [];
+                                    const defaultIng = (selectedInteractionIngredient !== 'all' && selectedInteractionIngredient !== 'unassigned')
+                                      ? selectedInteractionIngredient
+                                      : (selfActiveIngs[0] || '');
+                                    setFormData({
+                                      ...formData,
+                                      specificInteractions: [...current, { target: '', content: '', severity: '', title: '', selfIngredient: defaultIng, partnerType: 'ingredient' }]
+                                    });
+                                  }}
+                                  className={cn(
+                                    "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer",
+                                    isDarkMode
+                                      ? "bg-indigo-950/30 border-slate-850 text-indigo-300 hover:bg-indigo-900/40"
+                                      : "bg-indigo-50 border-indigo-100 text-indigo-700 hover:bg-indigo-100/50"
+                                  )}
+                                >
+                                  <Plus size={14} /> Thêm tương tác
+                                </button>
+                              </div>
+                              {selfActiveIngs.length > 1 && (
+                                <div className={cn(
+                                  "flex flex-wrap gap-2 pb-4 mb-4 border-b border-dashed",
+                                  isDarkMode ? "border-slate-800" : "border-slate-250"
                                 )}>
-                                  <div className="flex flex-col gap-1 absolute top-3 sm:top-4 right-10 sm:right-12">
-                                    <button
-                                      type="button"
-                                      onClick={() => moveArrayItem('specificInteractions', index, 'up')}
-                                      disabled={index === 0}
-                                      className={cn(
-                                        "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                        index === 0 ? "invisible" : (isDarkMode ? "text-slate-600 hover:text-indigo-400 hover:bg-slate-700" : "text-slate-300 hover:text-indigo-600 hover:bg-slate-50")
-                                      )}
-                                    >
-                                      <ChevronUp size={16} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveArrayItem('specificInteractions', index, 'down')}
-                                      disabled={index === (formData.specificInteractions || []).length - 1}
-                                      className={cn(
-                                        "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                                        index === (formData.specificInteractions || []).length - 1 ? "invisible" : (isDarkMode ? "text-slate-600 hover:text-indigo-400 hover:bg-slate-700" : "text-slate-300 hover:text-indigo-600 hover:bg-slate-50")
-                                      )}
-                                    >
-                                      <ChevronDown size={16} />
-                                    </button>
-                                  </div>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      const newList = (formData.specificInteractions || []).filter((_, i) => i !== index);
-                                      setFormData({ ...formData, specificInteractions: newList });
-                                    }}
+                                    onClick={() => setSelectedInteractionIngredient('all')}
                                     className={cn(
-                                      "absolute top-3 sm:top-4 right-3 sm:right-4 p-1.5 sm:p-2 transition-all opacity-0 group-hover:opacity-100 rounded-lg",
-                                      isDarkMode ? "text-slate-600 hover:text-red-400 hover:bg-red-900/20" : "text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                      "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 cursor-pointer border",
+                                      selectedInteractionIngredient === 'all'
+                                        ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-650/10 hover:bg-indigo-700"
+                                        : (isDarkMode
+                                          ? "bg-slate-800 hover:bg-slate-700 text-slate-350 border-slate-750 hover:text-slate-200"
+                                          : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200 hover:text-slate-900")
                                     )}
                                   >
-                                    <Trash2 size={16} />
+                                    <FolderTree size={14} /> Tất cả ({ (formData.specificInteractions || []).length })
                                   </button>
-                                  <div className="w-full">
-                                    <label className={cn("block text-[9px] font-bold uppercase mb-1 transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Đối tượng tương tác</label>
-                                    <input
-                                      type="text"
-                                      value={item.target || ''}
-                                      onChange={(e) => {
-                                        const newList = [...(formData.specificInteractions || [])];
-                                        newList[index].target = e.target.value;
-                                        setFormData({ ...formData, specificInteractions: newList });
-                                      }}
+
+                                  {selfActiveIngs.map((ingName) => {
+                                    const count = (formData.specificInteractions || []).filter(item => isIngredientMatch(item.selfIngredient, ingName, availableIngredients)).length;
+                                    return (
+                                      <button
+                                        key={ingName}
+                                        type="button"
+                                        onClick={() => setSelectedInteractionIngredient(ingName)}
+                                        className={cn(
+                                          "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 cursor-pointer border",
+                                          selectedInteractionIngredient === ingName
+                                            ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-650/10 hover:bg-indigo-700"
+                                            : (isDarkMode
+                                              ? "bg-slate-800 hover:bg-slate-700 text-slate-350 border-slate-750 hover:text-slate-200"
+                                              : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200 hover:text-slate-900")
+                                        )}
+                                      >
+                                        <Pill size={14} className={selectedInteractionIngredient === ingName ? "text-white" : "text-indigo-500"} />
+                                        {ingName} ({count})
+                                      </button>
+                                    );
+                                  })}
+                                  {(formData.specificInteractions || []).some(item => !item.selfIngredient) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedInteractionIngredient('unassigned')}
                                       className={cn(
-                                        "w-full px-3 py-2.5 sm:py-3.5 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold transition-colors",
-                                        isDarkMode ? "bg-slate-900 border-slate-700 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-700"
+                                        "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 cursor-pointer border",
+                                        selectedInteractionIngredient === 'unassigned'
+                                          ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-650/10 hover:bg-indigo-700"
+                                          : (isDarkMode
+                                            ? "bg-slate-800 hover:bg-slate-700 text-slate-350 border-slate-750 hover:text-slate-200"
+                                            : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200 hover:text-slate-900")
                                       )}
-                                      placeholder="Ví dụ: Simvastatin..."
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={cn("block text-[9px] font-bold uppercase mb-1 transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Nội dung tương tác</label>
-                                    <AutoExpandingTextarea
-                                      rows={4}
-                                      value={item.content || ''}
-                                      onChange={(e) => {
-                                        const newList = [...(formData.specificInteractions || [])];
-                                        newList[index].content = e.target.value;
-                                        setFormData({ ...formData, specificInteractions: newList });
-                                      }}
-                                      className={cn(
-                                        "w-full px-3 py-2.5 sm:py-3.5 border rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition-colors",
-                                        isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200"
-                                      )}
-                                    />
-                                  </div>
+                                    >
+                                      <AlertCircle size={14} className={selectedInteractionIngredient === 'unassigned' ? "text-white" : "text-amber-500"} />
+                                      Chưa phân loại ({ (formData.specificInteractions || []).filter(item => !item.selfIngredient).length })
+                                    </button>
+                                  )}
                                 </div>
-                              ))}
+                              )}
+
+                              <div className="space-y-4 sm:space-y-6">
+                                {(() => {
+                                  const allInteractions = formData.specificInteractions || [];
+                                  const filteredWithOriginalIndices = allInteractions
+                                    .map((item, originalIndex) => ({ item, originalIndex }))
+                                    .filter(({ item }) => {
+                                      if (selfActiveIngs.length <= 1) return true;
+                                      if (selectedInteractionIngredient === 'all') return true;
+                                      if (selectedInteractionIngredient === 'unassigned') return !item.selfIngredient;
+                                      return isIngredientMatch(item.selfIngredient, selectedInteractionIngredient, availableIngredients);
+                                    });
+
+                                  if (filteredWithOriginalIndices.length === 0) {
+                                    return (
+                                      <div className={cn(
+                                        "p-8 sm:p-12 text-center rounded-2xl border border-dashed flex flex-col items-center justify-center gap-2",
+                                        isDarkMode ? "bg-slate-900/20 border-slate-800 text-slate-500" : "bg-slate-50 border-slate-200 text-slate-400"
+                                      )}>
+                                        <Pill size={24} className="opacity-40 animate-pulse text-indigo-500" />
+                                        <span className="text-xs sm:text-sm font-bold">Không có tương tác thuốc cụ thể nào cho hoạt chất này.</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const current = formData.specificInteractions || [];
+                                            const defaultIng = (selectedInteractionIngredient !== 'all' && selectedInteractionIngredient !== 'unassigned')
+                                              ? selectedInteractionIngredient
+                                              : (selfActiveIngs[0] || '');
+                                            setFormData({
+                                              ...formData,
+                                              specificInteractions: [...current, {
+                                                target: '',
+                                                content: '',
+                                                severity: '',
+                                                title: '',
+                                                selfIngredient: defaultIng,
+                                                partnerType: 'ingredient'
+                                              }]
+                                            });
+                                          }}
+                                          className="text-xs font-bold text-indigo-500 hover:text-indigo-600 underline cursor-pointer mt-1"
+                                        >
+                                          Thêm tương tác mới cho hoạt chất này
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+
+                                  return filteredWithOriginalIndices.map(({ item, originalIndex }) => {
+                                    const index = originalIndex;
+                                
+                                // Get base ingredients from availableIngredients configured in Directory
+                                const baseOptions = Array.from(new Set(
+                                  availableIngredients
+                                    .filter(ai => 
+                                      ai.name && 
+                                      !selfActiveIngs.includes(ai.name) && 
+                                      selfActiveIngs.some(selfName => {
+                                        const sLower = selfName.toLowerCase();
+                                        const aNameLower = ai.name.toLowerCase();
+                                        
+                                        // Check if one contains the other
+                                        if (sLower.includes(aNameLower) || aNameLower.includes(sLower)) {
+                                          return true;
+                                        }
+                                        
+                                        // Check alias
+                                        if (ai.alias && sLower.includes(ai.alias.toLowerCase())) {
+                                          return true;
+                                        }
+                                        
+                                        // Check aliases list
+                                        if (ai.aliases && ai.aliases.length > 0) {
+                                          return ai.aliases.some(alias => alias && sLower.includes(alias.toLowerCase()));
+                                        }
+                                        
+                                        return false;
+                                      })
+                                    )
+                                    .map(ai => ai.name)
+                                ));
+
+                                const allSelfChoices = [...selfActiveIngs, ...baseOptions];
+
+                                const activeSelfIng = item.selfIngredient || (selfActiveIngs.length === 1 ? selfActiveIngs[0] : '');
+
+                                const currentPartnerType = item.partnerType || partnerSearchType[index] || 'ingredient';
+                                const currentPartnerQuery = item.target !== undefined
+                                  ? item.target
+                                  : (partnerSearchQueries[index] !== undefined ? partnerSearchQueries[index] : '');
+
+                                // Parsed lists
+                                const selectedPartners = currentPartnerType === 'ingredient' && currentPartnerQuery
+                                  ? currentPartnerQuery.split(/,\s*/).map(p => p.trim()).filter(Boolean)
+                                  : [];
+
+                                const selectedGroups = currentPartnerType === 'group' && currentPartnerQuery
+                                  ? currentPartnerQuery.split(/,\s*/).map(g => g.trim()).filter(Boolean)
+                                  : [];
+
+                                const getFilteredSuggestions = () => {
+                                  const typedText = partnerInputText[index] || '';
+                                  const trimQ = typedText.trim().toLowerCase();
+                                  if (!trimQ) return [];
+                                  const matches: string[] = [];
+                                  availableIngredients.forEach(ai => {
+                                    if (ai.name && ai.name.toLowerCase().includes(trimQ)) {
+                                      if (!selectedPartners.includes(ai.name)) {
+                                        matches.push(ai.name);
+                                      }
+                                    }
+                                    if (ai.alias && ai.alias.toLowerCase().includes(trimQ)) {
+                                      if (!selectedPartners.includes(ai.alias)) {
+                                        matches.push(ai.alias);
+                                      }
+                                    }
+                                    if (ai.aliases && ai.aliases.length > 0) {
+                                      ai.aliases.forEach(a => {
+                                        if (a && a.toLowerCase().includes(trimQ)) {
+                                          if (!selectedPartners.includes(a)) {
+                                            matches.push(a);
+                                          }
+                                        }
+                                      });
+                                    }
+                                  });
+                                  return Array.from(new Set(matches)).slice(0, 10);
+                                };
+
+                                const pSuggestions = getFilteredSuggestions();
+
+                                const handleSelectPartner = (pVal: string) => {
+                                  const updatedList = [...selectedPartners];
+                                  if (!updatedList.includes(pVal)) {
+                                    updatedList.push(pVal);
+                                  }
+                                  const newRawQuery = updatedList.join(', ');
+                                  setPartnerSearchQueries(prev => ({ ...prev, [index]: newRawQuery }));
+                                  setPartnerInputText(prev => ({ ...prev, [index]: '' }));
+                                  setActivePartnerSuggestRowIdx(null);
+                                  
+                                  const newList = [...(formData.specificInteractions || [])];
+                                  newList[index] = {
+                                    ...newList[index],
+                                    target: newRawQuery,
+                                    partnerType: currentPartnerType
+                                  };
+                                  setFormData({ ...formData, specificInteractions: newList });
+                                };
+
+                                const handleRemovePartner = (pValToRemove: string) => {
+                                  const updatedList = selectedPartners.filter(p => p !== pValToRemove);
+                                  const newRawQuery = updatedList.join(', ');
+                                  setPartnerSearchQueries(prev => ({ ...prev, [index]: newRawQuery }));
+                                  
+                                  const newList = [...(formData.specificInteractions || [])];
+                                  newList[index] = {
+                                    ...newList[index],
+                                    target: newRawQuery,
+                                    partnerType: currentPartnerType
+                                  };
+                                  setFormData({ ...formData, specificInteractions: newList });
+                                };
+
+                                return (
+                                  <div key={index} className={cn(
+                                    "p-4 sm:p-6 rounded-2xl border shadow-sm space-y-4 sm:space-y-6 relative group transition-colors",
+                                    isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+                                  )}>
+                                    <div className="flex flex-col gap-1 absolute top-4 right-10 sm:right-12">
+                                      <button
+                                        type="button"
+                                        onClick={() => moveArrayItem('specificInteractions', index, 'up')}
+                                        disabled={index === 0}
+                                        className={cn(
+                                          "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                          index === 0 ? "invisible" : (isDarkMode ? "text-slate-650 hover:text-indigo-400 hover:bg-slate-700" : "text-slate-300 hover:text-indigo-600 hover:bg-slate-50")
+                                        )}
+                                      >
+                                        <ChevronUp size={16} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => moveArrayItem('specificInteractions', index, 'down')}
+                                        disabled={index === (formData.specificInteractions || []).length - 1}
+                                        className={cn(
+                                          "p-1 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                                          index === (formData.specificInteractions || []).length - 1 ? "invisible" : (isDarkMode ? "text-slate-655 hover:text-indigo-400 hover:bg-slate-700" : "text-slate-300 hover:text-indigo-600 hover:bg-slate-50")
+                                        )}
+                                      >
+                                        <ChevronDown size={16} />
+                                      </button>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newList = (formData.specificInteractions || []).filter((_, i) => i !== index);
+                                        setFormData({ ...formData, specificInteractions: newList });
+                                      }}
+                                      className={cn(
+                                        "absolute top-4 right-4 p-1.5 sm:p-2 transition-all opacity-0 group-hover:opacity-100 rounded-lg",
+                                        isDarkMode ? "text-slate-600 hover:text-red-400 hover:bg-red-900/20" : "text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                      )}
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                    {allSelfChoices.length > 1 ? (
+                                      <div className={cn(
+                                        "space-y-1 p-3 rounded-xl border border-dashed",
+                                        isDarkMode
+                                          ? "bg-slate-900/40 border-slate-800"
+                                          : "bg-indigo-50/20 border-indigo-100"
+                                      )}>
+                                        <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-wider mb-1", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                                          Hoạt chất thuộc thuốc <span className="text-rose-500">*</span>
+                                        </label>
+                                        <div className="flex flex-wrap gap-2">
+                                          {allSelfChoices.map((ingName) => {
+                                            const isSelected = activeSelfIng === ingName;
+                                            const isBaseOption = baseOptions.includes(ingName);
+                                            return (
+                                              <button
+                                                key={ingName}
+                                                type="button"
+                                                onClick={() => {
+                                                  const newList = [...(formData.specificInteractions || [])];
+                                                  newList[index] = { ...newList[index], selfIngredient: ingName };
+                                                  setFormData({ ...formData, specificInteractions: newList });
+                                                }}
+                                                className={cn(
+                                                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5",
+                                                  isSelected
+                                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                                    : isDarkMode
+                                                      ? "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                                                      : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                                                )}
+                                              >
+                                                <Pill size={11} className={isBaseOption ? (isSelected ? "text-white" : "text-purple-500") : ""} />
+                                                <span>{ingName}</span>
+                                                {isBaseOption && (
+                                                  <span className={cn(
+                                                    "text-[8.5px] px-1 py-0.5 rounded font-black uppercase tracking-wider",
+                                                    isSelected
+                                                      ? "bg-white/20 text-white"
+                                                      : isDarkMode ? "bg-purple-950/40 text-purple-400" : "bg-purple-50 text-purple-700"
+                                                  )}>
+                                                    gốc
+                                                  </span>
+                                                )}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      allSelfChoices.length === 1 && (
+                                        <div className={cn(
+                                          "text-xs font-semibold flex items-center gap-1.5",
+                                          isDarkMode ? "text-slate-500" : "text-slate-400"
+                                        )}>
+                                          <Pill size={12} className="text-indigo-500" />
+                                          Hoạt chất tương tác: <span className={cn("font-bold", isDarkMode ? "text-slate-350" : "text-slate-600")}>{allSelfChoices[0]}</span>
+                                        </div>
+                                      )
+                                    )}
+                                    <div className="grid grid-cols-1 gap-4">
+                                      <div>
+                                        <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-wider mb-1.5", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                                          Tiêu đề tương tác <span className="text-[10px] sm:text-xs lowercase font-semibold italic text-indigo-500 font-sans tracking-normal">(ai cũng có thể xem)</span>
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={item.title || ''}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            const newList = [...(formData.specificInteractions || [])];
+                                            newList[index] = { ...newList[index], title: val };
+                                            setFormData({ ...formData, specificInteractions: newList });
+                                          }}
+                                          placeholder="Ví dụ: Tăng nguy cơ độc tụy khi dùng với thuốc khác..."
+                                          className={cn(
+                                            "w-full px-3 py-2.5 sm:py-3 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold transition-colors",
+                                            isDarkMode ? "bg-slate-900 border-slate-700 text-slate-200" : "bg-slate-50 border-slate-200 text-slate-700"
+                                          )}
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-wider mb-1.5", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                                          Nội dung tương tác <span className="text-rose-500">*</span> <span className="text-[10px] sm:text-xs lowercase font-semibold italic text-indigo-500 font-sans tracking-normal">(ai cũng có thể xem)</span>
+                                        </label>
+                                        <AutoExpandingTextarea
+                                          rows={3}
+                                          value={item.content || ''}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            const newList = [...(formData.specificInteractions || [])];
+                                            newList[index] = { ...newList[index], content: val };
+                                            setFormData({ ...formData, specificInteractions: newList });
+                                          }}
+                                          className={cn(
+                                            "w-full px-3 py-2.5 sm:py-3.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition-colors",
+                                            isDarkMode ? "bg-slate-900 border-slate-700 text-slate-300" : "bg-slate-50 border-slate-200"
+                                          )}
+                                          placeholder="Nhập chi tiết về cơ chế tương tác, biểu hiện lâm sàng hoặc các khuyến cáo lâm sàng xử trí..."
+                                        />
+                                      </div>
+                                    </div>
+                                    {canSeeInteractionSuggestions ? (
+                                      <div className={cn(
+                                        "space-y-4 pt-4 border-t border-dashed animate-in fade-in duration-300",
+                                        isDarkMode ? "border-slate-800" : "border-slate-200"
+                                      )}>
+                                        <div className={cn(
+                                          "flex items-center gap-1.5 text-[10px] sm:text-xs font-black uppercase tracking-widest leading-none",
+                                          isDarkMode ? "text-indigo-400" : "text-indigo-500"
+                                        )}>
+                                          <Sparkles size={14} className="text-indigo-500 animate-pulse" />
+                                          Thiết lập Khuyên dùng nâng cao (Điểm quyền lực ≥ {featureSettings?.interactionSuggestionsMinPower ?? 0})
+                                        </div>
+
+                                        <div className={cn(
+                                          "p-4 rounded-xl border space-y-4",
+                                          isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-100/30 border-slate-200"
+                                        )}>
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                              <label className={cn("block text-[9px] font-bold uppercase tracking-wider", isDarkMode ? "text-slate-450" : "text-slate-500")}>Loại gợi ý liên quan</label>
+                                              <div className={cn(
+                                                "flex rounded-lg overflow-hidden border shadow-sm",
+                                                isDarkMode ? "border-slate-800" : "border-slate-200"
+                                              )}>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const newList = [...(formData.specificInteractions || [])];
+                                                    newList[index] = { ...newList[index], partnerType: 'ingredient', target: '' };
+                                                    setFormData({ ...formData, specificInteractions: newList });
+                                                    setPartnerSearchQueries(prev => ({ ...prev, [index]: '' }));
+                                                  }}
+                                                  className={cn(
+                                                    "flex-1 py-1.5 text-[10px] font-bold uppercase transition-colors cursor-pointer",
+                                                    currentPartnerType === 'ingredient'
+                                                      ? "bg-indigo-500 text-white"
+                                                      : (isDarkMode ? "bg-slate-950 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 hover:bg-slate-50")
+                                                  )}
+                                                >
+                                                  Hoạt chất
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const newList = [...(formData.specificInteractions || [])];
+                                                    newList[index] = { ...newList[index], partnerType: 'group', target: '' };
+                                                    setFormData({ ...formData, specificInteractions: newList });
+                                                    setPartnerSearchQueries(prev => ({ ...prev, [index]: '' }));
+                                                  }}
+                                                  className={cn(
+                                                    "flex-1 py-1.5 text-[10px] font-bold uppercase transition-colors cursor-pointer",
+                                                    currentPartnerType === 'group'
+                                                      ? "bg-indigo-500 text-white"
+                                                      : (isDarkMode ? "bg-slate-950 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 hover:bg-slate-50")
+                                                  )}
+                                                >
+                                                  Nhóm thuốc
+                                                </button>
+                                              </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className={cn("block text-[9px] font-bold uppercase tracking-wider", isDarkMode ? "text-slate-450" : "text-slate-500")}>Mức độ nghiêm trọng gợi ý</label>
+                                              <select
+                                                value={item.severity || ''}
+                                                onChange={(e) => {
+                                                  const newList = [...(formData.specificInteractions || [])];
+                                                  newList[index] = { ...newList[index], severity: e.target.value };
+                                                  setFormData({ ...formData, specificInteractions: newList });
+                                                }}
+                                                className={cn(
+                                                  "w-full px-3 py-1.5 sm:py-2 border rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors appearance-none bg-no-repeat bg-[right_0.5rem_center] bg-[length:1em_1em]",
+                                                  isDarkMode ? "bg-slate-950 border-slate-700 text-slate-205" : "bg-white border-slate-200 text-slate-650"
+                                                )}
+                                                style={{
+                                                  backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`
+                                                }}
+                                              >
+                                                <option value="">-- Chưa đánh giá --</option>
+                                                <option value="Cần theo dõi điều trị">Cần theo dõi điều trị (Mức 4)</option>
+                                                <option value="Cần theo dõi người bệnh">Cần theo dõi người bệnh (Mức 3)</option>
+                                                <option value="Cần cân nhắc lợi, hại">Cần cân nhắc lợi, hại (Mức 2)</option>
+                                                <option value="Phối hợp nguy hiểm">Phối hợp nguy hiểm (Mức 1)</option>
+                                              </select>
+                                            </div>
+                                          </div>
+                                          <div className="space-y-1 relative">
+                                            <label className={cn("block text-[9px] font-bold uppercase tracking-wider", isDarkMode ? "text-slate-450" : "text-slate-500")}>
+                                              {currentPartnerType === 'ingredient' ? 'Chọn hoạt chất gợi ý tương tác' : 'Chọn nhóm thuốc gợi ý tương tác'}
+                                            </label>
+
+                                            {currentPartnerType === 'ingredient' ? (
+                                              <div className="space-y-2">
+                                                {selectedPartners.length > 0 && (
+                                                  <div className={cn("flex flex-wrap gap-1.5 p-1.5 rounded-lg border border-dashed", isDarkMode ? "border-slate-850 bg-slate-900/40" : "border-slate-200 bg-slate-50")}>
+                                                    {selectedPartners.map((part, pIdx) => (
+                                                      <span
+                                                        key={pIdx}
+                                                        className={cn(
+                                                          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold shadow-sm animate-in zoom-in-95",
+                                                          isDarkMode ? "bg-slate-800 text-slate-200 border border-slate-705" : "bg-white text-slate-700 border border-slate-200"
+                                                        )}
+                                                      >
+                                                        <Pill size={10} className="text-indigo-500" />
+                                                        <span>{part}</span>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => handleRemovePartner(part)}
+                                                          className={cn(
+                                                            "hover:text-red-500 rounded p-0.5 transition-colors text-slate-400",
+                                                            isDarkMode ? "hover:bg-slate-705" : "hover:bg-slate-100"
+                                                          )}
+                                                        >
+                                                          <X size={10} />
+                                                        </button>
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                )}
+
+                                                <div className="relative">
+                                                  <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                                                    <Search size={12} />
+                                                  </div>
+                                                  <input
+                                                    type="text"
+                                                    value={partnerInputText[index] || ''}
+                                                    onChange={(e) => {
+                                                      const val = e.target.value;
+                                                      setPartnerInputText(prev => ({ ...prev, [index]: val }));
+                                                      setActivePartnerSuggestRowIdx(index);
+                                                    }}
+                                                    onFocus={() => setActivePartnerSuggestRowIdx(index)}
+                                                    onBlur={() => {
+                                                      setTimeout(() => {
+                                                        if (activePartnerSuggestRowIdx === index) {
+                                                          setActivePartnerSuggestRowIdx(null);
+                                                        }
+                                                      }, 200);
+                                                    }}
+                                                    className={cn(
+                                                      "w-full pl-7 pr-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-colors",
+                                                      isDarkMode ? "bg-slate-950 border-slate-700 text-slate-200" : "bg-white border-slate-200 text-slate-700"
+                                                    )}
+                                                    placeholder="Nhập tên hoạt chất để tìm và thêm..."
+                                                  />
+                                                  {activePartnerSuggestRowIdx === index && pSuggestions.length > 0 && (
+                                                    <div className={cn(
+                                                      "absolute联网 z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-xl backdrop-blur-md transition-all divide-y",
+                                                      isDarkMode ? "bg-slate-900/95 border-slate-700 divide-slate-800" : "bg-white/95 border-slate-200 divide-slate-100"
+                                                    )}>
+                                                      {pSuggestions.map((pSug, sugIdx) => (
+                                                        <div
+                                                          key={sugIdx}
+                                                          onMouseDown={(e) => {
+                                                            e.preventDefault();
+                                                            handleSelectPartner(pSug);
+                                                          }}
+                                                          className={cn(
+                                                            "px-3 py-2 text-xs font-semibold cursor-pointer transition-colors flex items-center gap-2",
+                                                            isDarkMode ? "hover:bg-indigo-900/40 text-slate-300 hover:text-white" : "hover:bg-indigo-50 text-slate-700 hover:text-indigo-600"
+                                                          )}
+                                                        >
+                                                          <Pill size={11} className="text-indigo-500" />
+                                                          <span>{pSug}</span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="space-y-2">
+                                                {selectedGroups.length > 0 && (
+                                                  <div className={cn("flex flex-wrap gap-1.5 p-1.5 rounded-lg border border-dashed", isDarkMode ? "border-slate-805 bg-slate-900/40" : "border-slate-200 bg-slate-50")}>
+                                                    {selectedGroups.map((groupName, gIdx) => (
+                                                      <span
+                                                        key={gIdx}
+                                                        className={cn(
+                                                          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold shadow-sm animate-in zoom-in-95",
+                                                          isDarkMode ? "bg-slate-800 text-slate-200 border border-slate-705" : "bg-white text-slate-700 border border-slate-200"
+                                                        )}
+                                                      >
+                                                        <Folder size={10} className="text-indigo-500" />
+                                                        <span>{groupName}</span>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => {
+                                                            const updatedList = selectedGroups.filter(g => g !== groupName);
+                                                            const newRawQuery = updatedList.join(', ');
+                                                            setPartnerSearchQueries(prev => ({ ...prev, [index]: newRawQuery }));
+                                                            
+                                                            const newList = [...(formData.specificInteractions || [])];
+                                                            newList[index] = {
+                                                              ...newList[index],
+                                                              target: newRawQuery,
+                                                              partnerType: currentPartnerType
+                                                            };
+                                                            setFormData({ ...formData, specificInteractions: newList });
+                                                          }}
+                                                          className={cn(
+                                                            "hover:text-red-500 rounded p-0.5 transition-colors text-slate-400",
+                                                            isDarkMode ? "hover:bg-slate-700" : "hover:bg-slate-100"
+                                                          )}
+                                                        >
+                                                          <X size={10} />
+                                                        </button>
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                )}
+
+                                                <div className="relative">
+                                                  <select
+                                                    value=""
+                                                    onChange={(e) => {
+                                                      const val = e.target.value;
+                                                      if (!val) return;
+                                                      const updatedList = [...selectedGroups];
+                                                      if (!updatedList.includes(val)) {
+                                                        updatedList.push(val);
+                                                      }
+                                                      const newRawQuery = updatedList.join(', ');
+                                                      setPartnerSearchQueries(prev => ({ ...prev, [index]: newRawQuery }));
+                                                      
+                                                      const newList = [...(formData.specificInteractions || [])];
+                                                      newList[index] = {
+                                                        ...newList[index],
+                                                        target: newRawQuery,
+                                                        partnerType: currentPartnerType
+                                                      };
+                                                      setFormData({ ...formData, specificInteractions: newList });
+                                                    }}
+                                                    className={cn(
+                                                      "w-full px-2 py-2 pr-8 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none transition-colors appearance-none bg-no-repeat bg-[right_0.5rem_center] bg-[length:1em_1em]",
+                                                      isDarkMode ? "bg-slate-950 border-slate-700 text-slate-350" : "bg-white border-slate-200 text-slate-600"
+                                                    )}
+                                                    style={{
+                                                      backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`
+                                                    }}
+                                                  >
+                                                    <option value="">-- Chọn nhóm thuốc gợi ý --</option>
+                                                    {sortedDrugGroups.map(bg => {
+                                                      if (selectedGroups.includes(bg.name)) return null;
+                                                      const indent = bg.level > 0 ? "\u00a0\u00a0".repeat(bg.level) + "└─ " : "";
+                                                      return (
+                                                        <option key={bg.id} value={bg.name}>
+                                                          {indent}{bg.name}
+                                                        </option>
+                                                      );
+                                                    })}
+                                                  </select>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className={cn(
+                                        "p-4 rounded-xl border flex items-center gap-2",
+                                        isDarkMode
+                                          ? "border-slate-800 bg-slate-900/20"
+                                          : "border-slate-200 bg-slate-50/50"
+                                      )}>
+                                        <Lock size={14} className="text-slate-400" />
+                                        <span className="text-[11px] font-bold text-slate-500 italic">
+                                          Cần Điểm quyền lực ≥ {featureSettings?.interactionSuggestionsMinPower ?? 0} để xem/cấu hình Hoạt chất/Nhóm thuốc gợi ý & mức nghiêm trọng.
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
                             </div>
                           </div>
-
-                          {/* Tương tác chung */}
                           <div>
                             <label className={cn("block text-[10px] sm:text-xs font-black uppercase tracking-widest mb-2 flex items-center gap-2 transition-colors", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
                               <RefreshCw size={16} />
@@ -7363,11 +8288,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             />
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
 
                       {activeSubTab === 'incompatibilities' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                          {/* Tương kỵ */}
                           <div>
                             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                               <label className={cn("text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-colors", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
@@ -7412,7 +8337,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     >
                       {activeSubTab === 'overdose_management' && (
                         <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                          {/* Trường Quá liều - Xử trí độc lập */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-2xl border transition-colors space-y-4",
                             isDarkMode ? "bg-red-950/10 border-red-900/20" : "bg-red-50/20 border-red-100"
@@ -7472,7 +8396,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     >
                       {activeSubTab === 'properties' && (
                         <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
-                          {/* Dược lực học */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-2xl border transition-colors",
                             isDarkMode ? "bg-emerald-900/10 border-emerald-900/20" : "bg-emerald-50/30 border-emerald-100"
@@ -7569,8 +8492,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               )}
                             </div>
                           </div>
-
-                          {/* Dược động học */}
                           <div className={cn(
                             "p-4 sm:p-6 rounded-2xl border transition-colors",
                             isDarkMode ? "bg-blue-900/10 border-blue-900/20" : "bg-blue-50/30 border-blue-100"
@@ -7677,8 +8598,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           </div>
         )}
       </AnimatePresence>
-
-      {/* AI Review Modal */}
       <AnimatePresence>
         {isReviewModalOpen && extractedData && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
@@ -7721,7 +8640,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
               </div>
 
               <div className="p-6 md:p-8 overflow-y-auto space-y-8 transition-colors max-h-[calc(85vh-180px)] custom-scrollbar">
-                {/* Status Hero */}
                 <div className={cn(
                   "p-6 rounded-[28px] border-2 border-dashed transition-colors flex flex-col items-center text-center gap-3",
                   isDarkMode ? "bg-emerald-500/5 border-emerald-500/20" : "bg-emerald-50 border-emerald-100"
@@ -7736,7 +8654,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                 </div>
 
                 <div className="space-y-8">
-                  {/* Primary Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className={cn("p-5 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/40 border-slate-750" : "bg-white border-slate-200 shadow-sm")}>
                       <div className="flex items-center gap-2 mb-3">
@@ -7767,8 +8684,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       <p className={cn("text-base font-black transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>{(extractedData as any).administrationRoute || 'Chưa xác định'}</p>
                     </div>
                   </div>
-
-                  {/* Ingredients - Detailed List */}
                   <div className={cn("p-6 rounded-[24px] border transition-colors", isDarkMode ? "bg-slate-800/20 border-slate-800" : "bg-slate-50/50 border-slate-100")}>
                     <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200/50 dark:border-slate-700/50">
                       <div className="flex items-center gap-2">
@@ -7796,8 +8711,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       )}
                     </div>
                   </div>
-
-                  {/* Data Insights */}
                   <div className="grid grid-cols-1 gap-4">
                     {[
                       { icon: <Info size={18} />, label: 'Chỉ định lâm sàng', items: extractedData.indications, color: 'blue' },
@@ -7836,8 +8749,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       </div>
                     ))}
                   </div>
-
-                  {/* Summary Footer Note */}
                   <div className={cn(
                     "p-5 rounded-[24px] flex gap-4 transition-colors items-center",
                     isDarkMode ? "bg-indigo-500/5 border border-indigo-500/10" : "bg-indigo-50 border border-indigo-100"
@@ -7946,8 +8857,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           </div>
         )}
       </AnimatePresence>
-
-      {/* Error Message Toast */}
       <AnimatePresence>
         {errorMessage && (
           <motion.div
@@ -7972,8 +8881,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Confirm Deletion Modal */}
       <ConfirmModal
         isOpen={isConfirmOpen}
         onClose={() => setIsConfirmOpen(false)}
@@ -8191,7 +9098,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                         className="overflow-hidden"
                       >
                         <div className="flex flex-col gap-2 p-2 rounded-2xl border bg-slate-50/50 dark:bg-slate-800/30 border-slate-200 dark:border-slate-800">
-                          {/* Suggestion Status Filter */}
                           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                             {[
                               { id: 'all', label: 'Tất cả trạng thái' },
@@ -8212,8 +9118,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               </button>
                             ))}
                           </div>
-
-                          {/* Chapter Filter */}
                           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1 border-t border-slate-200 dark:border-slate-700/50">
                             {[
                               { id: 'all', label: 'Tất cả chương' },
@@ -8436,8 +9340,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           />
         )}
       </AnimatePresence>
-
-      {/* Floating Action Button for Adding Drug */}
       {canManage && (viewMode !== 'drugs' || userRole === 'admin') && !isGroupModalOpen && !isIngredientModalOpen && !isIngredientCategoryModalOpen && !isExcipientModalOpen && !isExcipientCategoryModalOpen && !isCompanyModalOpen && !isModalOpen && !isReviewModalOpen && (
         <button
           type="button"

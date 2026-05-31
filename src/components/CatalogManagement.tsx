@@ -48,12 +48,14 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
   const [confirmData, setConfirmData] = useState<{ id: string, name: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentAlias, setCurrentAlias] = useState('');
+  const [currentGrade, setCurrentGrade] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedDetailExcipient, setSelectedDetailExcipient] = useState<any | null>(null);
   
   const [formData, setFormData] = useState<any>({
     name: '',
     aliases: [],
+    grades: [],
     description: ''
   });
 
@@ -163,18 +165,22 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
   const handleOpenModal = (item?: any) => {
     if (item) {
       setEditingItem(item);
-      // Ensure aliases is an array even if old data only has alias string
+      // Ensure aliases and grades are arrays
       const aliases = item.aliases || (item.alias ? [item.alias] : []);
-      setFormData({ ...item, aliases });
+      const grades = item.grades || (item.grade ? [item.grade] : []);
+      setFormData({ ...item, aliases, grades });
     } else {
       setEditingItem(null);
       setCurrentAlias('');
+      setCurrentGrade('');
       setFormData({
         id: Math.random().toString(36).substr(2, 9),
         name: '',
         aliases: [],
+        grades: [],
         description: '',
-        categoryId: ''
+        categoryId: '',
+        grade: ''
       });
     }
     setIsModalOpen(true);
@@ -225,6 +231,15 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         } else if (formData.categoryId) {
           saveData.categoryId = formData.categoryId;
           saveData.categoryIds = [formData.categoryId];
+        }
+        if (type === 'excipient') {
+          if (formData.grades && formData.grades.length > 0) {
+            saveData.grades = formData.grades;
+            saveData.grade = formData.grades[0]; // backward compatibility
+          } else if (formData.grade) {
+            saveData.grade = formData.grade.trim();
+            saveData.grades = [formData.grade.trim()];
+          }
         }
       }
 
@@ -376,7 +391,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                             {item.name}
                           </span>
                         ) : (
-                          <span className="truncate max-w-[150px] sm:max-w-[260px]">{item.name}</span>
+                          <span className={cn(type === 'company' ? "" : "truncate max-w-[150px] sm:max-w-[260px]")}>{item.name}</span>
                         )}
                         {type === 'excipient' && (() => {
                           const matchingDrugs = getDrugsWithExcipient(item);
@@ -444,6 +459,17 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                              Chưa có phân loại
                            </span>
                          )}
+                       </div>
+                     )}
+
+                     {type === 'excipient' && (item.grades || item.grade) && (
+                       <div className="flex flex-wrap gap-1 mb-1">
+                         <span className={cn(
+                           "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border",
+                           isDarkMode ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-amber-50 text-amber-700 border-amber-200"
+                         )}>
+                           Grade: {item.grades && item.grades.length > 0 ? item.grades.join(', ') : item.grade}
+                         </span>
                        </div>
                      )}
 
@@ -695,6 +721,90 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                     </div>
                   )}
 
+                  {type === 'excipient' && (
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tầng / Mác / Cấp độ (Grade)</label>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          <AnimatePresence mode="popLayout">
+                            {(formData.grades || []).map((gr: string, idx: number) => (
+                              <motion.div
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                key={`${gr}-${idx}`}
+                                className={cn(
+                                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
+                                  isDarkMode ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700"
+                                )}
+                              >
+                                <span>{gr}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nextGrades = [...formData.grades];
+                                    nextGrades.splice(idx, 1);
+                                    setFormData({ ...formData, grades: nextGrades });
+                                  }}
+                                  className="hover:text-rose-500 transition-colors"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            className={cn(
+                              "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                            )}
+                            placeholder="Nhập mác/grade rồi nhấn Enter hoặc + để thêm..."
+                            value={currentGrade}
+                            onChange={(e) => setCurrentGrade(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const value = currentGrade.trim();
+                                if (value && !(formData.grades || []).includes(value)) {
+                                  setFormData({
+                                    ...formData,
+                                    grades: [...(formData.grades || []), value]
+                                  });
+                                  setCurrentGrade('');
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const value = currentGrade.trim();
+                              if (value && !(formData.grades || []).includes(value)) {
+                                setFormData({
+                                  ...formData,
+                                  grades: [...(formData.grades || []), value]
+                                });
+                                setCurrentGrade('');
+                              }
+                            }}
+                            className={cn(
+                              "absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all",
+                              currentGrade.trim()
+                                ? (isDarkMode ? "bg-indigo-600 text-white hover:bg-indigo-500" : "bg-indigo-600 text-white hover:bg-indigo-700")
+                                : "text-slate-400"
+                            )}
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {type === 'company' && (
                     <>
                       <div>
@@ -890,6 +1000,19 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                           {alias}
                         </span>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Grade */}
+                {(selectedDetailExcipient.grades || selectedDetailExcipient.grade) && (
+                  <div>
+                    <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tầng / Mác / Cấp độ (Grade)</h5>
+                    <div className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold border shadow-sm",
+                      isDarkMode ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-amber-50 text-amber-700 border-amber-200"
+                    )}>
+                      {selectedDetailExcipient.grades && selectedDetailExcipient.grades.length > 0 ? selectedDetailExcipient.grades.join(', ') : selectedDetailExcipient.grade}
                     </div>
                   </div>
                 )}

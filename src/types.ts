@@ -1,7 +1,7 @@
 export interface Drug {
   id: string;
   name: string;
-  activeIngredients: { name: string; amount: string; unit: string }[];
+  activeIngredients: { name: string; amount: string; unit: string; sideEffectsNote?: string }[];
   atcCode?: string;
   dosageForm: string;
   detailedDosageForm?: string;
@@ -22,7 +22,9 @@ export interface Drug {
       unit?: 'years' | 'months';
     };
   }[];
-  sideEffects: string[] | { frequency: string; content: string }[];
+  sideEffects: string[] | { frequency: string; content: string; ingredient?: string }[];
+  sideEffectsType?: 'general' | 'by_ingredient';
+  adrManagement?: string;
   dosage?: string; // Tóm tắt liều dùng chung
   groupId?: string; // Legacy: single group
   groupIds?: string[]; // Multiple groups support
@@ -37,6 +39,7 @@ export interface Drug {
   isClosed?: boolean;
   isRx?: boolean;
   isNew?: boolean;
+  isUpdated?: boolean;
   status?: 'active' | 'suspended';
   stockStatus?: 'available' | 'low' | 'out' | string;
   expiryStatus?: 'valid' | 'expiring' | 'expired' | string;
@@ -97,7 +100,7 @@ export interface Drug {
   driving?: string;
   interactions?: string;
   incompatibilities?: string;
-  specificInteractions?: { target: string; content: string }[];
+  specificInteractions?: { target: string; content: string; severity?: string; title?: string; selfIngredient?: string; partnerType?: 'ingredient' | 'group' }[];
   pharmacodynamics?: string | { category: string; content: string }[];
   pharmacokinetics?: string | { category: string; content: string }[];
   overdose?: string;
@@ -153,6 +156,7 @@ export interface Excipient {
   description?: string;
   categoryId?: string; // Legacy
   categoryIds?: string[]; // Multiple categories support
+  grade?: string;
 }
 
 export interface PrescriptionItem {
