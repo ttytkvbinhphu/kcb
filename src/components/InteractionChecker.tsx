@@ -256,7 +256,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
         setResult({
           severity: 'low',
           description: 'Không tìm thấy dữ liệu tương tác trong danh mục chính thức cho sự kết hợp này.',
-          recommendation: 'Vui lòng kiểm tra lại với Dược thư Quốc gia hoặc các tài liệu chuyên khoa tin cậy. Chức năng phân tích AI hiện chỉ dành cho Quản trị viên.',
+          recommendation: 'Vui lòng kiểm tra lại với Dược thư Quốc gia hoặc các tài liệu chuyên khoa tin cậy.',
           isAI: false
         });
         setLoading(false);
@@ -432,38 +432,54 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                   )}>
                     {filteredDrugs.length > 0 ? (
                       filteredDrugs.map(drug => (
-                        <button
+                        <div
                           key={drug.id}
-                          type="button"
                           onClick={() => addDrug(drug)}
                           className={cn(
-                            "w-full text-left px-4 py-3 rounded-xl transition-colors flex items-center justify-between group",
+                            "w-full text-left px-4 py-3 rounded-xl transition-colors flex items-center justify-between group cursor-pointer",
                             isDarkMode ? "hover:bg-blue-900/30" : "hover:bg-blue-50"
                           )}
                         >
                           <div className="flex-1 text-left">
                             <p
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleShowDrugDetail(drug);
-                              }}
                               className={cn(
-                                "font-bold transition-colors hover:underline underline-offset-4 decoration-blue-500",
-                                isDarkMode ? "text-white group-hover:text-blue-400" : "text-slate-900 group-hover:text-blue-700"
+                                "font-bold transition-colors",
+                                isDarkMode ? "text-white" : "text-slate-900"
                               )}
                             >
                               {drug.name}
                             </p>
                             <p className={cn(
                               "text-xs uppercase font-medium transition-colors",
-                              isDarkMode ? "text-slate-400" : "text-slate-50"
+                              isDarkMode ? "text-slate-400" : "text-slate-500"
                             )}>{drug.activeIngredients?.[0]?.name || 'N/A'}</p>
                           </div>
-                          <Plus size={18} className={cn(
-                            "transition-colors",
-                            isDarkMode ? "text-slate-600 group-hover:text-blue-400" : "text-slate-300 group-hover:text-blue-500"
-                          )} />
-                        </button>
+                          
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleShowDrugDetail(drug);
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all hover:scale-105 active:scale-95 cursor-pointer",
+                                isDarkMode 
+                                  ? "text-slate-400 hover:text-blue-400 hover:bg-slate-800" 
+                                  : "text-slate-400 hover:text-blue-600 hover:bg-slate-100/80"
+                              )}
+                              title="Xem chi tiết thuốc"
+                            >
+                              <Info size={15} />
+                            </button>
+                            <div className={cn(
+                              "p-2 rounded-lg transition-colors",
+                              isDarkMode ? "text-slate-500 group-hover:text-blue-400" : "text-slate-300 group-hover:text-blue-500"
+                            )}>
+                              <Plus size={16} />
+                            </div>
+                          </div>
+                        </div>
                       ))
                     ) : (
                       <p className={cn(
@@ -588,7 +604,6 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                               result.severity === 'medium' ? "Cần lưu ý" : "An toàn"
                           )}
                         </h4>
-                        <p className="text-white/80 font-bold text-[10px] lg:text-xs uppercase tracking-widest">Kết quả phân tích AI</p>
                       </div>
                     </div>
                   </div>

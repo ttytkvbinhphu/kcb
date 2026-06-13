@@ -112,9 +112,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Mạng xã hội', icon: MessageSquare, section: 'member', group: 'general' },
       { id: 'view_calculator', label: featureSettings['view_calculator']?.customTitle || 'Máy tính', icon: Calculator, section: 'member', group: 'general' },
       
-      { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutGrid, section: 'admin', group: 'admin' },
-      { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
       { id: 'admin_general', label: 'Cài đặt chung', icon: Globe, section: 'admin', group: 'admin' },
+      { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
+      { id: 'admin_home', label: 'Công cụ', icon: LayoutGrid, section: 'admin', group: 'admin' },
       { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
       { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users, section: 'admin', group: 'admin' },
       

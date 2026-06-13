@@ -1,7 +1,7 @@
 export interface Drug {
   id: string;
   name: string;
-  activeIngredients: { name: string; amount: string; unit: string; sideEffectsNote?: string }[];
+  activeIngredients: { name: string; amount: string; unit: string; sideEffectsNote?: string; equivalent?: string; equivalentAmount?: string; equivalentUnit?: string }[];
   atcCode?: string;
   dosageForm: string;
   detailedDosageForm?: string;
@@ -16,10 +16,13 @@ export interface Drug {
     content: string; 
     type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
     icd10s?: string[];
+    drugs?: string[];
     ageConfig?: {
       operator: '<' | '>' | '≥' | '≤' | '';
       value: number | '';
       unit?: 'years' | 'months';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
     };
   }[];
   sideEffects: string[] | { frequency: string; content: string; ingredient?: string }[];
@@ -28,6 +31,7 @@ export interface Drug {
   dosage?: string; // Tóm tắt liều dùng chung
   groupId?: string; // Legacy: single group
   groupIds?: string[]; // Multiple groups support
+  interactionGroupIds?: string[]; // Interaction groups support
   avatarUrl?: string;
   bannerUrl?: string;
   pdfUrl?: string;
@@ -51,10 +55,13 @@ export interface Drug {
     category: string; 
     content: string;
     patientGroups?: string[];
+    administrationTime?: string; // Thời điểm uống thuốc (ví dụ: Trước ăn, sau ăn)
     ageMin?: number;         // Tuổi tối thiểu cho đối tượng này
     ageMax?: number | null;  // Tuổi tối đa, null = không giới hạn trên
     weightMin?: number;      // Cân nặng tối thiểu (kg)
     weightMax?: number | null; // Cân nặng tối đa (kg)
+    crclMin?: number;        // Độ thanh thải creatinine tối thiểu (ml/min)
+    crclMax?: number | null;  // Độ thanh thải creatinine tối đa (ml/min)
     periodStart?: string;    // Từ ngày (Legacy)
     periodEnd?: string;      // Đến ngày (Legacy)
     morning?: string;        // Sáng (Legacy)
@@ -63,6 +70,7 @@ export interface Drug {
     night?: string;          // Tối (Legacy)
     totalDay?: string;       // Tổng/Ngày (Legacy)
     schedules?: {            // Mảng các lộ trình dùng thuốc
+      name?: string;         // Tên lộ trình (Ví dụ: Đợt tấn công, liều duy trì,...)
       periodStart?: string;
       periodEnd?: string;
       
@@ -87,12 +95,30 @@ export interface Drug {
     title?: string; 
     content: string; 
     type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
-    severity?: 'Cần theo dõi điều trị' | 'Cần theo dõi người bệnh' | 'Cần cân nhắc lợi, hại' | 'Phối hợp nguy hiểm' | '';
+    severity?: 'Cần theo dõi điều trị' | 'Cần theo dõi người bệnh' | 'Cần cân nhắc lợi, hại' | 'Phối hợp nguy hiểm' | 'Chống chỉ định' | '';
     icd10s?: string[];
+    drugs?: string[];
     ageConfig?: {
       operator: '<' | '>' | '≥' | '≤' | '';
       value: number | '';
       unit?: 'years' | 'months';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
+    };
+  }[];
+  warnings?: { 
+    title?: string; 
+    content: string; 
+    type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
+    severity?: 'Cần theo dõi điều trị' | 'Cần theo dõi người bệnh' | 'Cần cân nhắc lợi, hại' | 'Phối hợp nguy hiểm' | 'Chống chỉ định' | '';
+    icd10s?: string[];
+    drugs?: string[];
+    ageConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'years' | 'months';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
     };
   }[];
   pregnancy?: string;
@@ -115,6 +141,7 @@ export interface Drug {
   drivingNotes?: string;
   isWHOGMP?: boolean;
   isTCCS?: boolean;
+  isCYP3A4?: boolean;
   storageCondition?: string;
   storageTemperature?: string;
   shelfLife?: string;
@@ -130,6 +157,7 @@ export interface DrugGroup {
   level: number; // 0, 1, 2
   order: number;
   bannerUrl?: string;
+  classification?: 'treatment' | 'interaction';
 }
 
 export interface Ingredient {
@@ -283,6 +311,8 @@ export interface ADRReport {
 export interface ADRCatalogItem {
   id: string;
   reactionName: string;
+  alternativeName?: string;
+  alternativeNames?: string[];
   description: string;
   commonDrugs: string[];
   severityLevel: 'Nhẹ' | 'Trung bình' | 'Nặng' | 'Nghiêm trọng';
@@ -570,6 +600,9 @@ export interface AuthLog {
   userName: string;
   type: 'login' | 'logout';
   timestamp: string;
+  ipAddress?: string;
+  macAddress?: string;
+  device?: string;
 }
 
 export interface RegistrationSettings {

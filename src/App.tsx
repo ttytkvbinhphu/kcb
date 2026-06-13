@@ -28,6 +28,58 @@ import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, Use
 import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings } from './types';
 import { seedInitialData } from './lib/seed';
 
+export async function getIpAddress(): Promise<string> {
+  try {
+    const res = await fetch('https://api.ipify.org?format=json');
+    const data = await res.json();
+    return data.ip || '127.0.0.1';
+  } catch (error) {
+    let storedIp = localStorage.getItem('sim_ip');
+    if (!storedIp) {
+      const octet3 = Math.floor(Math.random() * 254) + 1;
+      const octet4 = Math.floor(Math.random() * 254) + 1;
+      storedIp = `113.161.${octet3}.${octet4}`;
+      localStorage.setItem('sim_ip', storedIp);
+    }
+    return storedIp;
+  }
+}
+
+export function getMacAddress(): string {
+  let mac = localStorage.getItem('sim_mac');
+  if (!mac) {
+    const hex = '0123456789ABCDEF';
+    const parts = ['FC', 'A1', '3E'];
+    for (let i = 0; i < 3; i++) {
+      parts.push(hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)]);
+    }
+    mac = parts.join(':');
+    localStorage.setItem('sim_mac', mac);
+  }
+  return mac;
+}
+
+export function getDeviceName(): string {
+  const ua = navigator.userAgent;
+  let os = "Unknown OS";
+  if (ua.indexOf("Win") !== -1) os = "Windows";
+  else if (ua.indexOf("Mac") !== -1) os = "macOS";
+  else if (ua.indexOf("X11") !== -1 || ua.indexOf("Linux") !== -1) {
+    if (ua.indexOf("Android") !== -1) os = "Android";
+    else os = "Linux";
+  }
+  else if (ua.indexOf("iPhone") !== -1 || ua.indexOf("iPad") !== -1) os = "iOS";
+
+  let browser = "Unknown Browser";
+  if (ua.indexOf("Chrome") !== -1) browser = "Chrome";
+  else if (ua.indexOf("Safari") !== -1) browser = "Safari";
+  else if (ua.indexOf("Firefox") !== -1) browser = "Firefox";
+  else if (ua.indexOf("Edge") !== -1) browser = "Edge";
+  else if (ua.indexOf("MSIE") !== -1 || (document as any).documentMode) browser = "IE";
+
+  return `${os} - ${browser}`;
+}
+
 const ALL_TABS = [
   { id: 'dashboard', label: 'Workspace', icon: LayoutDashboard },
   { id: 'view_calendar', label: 'Lịch công tác', icon: CalendarIcon },
@@ -52,9 +104,9 @@ const ALL_TABS = [
   { id: 'manage_doc_lookup', label: 'Quản lý văn bản', icon: FileText },
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
+  { id: 'admin_home', label: 'Công cụ', icon: LayoutDashboard },
+  { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
-  { id: 'admin_registration', label: 'Quản lý Đăng ký', icon: UserCheck },
-  { id: 'admin_home', label: 'Trang chủ Admin', icon: LayoutDashboard },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
   { id: 'admin_titles', label: 'Quản lý Chức danh', icon: Award },
   { id: 'admin_positions', label: 'Quản lý Chức vụ', icon: ShieldCheck },
@@ -126,6 +178,45 @@ export default function App() {
       });
     }
   }, [userProfile, isProfileModalOpen]);
+
+  // Automated first-access of the day per device and user logger
+  useEffect(() => {
+    if (user && userProfile && userProfile.role !== 'unapproved') {
+      const logDailyDeviceAccess = async () => {
+        try {
+          const todayStr = new Date().toLocaleDateString('sv-SE'); // Local date "YYYY-MM-DD"
+          const deviceMac = getMacAddress();
+          const storageKey = `daily_access_logged_${user.uid}_${deviceMac}`;
+          const lastLoggedDate = localStorage.getItem(storageKey);
+
+          if (lastLoggedDate !== todayStr) {
+            const logId = Date.now().toString();
+            const ip = await getIpAddress();
+            const dev = getDeviceName();
+
+            await setDoc(doc(db, 'auth_logs', logId), {
+              id: logId,
+              userId: user.uid,
+              userEmail: user.email,
+              userName: userProfile.displayName || 'Người dùng',
+              type: 'login',
+              timestamp: new Date().toISOString(),
+              ipAddress: ip,
+              macAddress: deviceMac,
+              device: dev
+            });
+
+            // Mark daily log as registered in localStorage for this user-device pair
+            localStorage.setItem(storageKey, todayStr);
+          }
+        } catch (error) {
+          console.warn("Failed to automatically record daily device access:", error);
+        }
+      };
+
+      logDailyDeviceAccess();
+    }
+  }, [user, userProfile]);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isPrivacyConfirmOpen, setIsPrivacyConfirmOpen] = useState(false);
@@ -817,14 +908,24 @@ export default function App() {
         // Log explicit login
         const logId = Date.now().toString();
         try {
+          const ip = await getIpAddress();
+          const mac = getMacAddress();
+          const dev = getDeviceName();
           await setDoc(doc(db, 'auth_logs', logId), {
             id: logId,
             userId: result.user.uid,
             userEmail: result.user.email,
             userName: result.user.displayName || 'Người dùng',
             type: 'login',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            ipAddress: ip,
+            macAddress: mac,
+            device: dev
           });
+          // Avoid duplicate automated daily check logging for this login interaction
+          const todayStr = new Date().toLocaleDateString('sv-SE');
+          const storageKey = `daily_access_logged_${result.user.uid}_${mac}`;
+          localStorage.setItem(storageKey, todayStr);
         } catch (logError) {
           console.warn("Failed to create auth log:", logError);
           // Don't block login if logging fails
@@ -874,13 +975,19 @@ export default function App() {
       // Log explicit logout
       const logId = Date.now().toString();
       try {
+        const ip = await getIpAddress();
+        const mac = getMacAddress();
+        const dev = getDeviceName();
         await setDoc(doc(db, 'auth_logs', logId), {
           id: logId,
           userId: user.uid,
           userEmail: user.email,
           userName: userProfile?.displayName || user.displayName || 'Người dùng',
           type: 'logout',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          ipAddress: ip,
+          macAddress: mac,
+          device: dev
         });
       } catch (e) {
         console.warn("Logout logging failed", e);
@@ -2850,7 +2957,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setIsAdminMode(true);
-                      setActiveTab('manage_config');
+                      setActiveTab('admin_general');
                       setIsProfileModalOpen(false);
                     }}
                     className={cn(

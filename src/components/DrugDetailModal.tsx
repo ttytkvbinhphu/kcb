@@ -47,7 +47,11 @@ import {
   orderBy,
 } from "../firebase";
 
-const isIngredientMatch = (ing1?: string, ing2?: string, list: Ingredient[] = []) => {
+const isIngredientMatch = (
+  ing1?: string,
+  ing2?: string,
+  list: Ingredient[] = [],
+) => {
   if (!ing1 || !ing2) return false;
   if (ing1 === ing2) return true;
   const i1 = ing1.toLowerCase().trim();
@@ -55,15 +59,23 @@ const isIngredientMatch = (ing1?: string, ing2?: string, list: Ingredient[] = []
   if (i1 === i2 || i1.includes(i2) || i2.includes(i1)) return true;
 
   // Check from list
-  const ai1 = list.find(ai => ai.name && ai.name.toLowerCase() === i1);
+  const ai1 = list.find((ai) => ai.name && ai.name.toLowerCase() === i1);
   if (ai1) {
     if (ai1.alias && i2.includes(ai1.alias.toLowerCase())) return true;
-    if (ai1.aliases && ai1.aliases.some(alias => alias && i2.includes(alias.toLowerCase()))) return true;
+    if (
+      ai1.aliases &&
+      ai1.aliases.some((alias) => alias && i2.includes(alias.toLowerCase()))
+    )
+      return true;
   }
-  const ai2 = list.find(ai => ai.name && ai.name.toLowerCase() === i2);
+  const ai2 = list.find((ai) => ai.name && ai.name.toLowerCase() === i2);
   if (ai2) {
     if (ai2.alias && i1.includes(ai2.alias.toLowerCase())) return true;
-    if (ai2.aliases && ai2.aliases.some(alias => alias && i1.includes(alias.toLowerCase()))) return true;
+    if (
+      ai2.aliases &&
+      ai2.aliases.some((alias) => alias && i1.includes(alias.toLowerCase()))
+    )
+      return true;
   }
   return false;
 };
@@ -73,6 +85,7 @@ interface DrugDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   isDarkMode: boolean;
+  userPowerPoints?: number;
   canSeeIcdSuggestions?: boolean;
   canSeeCommonIndications?: boolean;
   canSeeDosageSuggestions?: boolean;
@@ -80,7 +93,10 @@ interface DrugDetailModalProps {
   canSeePrecautionSeverity?: boolean;
   canSeePregnancyTrimesters?: boolean;
   canSeeQuickSelectTags?: boolean;
+  canSeeIntakeTime?: boolean;
+  canSeeAgeContraindications?: boolean;
   onEdit?: (drug: Drug) => void;
+  drugGroups?: import('../types').DrugGroup[];
 }
 
 const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
@@ -88,6 +104,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   isOpen,
   onClose,
   isDarkMode,
+  userPowerPoints = 0,
   canSeeIcdSuggestions = true,
   canSeeCommonIndications = true,
   canSeeDosageSuggestions = true,
@@ -95,7 +112,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   canSeePrecautionSeverity = true,
   canSeePregnancyTrimesters = true,
   canSeeQuickSelectTags = true,
+  canSeeIntakeTime = true,
+  canSeeAgeContraindications = true,
   onEdit,
+  drugGroups = [],
 }) => {
   useEffect(() => {
     if (isOpen) {
@@ -115,18 +135,114 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     | "interactions"
     | "warnings"
     | "side_effects"
-    | "pharmacology"
     | "info"
   >("info");
   const [direction, setDirection] = useState(0);
+
+  const renderIcdRules = (icdObj: any) => {
+    if (!icdObj) return null;
+    const rules = [
+      {
+        active: !!icdObj.isAppendixA2,
+        label: "24",
+        bgClass: "bg-indigo-500",
+        desc: "Không là bệnh chính",
+        iconClass: "text-indigo-400",
+        isWarning: false
+      },
+      {
+        active: !!icdObj.isAppendixA3,
+        label: "25",
+        bgClass: "bg-amber-500",
+        desc: "Không khuyến khích là bệnh chính",
+        iconClass: "text-amber-400",
+        isWarning: false
+      },
+      {
+        active: !!icdObj.isRestricted,
+        label: "26",
+        bgClass: "bg-rose-500",
+        desc: "Mã không được sử dụng",
+        iconClass: "text-rose-400",
+        isWarning: true
+      },
+      {
+        active: !!icdObj.isAppendixA4,
+        label: "27",
+        bgClass: "bg-blue-500",
+        desc: "Chỉ dùng mã hóa nguyên nhân tử vong",
+        iconClass: "text-blue-400",
+        isWarning: false
+      },
+      {
+        active: !!icdObj.isAppendixA5,
+        label: "28",
+        bgClass: "bg-pink-500",
+        desc: "Mã bệnh ở nữ giới",
+        iconClass: "text-pink-400",
+        isWarning: false
+      },
+      {
+        active: !!icdObj.isAppendixA6,
+        label: "29",
+        bgClass: "bg-cyan-500",
+        desc: "Mã bệnh ở nam giới",
+        iconClass: "text-cyan-400",
+        isWarning: false
+      },
+      {
+        active: !!icdObj.isTT26,
+        label: "TT26",
+        bgClass: "bg-fuchsia-500",
+        desc: "Bệnh, nhóm bệnh được áp dụng kê đơn thuốc ngoại trú trên 30 ngày",
+        iconClass: "text-fuchsia-400",
+        isWarning: false
+      }
+    ];
+
+    const activeRules = rules.filter(r => r.active);
+    if (activeRules.length === 0) return null;
+
+    return (
+      <div className="flex gap-0.5 items-center">
+        {activeRules.map((rule, rIdx) => (
+          <div key={rIdx} className="relative group/badge inline-block">
+            <span
+              className={cn(
+                "shrink-0 px-1 py-0.5 rounded text-white text-[7px] font-black uppercase tracking-tighter cursor-help transition-all group-hover/badge:scale-110",
+                rule.bgClass
+              )}
+            >
+              {rule.label}
+            </span>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-max max-w-[200px] sm:max-w-[250px] px-2.5 py-1.5 bg-slate-900/95 backdrop-blur-md text-white text-[9px] sm:text-[10px] font-bold rounded-lg shadow-xl opacity-0 invisible group-hover/badge:opacity-100 group-hover/badge:visible transition-all duration-200 translate-y-1 group-hover/badge:translate-y-0 z-[100] pointer-events-none border border-slate-700/50 flex items-center gap-1.5 whitespace-normal leading-normal">
+              {rule.isWarning ? (
+                <AlertTriangle size={10} className={rule.iconClass} />
+              ) : (
+                <Info size={10} className={rule.iconClass} />
+              )}
+              <span>{rule.desc}</span>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const [icdList, setIcdList] = useState<ICD10[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [adrCatalog, setAdrCatalog] = useState<any[]>([]);
   const [expandedAdr, setExpandedAdr] = useState<{ [key: string]: boolean }>(
     {},
   );
-  const [selectedInteractionIngredient, setSelectedInteractionIngredient] = useState<string>("all");
-  const [selectedSideEffectIngredient, setSelectedSideEffectIngredient] = useState<string>("all");
+  const [selectedInteractionIngredient, setSelectedInteractionIngredient] =
+    useState<string>("all");
+  const [selectedSideEffectIngredient, setSelectedSideEffectIngredient] =
+    useState<string>("all");
+  const [dosageDisplayMode, setDosageDisplayMode] = useState<
+    "quantity" | "dosage"
+  >("quantity");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -260,7 +376,6 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
       label: isMobile ? "ADR" : "Tác dụng phụ",
       icon: <Flame size={14} />,
     },
-    { id: "pharmacology", label: "Dược lý", icon: <Activity size={14} /> },
   ];
 
   const currentIndex = detailTabs.findIndex((t) => t.id === activeDetailTab);
@@ -506,18 +621,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           .join(" + ")}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {drug.atcCode && (
-                          <span
-                            className={cn(
-                              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                              isDarkMode
-                                ? "bg-blue-500/10 border-blue-500/20 text-blue-400"
-                                : "bg-blue-100 border-blue-200 text-blue-700",
-                            )}
-                          >
-                            ATC: {drug.atcCode}
-                          </span>
-                        )}
+
                         {drug.administrationRoute && (
                           <span
                             className={cn(
@@ -527,7 +631,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 : "bg-emerald-50 border-emerald-200 text-emerald-700",
                             )}
                           >
-                            {drug.administrationRoute}
+                            {drug.administrationRoute === "Uông" ? "Uống" : drug.administrationRoute}
                           </span>
                         )}
                       </div>
@@ -539,13 +643,13 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
               {/* Navigation Tabs */}
               <div
                 className={cn(
-                  "px-4 lg:px-10 pt-1 border-b backdrop-blur-md transition-colors shrink-0",
+                  "px-0 lg:px-10 pt-1 border-b backdrop-blur-md transition-colors shrink-0",
                   isDarkMode
                     ? "bg-slate-900/90 border-slate-800"
                     : "bg-white border-slate-100 shadow-xs",
                 )}
               >
-                <div className="flex overflow-x-auto gap-4 custom-scrollbar -mb-[1px]">
+                <div className="flex justify-between lg:justify-start lg:gap-4 overflow-x-auto custom-scrollbar -mb-[1px]">
                   {detailTabs.map((tab) => {
                     const isActive = activeDetailTab === tab.id;
                     const tabIndex = detailTabs.findIndex(
@@ -560,7 +664,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           setActiveDetailTab(tab.id as any);
                         }}
                         className={cn(
-                          "flex items-center gap-2 py-3 px-1 text-[10px] sm:text-[11px] font-black transition-all whitespace-nowrap border-b-2 focus:outline-none",
+                          "flex flex-1 lg:flex-none flex-col lg:flex-row items-center justify-center gap-1 lg:gap-2 py-3 px-1 text-[10px] sm:text-[11px] font-black transition-all whitespace-nowrap border-b-2 focus:outline-none",
                           isActive
                             ? isDarkMode
                               ? "border-blue-500 text-blue-400 font-extrabold hover:text-blue-400"
@@ -624,8 +728,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         }
                       }
                     }}
-                    className="min-h-full p-6 lg:p-10 touch-pan-y"
+                    className="min-h-full py-4 lg:py-10 touch-pan-y"
                   >
+                    <div className="px-0 lg:px-10">
                     {/* Indications Tab */}
                     {activeDetailTab === "indications" && (
                       <div className="space-y-6">
@@ -646,9 +751,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               <h4 className="text-[10px] font-black uppercase tracking-widest text-violet-500 mb-1">
                                 Cơ chế tác dụng
                               </h4>
-                              <p className="text-sm leading-relaxed">
+                              <div className={cn(
+                                "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium",
+                                isDarkMode ? "text-slate-300" : "text-slate-650"
+                              )}>
                                 {drug.mechanismOfAction}
-                              </p>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -665,23 +773,32 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               )}
                             >
                               <div className="flex items-start gap-3">
-                                <div
-                                  className={cn(
-                                    "w-2 h-2 rounded-full mt-2 shadow-sm shrink-0",
-                                    item.isPrimary && canSeeCommonIndications
-                                      ? "bg-amber-500"
-                                      : "bg-blue-500",
-                                  )}
-                                />
+                                {item.isPrimary && canSeeCommonIndications ? (
+                                  <Star
+                                    size={14}
+                                    fill="currentColor"
+                                    className="text-amber-500 shrink-0 mt-1"
+                                  />
+                                ) : (
+                                  <div className="w-2 h-2 rounded-full mt-2 shadow-sm shrink-0 bg-blue-500" />
+                                )}
                                 <div className="flex-1">
                                   {item.title && (
-                                    <h5 className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">
+                                    <h5 className={cn(
+                                      "text-[10px] font-black uppercase tracking-widest mb-1",
+                                      item.isPrimary && canSeeCommonIndications
+                                        ? "text-amber-500"
+                                        : "text-blue-500"
+                                    )}>
                                       {item.title}
                                     </h5>
                                   )}
-                                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                                  <div className={cn(
+                                    "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium",
+                                    isDarkMode ? "text-slate-300" : "text-slate-600"
+                                  )}>
                                     {item.content}
-                                  </p>
+                                  </div>
 
                                   {canSeeIcdSuggestions &&
                                     item.icd10s &&
@@ -714,7 +831,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   className={cn(
                                                     "px-2.5 py-1.5 rounded-lg text-[10px] font-black border flex items-center gap-2 transition-all",
                                                     isDefault
-                                                      ? "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
+                                                      ? isDarkMode
+                                                        ? "bg-amber-950/20 border-amber-500 text-amber-400 shadow-sm"
+                                                        : "bg-amber-50/50 border-amber-500 text-amber-750 shadow-xs"
                                                       : isDarkMode
                                                         ? "bg-slate-900/50 border-slate-700"
                                                         : "bg-slate-100 border-slate-200",
@@ -723,7 +842,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   <span
                                                     className={
                                                       isDefault
-                                                        ? "text-white"
+                                                        ? isDarkMode
+                                                          ? "text-amber-400 font-extrabold"
+                                                          : "text-amber-600 font-extrabold"
                                                         : "text-blue-500"
                                                     }
                                                   >
@@ -734,7 +855,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                       className={cn(
                                                         "font-bold",
                                                         isDefault
-                                                          ? "text-white/80"
+                                                          ? isDarkMode
+                                                            ? "text-slate-300"
+                                                            : "text-slate-700"
                                                           : "opacity-50",
                                                       )}
                                                     >
@@ -745,62 +868,11 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                     <Star
                                                       size={10}
                                                       fill="currentColor"
-                                                      className="text-white"
+                                                      className="text-amber-500 shrink-0"
                                                     />
                                                   )}
                                                 </div>
-                                                {icdObj && (
-                                                  <div className="flex gap-0.5">
-                                                    {icdObj.isAppendixA2 && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-indigo-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Không là bệnh chính"
-                                                      >
-                                                        24
-                                                      </span>
-                                                    )}
-                                                    {icdObj.isAppendixA3 && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-amber-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Không khuyến khích là bệnh chính"
-                                                      >
-                                                        25
-                                                      </span>
-                                                    )}
-                                                    {icdObj.isRestricted && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-rose-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Mã không được sử dụng"
-                                                      >
-                                                        26
-                                                      </span>
-                                                    )}
-                                                    {icdObj.isAppendixA4 && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-blue-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Chỉ dùng mã hóa nguyên nhân tử vong"
-                                                      >
-                                                        27
-                                                      </span>
-                                                    )}
-                                                    {icdObj.isAppendixA5 && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-pink-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Mã bệnh ở nữ giới"
-                                                      >
-                                                        28
-                                                      </span>
-                                                    )}
-                                                    {icdObj.isAppendixA6 && (
-                                                      <span
-                                                        className="shrink-0 px-1 py-0.5 rounded bg-cyan-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                        title="Mã bệnh ở nam giới"
-                                                      >
-                                                        29
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                )}
+                                                {icdObj && renderIcdRules(icdObj)}
                                               </div>
                                             );
                                           })}
@@ -851,9 +923,61 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                         ? "Tuổi"
                                         : item.type || "Chung"}
                               </h5>
-                              <p className="text-sm leading-relaxed">
+                              <div className={cn(
+                                "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium",
+                                isDarkMode ? "text-slate-300" : "text-slate-600"
+                              )}>
                                 {item.content}
-                              </p>
+                              </div>
+
+                              {(() => {
+                                const cfg = item.ageConfig as any;
+                                if (item.type !== "Age" || !cfg) return null;
+                                const valBefore = typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
+                                const valAfter = typeof cfg.value === "number" ? cfg.value : null;
+                                if (valBefore === null && valAfter === null) return null;
+
+                                const calcDate = (val: number) => {
+                                  const d = new Date();
+                                  if (cfg.unit === "months") d.setMonth(d.getMonth() - val);
+                                  else d.setFullYear(d.getFullYear() - val);
+                                  return d.toLocaleDateString("vi-VN");
+                                };
+
+                                const dateBefore = valBefore !== null ? calcDate(valBefore) : null;
+                                const dateAfter = valAfter !== null ? calcDate(valAfter) : null;
+
+                                const display = [dateAfter, dateBefore].filter(Boolean).join(" – ");
+
+                                return display ? (
+                                  <div className="mt-2">
+                                    {canSeeAgeContraindications ? (
+                                      <div className={cn(
+                                        "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold",
+                                        isDarkMode
+                                          ? "bg-slate-800 border-slate-700 text-slate-300"
+                                          : "bg-white border-slate-200 text-slate-600 shadow-xs",
+                                      )}>
+                                        <Calendar size={11} className="shrink-0 text-rose-400" />
+                                        <span>{display}</span>
+                                      </div>
+                                    ) : (
+                                      <div className={cn(
+                                        "px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-help",
+                                        isDarkMode
+                                          ? "bg-amber-950/20 border border-amber-900/30 text-amber-400"
+                                          : "bg-amber-50 border border-amber-100 text-amber-700",
+                                      )}
+                                        title="Bạn không có đủ điểm quyền lực để xem thông tin này"
+                                      >
+                                        <Lock size={12} className="text-amber-500 shrink-0" />
+                                        <span>Thông tin mốc tuổi & mốc sinh bị ẩn (Cần thêm điểm quyền lực)</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : null;
+                              })()}
+
                               {canSeeIcdSuggestions &&
                                 item.icd10s &&
                                 item.icd10s.length > 0 && (
@@ -888,63 +1012,40 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                 </span>
                                               )}
                                             </div>
-                                            {icdObj && (
-                                              <div className="flex gap-0.5">
-                                                {icdObj.isAppendixA2 && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-indigo-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Không là bệnh chính"
-                                                  >
-                                                    24
-                                                  </span>
-                                                )}
-                                                {icdObj.isAppendixA3 && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-amber-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Không khuyến khích là bệnh chính"
-                                                  >
-                                                    25
-                                                  </span>
-                                                )}
-                                                {icdObj.isRestricted && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-rose-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Mã không được sử dụng"
-                                                  >
-                                                    26
-                                                  </span>
-                                                )}
-                                                {icdObj.isAppendixA4 && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-blue-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Chỉ dùng mã hóa nguyên nhân tử vong"
-                                                  >
-                                                    27
-                                                  </span>
-                                                )}
-                                                {icdObj.isAppendixA5 && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-pink-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Mã bệnh ở nữ giới"
-                                                  >
-                                                    28
-                                                  </span>
-                                                )}
-                                                {icdObj.isAppendixA6 && (
-                                                  <span
-                                                    className="shrink-0 px-1 py-0.5 rounded bg-cyan-500 text-white text-[7px] font-black uppercase tracking-tighter"
-                                                    title="Mã bệnh ở nam giới"
-                                                  >
-                                                    29
-                                                  </span>
-                                                )}
-                                              </div>
-                                            )}
+                                            {icdObj && renderIcdRules(icdObj)}
                                           </div>
                                         );
                                       })}
                                   </div>
                                 )}
+
+                              {item.drugs && item.drugs.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {item.drugs.map((drugName, idx) => {
+                                    const isCypSpecial = drugName === "CYP3A4";
+                                    return (
+                                      <div
+                                        key={idx}
+                                        className={cn(
+                                          "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
+                                          isCypSpecial
+                                            ? isDarkMode
+                                              ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
+                                              : "bg-amber-50 border-amber-100 text-amber-700"
+                                            : isDarkMode
+                                              ? "bg-blue-900/25 border-blue-900/40 text-blue-400"
+                                              : "bg-blue-50 border-blue-100 text-blue-700",
+                                        )}
+                                      >
+                                        <span>
+                                          {isCypSpecial ? "⭐" : "💊"}
+                                        </span>
+                                        <span>{drugName}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -978,9 +1079,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">
                               Sử dụng chung
                             </h4>
-                            <p className="text-sm leading-relaxed relative z-10">
+                            <div className={cn(
+                              "text-xs sm:text-sm leading-relaxed relative z-10 font-medium whitespace-pre-line",
+                              isDarkMode ? "text-slate-300" : "text-slate-650"
+                            )}>
                               {drug.generalAdministration}
-                            </p>
+                            </div>
                           </div>
                         )}
 
@@ -1065,7 +1169,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                       item.ageMax !== undefined ||
                                       (item.weightMin !== undefined &&
                                         item.weightMin !== null) ||
-                                      item.weightMax !== undefined) && (
+                                      item.weightMax !== undefined ||
+                                      (item.crclMin !== undefined &&
+                                        item.crclMin !== null) ||
+                                      item.crclMax !== undefined) && (
                                       <div className="flex items-center gap-3 flex-wrap mb-3">
                                         {/* Age block */}
                                         {((item.ageMin !== undefined &&
@@ -1221,12 +1328,150 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                             )}
                                           </div>
                                         )}
+
+                                        {/* Separator if Weight/Age exists and CrCl exists */}
+                                        {(((item.ageMin !== undefined &&
+                                          item.ageMin !== null) ||
+                                          item.ageMax !== undefined ||
+                                          (item.weightMin !== undefined &&
+                                            item.weightMin !== null) ||
+                                          item.weightMax !== undefined)) &&
+                                          ((item.crclMin !== undefined &&
+                                            item.crclMin !== null) ||
+                                            item.crclMax !== undefined) && (
+                                            <div
+                                              className={cn(
+                                                "w-px h-5 mx-1",
+                                                isDarkMode
+                                                  ? "bg-slate-700"
+                                                  : "bg-slate-200",
+                                              )}
+                                            />
+                                          )}
+
+                                        {/* CrCl block */}
+                                        {((item.crclMin !== undefined &&
+                                          item.crclMin !== null) ||
+                                          item.crclMax !== undefined) && (
+                                          <div className="flex items-center gap-2">
+                                            <div
+                                              className={cn(
+                                                "flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black",
+                                                isDarkMode
+                                                  ? "bg-purple-900/30 border-purple-800/50 text-purple-300"
+                                                  : "bg-purple-50 border-purple-200 text-purple-700",
+                                              )}
+                                            >
+                                              <Activity
+                                                size={12}
+                                                className="text-purple-500 animate-pulse"
+                                              />
+                                              <span className="opacity-60 uppercase font-bold">
+                                                CrCl từ
+                                              </span>
+                                              <span>
+                                                {item.crclMin ?? 0} mL/min
+                                              </span>
+                                            </div>
+
+                                            <svg
+                                              className="text-purple-400 shrink-0"
+                                              width="12"
+                                              height="8"
+                                              viewBox="0 0 16 10"
+                                              fill="none"
+                                            >
+                                              <path
+                                                d="M1 5h14M10 1l5 4-5 4"
+                                                stroke="currentColor"
+                                                strokeWidth="1.5"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                              />
+                                            </svg>
+
+                                            {item.crclMax !== null &&
+                                            item.crclMax !== undefined ? (
+                                              <div
+                                                className={cn(
+                                                  "flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black",
+                                                  isDarkMode
+                                                    ? "bg-fuchsia-900/30 border-fuchsia-800/50 text-fuchsia-300"
+                                                    : "bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700",
+                                                )}
+                                              >
+                                                <span className="opacity-60 uppercase font-bold">
+                                                  Đến
+                                                </span>
+                                                <span>{item.crclMax} mL/min</span>
+                                              </div>
+                                            ) : (
+                                              <div
+                                                className={cn(
+                                                  "px-2 py-1 rounded-lg border text-[10px] font-black italic",
+                                                  isDarkMode
+                                                    ? "bg-slate-800 border-slate-700 text-slate-400"
+                                                    : "bg-slate-100 border-slate-200 text-slate-500",
+                                                )}
+                                              >
+                                                Không giới hạn
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
 
-                                  <p className="text-sm leading-relaxed opacity-80 mb-4">
+                                  <div className={cn(
+                                    "text-xs sm:text-sm leading-relaxed font-medium whitespace-pre-line mb-4",
+                                    isDarkMode ? "text-slate-300" : "text-slate-600"
+                                  )}>
                                     {item.content}
-                                  </p>
+                                  </div>
+
+                                  {/* Thời điểm uống thuốc */}
+                                  {(item as any).administrationTime && (
+                                    <div className="mb-4">
+                                      <span className="text-[10px] font-black uppercase text-blue-500 tracking-wider block mb-1">
+                                        Thời điểm uống thuốc:
+                                      </span>
+                                      {canSeeIntakeTime ? (
+                                        <div
+                                          className={cn(
+                                            "px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5",
+                                            isDarkMode
+                                              ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                                              : "bg-blue-50 border border-blue-100 text-blue-800",
+                                          )}
+                                        >
+                                          <Clock
+                                            size={13}
+                                            className="text-blue-500"
+                                          />
+                                          {(item as any).administrationTime}
+                                        </div>
+                                      ) : (
+                                        <div
+                                          className={cn(
+                                            "px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-help",
+                                            isDarkMode
+                                              ? "bg-amber-950/20 border border-amber-900/30 text-amber-400"
+                                              : "bg-amber-50 border border-amber-100 text-amber-700",
+                                          )}
+                                          title="Bạn không có đủ điểm quyền lực để xem thông tin này"
+                                        >
+                                          <Lock
+                                            size={12}
+                                            className="text-amber-500 shrink-0"
+                                          />
+                                          <span>
+                                            Nội dung bị ẩn (Cần thêm điểm quyền
+                                            lực)
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
 
                                   {/* Cử dùng trong ngày / Lộ trình */}
                                   {canSeeDosageSuggestions &&
@@ -1253,8 +1498,65 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               ]
                                             : [];
 
-                                      if (currentSchedules.length === 0)
+                                      const hasAnyQuantity =
+                                        currentSchedules.some(
+                                          (s: any) =>
+                                            (s.morning !== undefined &&
+                                              s.morning !== null &&
+                                              String(s.morning).trim() !==
+                                                "") ||
+                                            (s.noon !== undefined &&
+                                              s.noon !== null &&
+                                              String(s.noon).trim() !== "") ||
+                                            (s.afternoon !== undefined &&
+                                              s.afternoon !== null &&
+                                              String(s.afternoon).trim() !==
+                                                "") ||
+                                            (s.night !== undefined &&
+                                              s.night !== null &&
+                                              String(s.night).trim() !== "") ||
+                                            (s.totalDay !== undefined &&
+                                              s.totalDay !== null &&
+                                              String(s.totalDay).trim() !== ""),
+                                        );
+
+                                      const hasAnyDosage =
+                                        currentSchedules.some(
+                                          (s: any) =>
+                                            (s.dosageMorning !== undefined &&
+                                              s.dosageMorning !== null &&
+                                              String(s.dosageMorning).trim() !==
+                                                "") ||
+                                            (s.dosageNoon !== undefined &&
+                                              s.dosageNoon !== null &&
+                                              String(s.dosageNoon).trim() !==
+                                                "") ||
+                                            (s.dosageAfternoon !== undefined &&
+                                              s.dosageAfternoon !== null &&
+                                              String(
+                                                s.dosageAfternoon,
+                                              ).trim() !== "") ||
+                                            (s.dosageNight !== undefined &&
+                                              s.dosageNight !== null &&
+                                              String(s.dosageNight).trim() !==
+                                                "") ||
+                                            (s.dosageTotalDay !== undefined &&
+                                              s.dosageTotalDay !== null &&
+                                              String(
+                                                s.dosageTotalDay,
+                                              ).trim() !== ""),
+                                        );
+
+                                      if (!hasAnyQuantity && !hasAnyDosage)
                                         return null;
+
+                                      const showDisplayTabs =
+                                        hasAnyQuantity && hasAnyDosage;
+                                      const localDisplayMode = showDisplayTabs
+                                        ? dosageDisplayMode
+                                        : hasAnyQuantity
+                                          ? "quantity"
+                                          : "dosage";
 
                                       const formatMergedValue = (
                                         qVal?: string,
@@ -1262,23 +1564,34 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                         qUnit?: string,
                                         dUnit?: string,
                                       ) => {
-                                        if (!qVal && !dVal) return "";
-                                        let res = "";
-                                        if (qVal) {
-                                          res +=
-                                            qVal + (qUnit ? ` ${qUnit}` : "");
+                                        if (localDisplayMode === "quantity") {
+                                          if (!qVal) return "";
+                                          return (
+                                            qVal + (qUnit ? ` ${qUnit}` : "")
+                                          );
+                                        } else {
+                                          if (!dVal) return "";
+                                          return (
+                                            dVal + (dUnit ? ` ${dUnit}` : "")
+                                          );
                                         }
-                                        if (dVal) {
-                                          const dStr =
-                                            dVal + (dUnit ? ` ${dUnit}` : "");
-                                          if (res) {
-                                            res += ` (${dStr})`;
-                                          } else {
-                                            res = dStr;
-                                          }
-                                        }
-                                        return res;
                                       };
+
+                                      const firstSchedule =
+                                        (currentSchedules[0] || {}) as any;
+                                      const rawQtyUnit = (
+                                        firstSchedule.quantityUnit || ""
+                                      ).trim();
+                                      const rawDsgUnit = (
+                                        firstSchedule.dosageUnit || ""
+                                      ).trim();
+
+                                      const qUnitLabel = rawQtyUnit
+                                        ? `Số lượng (${rawQtyUnit})`
+                                        : "Số lượng / Liều dùng";
+                                      const dUnitLabel = rawDsgUnit
+                                        ? `Hàm lượng (${rawDsgUnit})`
+                                        : "Hàm lượng hoạt chất";
 
                                       return (
                                         <div
@@ -1289,8 +1602,70 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               : "border-slate-100",
                                           )}
                                         >
-                                          <div className="text-[9px] font-black uppercase text-emerald-500 tracking-widest mb-3 px-0.5">
-                                            Lộ trình & Cử dùng
+                                          <div
+                                            className={cn(
+                                              "flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3.5 border-b border-dashed pb-3",
+                                              isDarkMode
+                                                ? "border-slate-800"
+                                                : "border-slate-100",
+                                            )}
+                                          >
+                                            <div className="text-[10px] font-black uppercase text-emerald-500 tracking-widest px-0.5">
+                                              Lộ trình & Cử dùng
+                                            </div>
+                                            {showDisplayTabs && (
+                                              <div
+                                                className={cn(
+                                                  "flex items-center p-0.5 rounded-lg",
+                                                  isDarkMode
+                                                    ? "bg-slate-800"
+                                                    : "bg-slate-100",
+                                                )}
+                                              >
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setDosageDisplayMode(
+                                                      "quantity",
+                                                    )
+                                                  }
+                                                  className={cn(
+                                                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-all uppercase tracking-wider",
+                                                    dosageDisplayMode ===
+                                                      "quantity"
+                                                      ? isDarkMode
+                                                        ? "bg-slate-700 text-emerald-400 font-extrabold shadow-sm"
+                                                        : "bg-white text-emerald-700 font-extrabold shadow-sm"
+                                                      : isDarkMode
+                                                        ? "text-slate-400 hover:text-slate-200"
+                                                        : "text-slate-500 hover:text-slate-700",
+                                                  )}
+                                                >
+                                                  {qUnitLabel}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setDosageDisplayMode(
+                                                      "dosage",
+                                                    )
+                                                  }
+                                                  className={cn(
+                                                    "px-2.5 py-1 rounded-md text-[10px] font-bold transition-all uppercase tracking-wider",
+                                                    dosageDisplayMode ===
+                                                      "dosage"
+                                                      ? isDarkMode
+                                                        ? "bg-slate-700 text-emerald-400 font-extrabold shadow-sm"
+                                                        : "bg-white text-emerald-700 font-extrabold shadow-sm"
+                                                      : isDarkMode
+                                                        ? "text-slate-400 hover:text-slate-200"
+                                                        : "text-slate-500 hover:text-slate-700",
+                                                  )}
+                                                >
+                                                  {dUnitLabel}
+                                                </button>
+                                              </div>
+                                            )}
                                           </div>
 
                                           <div className="space-y-3">
@@ -1306,8 +1681,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   )}
                                                 >
                                                   <div className="flex items-center justify-between mb-2.5">
-                                                    {currentSchedules.length >
-                                                    1 ? (
+                                                    {schedule.name ||
+                                                    currentSchedules.length >
+                                                      1 ? (
                                                       <div
                                                         className={cn(
                                                           "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md",
@@ -1316,7 +1692,8 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                             : "bg-emerald-100 text-emerald-700",
                                                         )}
                                                       >
-                                                        Lộ trình {sIdx + 1}
+                                                        {schedule.name ||
+                                                          `Lộ trình ${sIdx + 1}`}
                                                       </div>
                                                     ) : (
                                                       <div></div>
@@ -1615,20 +1992,49 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           );
                         }
 
-                        const selfActiveIngs = (drug?.activeIngredients || []).map(ai => ai.name).filter(Boolean);
+                        const selfActiveIngs = (drug?.activeIngredients || [])
+                          .map((ai) => ai.name)
+                          .filter(Boolean);
 
-                        const activeIngredientsWithInfo = selfActiveIngs.filter(ingName => {
-                          const count = (drug.sideEffects || []).filter(item => typeof item === "object" && item && isIngredientMatch((item as any).ingredient, ingName, ingredients)).length;
-                          const activeIng = (drug.activeIngredients || []).find(
-                            (ai: any) => ai && ai.name && ai.name.toLowerCase() === ingName.toLowerCase()
-                          );
-                          const hasNote = !!(activeIng && activeIng.sideEffectsNote && activeIng.sideEffectsNote.trim() !== "");
-                          return count > 0 || hasNote;
-                        });
+                        const activeIngredientsWithInfo = selfActiveIngs.filter(
+                          (ingName) => {
+                            const count = (drug.sideEffects || []).filter(
+                              (item) =>
+                                typeof item === "object" &&
+                                item &&
+                                isIngredientMatch(
+                                  (item as any).ingredient,
+                                  ingName,
+                                  ingredients,
+                                ),
+                            ).length;
+                            const activeIng = (
+                              drug.activeIngredients || []
+                            ).find(
+                              (ai: any) =>
+                                ai &&
+                                ai.name &&
+                                ai.name.toLowerCase() === ingName.toLowerCase(),
+                            );
+                            const hasNote = !!(
+                              activeIng &&
+                              activeIng.sideEffectsNote &&
+                              activeIng.sideEffectsNote.trim() !== ""
+                            );
+                            return count > 0 || hasNote;
+                          },
+                        );
 
-                        const hasUnassigned = (drug.sideEffects || []).some(item => typeof item === "object" && item && !(item as any).ingredient);
+                        const hasUnassigned = (drug.sideEffects || []).some(
+                          (item) =>
+                            typeof item === "object" &&
+                            item &&
+                            !(item as any).ingredient,
+                        );
 
-                        const totalVisibleTabs = activeIngredientsWithInfo.length + (hasUnassigned ? 1 : 0);
+                        const totalVisibleTabs =
+                          activeIngredientsWithInfo.length +
+                          (hasUnassigned ? 1 : 0);
 
                         const currentSelectedIngredient = "all";
 
@@ -1642,10 +2048,18 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         ];
 
                         const rawGroups: { [freq: string]: EnrichedADR[] } = {};
-                        const isByIngredient = drug?.sideEffectsType === 'by_ingredient' || (!drug?.sideEffectsType && selfActiveIngs.length > 1);
+                        const isByIngredient =
+                          drug?.sideEffectsType === "by_ingredient" ||
+                          (!drug?.sideEffectsType && selfActiveIngs.length > 1);
 
-                        const filteredSideEffects = ((drug as any).sideEffects as any[]).filter(se => {
-                          if (!isByIngredient || currentSelectedIngredient === "all") return true;
+                        const filteredSideEffects = (
+                          (drug as any).sideEffects as any[]
+                        ).filter((se) => {
+                          if (
+                            !isByIngredient ||
+                            currentSelectedIngredient === "all"
+                          )
+                            return true;
 
                           let itemIngredient = "";
                           if (se && typeof se === "object") {
@@ -1656,50 +2070,55 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             return !itemIngredient;
                           }
 
-                          return isIngredientMatch(itemIngredient, currentSelectedIngredient, ingredients);
+                          return isIngredientMatch(
+                            itemIngredient,
+                            currentSelectedIngredient,
+                            ingredients,
+                          );
                         });
 
-                        filteredSideEffects.forEach(
-                          (se: any) => {
-                            let freq = "Chưa rõ tần suất";
-                            let text = "";
-                            const itemIngredient = se && typeof se === "object" ? se.ingredient : undefined;
+                        filteredSideEffects.forEach((se: any) => {
+                          let freq = "Chưa rõ tần suất";
+                          let text = "";
+                          const itemIngredient =
+                            se && typeof se === "object"
+                              ? se.ingredient
+                              : undefined;
 
-                            if (typeof se === "string") {
-                              text = se;
-                            } else if (se && typeof se === "object") {
-                              freq = se.frequency || "Chưa rõ tần suất";
-                              text = se.content || "";
+                          if (typeof se === "string") {
+                            text = se;
+                          } else if (se && typeof se === "object") {
+                            freq = se.frequency || "Chưa rõ tần suất";
+                            text = se.content || "";
+                          }
+
+                          const names = text
+                            .split(",")
+                            .map((n: string) => n.trim())
+                            .filter(Boolean);
+                          names.forEach((name) => {
+                            const catalogItem = adrCatalog.find(
+                              (cat) =>
+                                (cat.reactionName || "")
+                                  .trim()
+                                  .toLowerCase() === name.toLowerCase(),
+                            );
+                            const groupName =
+                              catalogItem?.category || "Chưa phân loại";
+
+                            const enriched: EnrichedADR = {
+                              name,
+                              catalogItem,
+                              groupName,
+                              ingredient: itemIngredient,
+                            };
+
+                            if (!rawGroups[freq]) {
+                              rawGroups[freq] = [];
                             }
-
-                            const names = text
-                              .split(",")
-                              .map((n: string) => n.trim())
-                              .filter(Boolean);
-                            names.forEach((name) => {
-                              const catalogItem = adrCatalog.find(
-                                (cat) =>
-                                  (cat.reactionName || "")
-                                    .trim()
-                                    .toLowerCase() === name.toLowerCase(),
-                              );
-                              const groupName =
-                                catalogItem?.category || "Chưa phân loại";
-
-                              const enriched: EnrichedADR = {
-                                name,
-                                catalogItem,
-                                groupName,
-                                ingredient: itemIngredient,
-                              };
-
-                              if (!rawGroups[freq]) {
-                                rawGroups[freq] = [];
-                              }
-                              rawGroups[freq].push(enriched);
-                            });
-                          },
-                        );
+                            rawGroups[freq].push(enriched);
+                          });
+                        });
 
                         const freqGroups: FrequencyGroup[] = [];
 
@@ -1779,48 +2198,73 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
                         return (
                           <div className="space-y-6">
+                            {/* Render per-active ingredient side effects notes */}
+                            {(() => {
+                              const activeIngNotes = (
+                                drug.activeIngredients || []
+                              ).filter(
+                                (ai: any) =>
+                                  ai &&
+                                  ai.sideEffectsNote &&
+                                  ai.sideEffectsNote.trim() !== "",
+                              );
+                              if (activeIngNotes.length === 0) return null;
 
-
-                             {/* Render per-active ingredient side effects notes */}
-                             {(() => {
-                               const activeIngNotes = (drug.activeIngredients || []).filter(
-                                 (ai: any) => ai && ai.sideEffectsNote && ai.sideEffectsNote.trim() !== ""
-                               );
-                               if (activeIngNotes.length === 0) return null;
-
-                               return (
-                                 <div className="space-y-3 mb-5">
-                                   {activeIngNotes.map((ai: any, idx: number) => (
-                                     <div
-                                       key={idx}
-                                       className={cn(
-                                         "p-4 rounded-2xl border transition-colors flex flex-col gap-1.5",
-                                         isDarkMode ? "bg-amber-950/15 border-amber-900/40 text-amber-355" : "bg-amber-50/40 border-amber-150 text-amber-800"
-                                       )}
-                                     >
-                                       <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm uppercase tracking-wide">
-                                         <Pill size={14} className="text-amber-500 shrink-0" />
-                                         Ghi chú tác dụng phụ của {ai.name}
-                                       </div>
-                                       <p className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-semibold">
-                                         {ai.sideEffectsNote}
-                                       </p>
-                                     </div>
-                                   ))}
-                                 </div>
-                               );
-                             })()}
+                              return (
+                                <div className="space-y-3 mb-5">
+                                  {activeIngNotes.map(
+                                    (ai: any, idx: number) => (
+                                      <div
+                                        key={idx}
+                                        className={cn(
+                                          "p-4 rounded-2xl border transition-colors flex flex-col gap-1.5",
+                                          isDarkMode
+                                            ? "bg-amber-950/15 border-amber-900/40 text-amber-355"
+                                            : "bg-amber-50/40 border-amber-150 text-amber-800",
+                                        )}
+                                      >
+                                        <div className="flex items-center gap-1.5 font-bold text-xs sm:text-sm uppercase tracking-wide">
+                                          <Pill
+                                            size={14}
+                                            className="text-amber-500 shrink-0"
+                                          />
+                                          Ghi chú tác dụng phụ của {ai.name}
+                                        </div>
+                                        <div className={cn(
+                                          "text-xs sm:text-sm whitespace-pre-wrap leading-relaxed font-medium",
+                                          isDarkMode ? "text-slate-300" : "text-slate-600"
+                                        )}>
+                                          {ai.sideEffectsNote}
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             <div className="space-y-6">
                               {freqGroups.length === 0 ? (
-                                <div className={cn(
-                                  "p-12 text-center rounded-3xl border border-dashed flex flex-col items-center justify-center gap-3",
-                                  isDarkMode ? "bg-slate-900/40 border-slate-850 text-slate-400" : "bg-slate-50/50 border-slate-200 text-slate-500"
-                                )}>
-                                  <AlertCircle size={40} className="text-amber-500 opacity-60" />
+                                <div
+                                  className={cn(
+                                    "p-12 text-center rounded-3xl border border-dashed flex flex-col items-center justify-center gap-3",
+                                    isDarkMode
+                                      ? "bg-slate-900/40 border-slate-850 text-slate-400"
+                                      : "bg-slate-50/50 border-slate-200 text-slate-500",
+                                  )}
+                                >
+                                  <AlertCircle
+                                    size={40}
+                                    className="text-amber-500 opacity-60"
+                                  />
                                   <div className="space-y-1">
-                                    <p className="font-bold text-sm">Chưa cập nhật Tác dụng phụ</p>
-                                    <p className="text-xs text-slate-400">Không tìm thấy dữ liệu tác dụng phụ phù hợp với bộ lọc hiện tại.</p>
+                                    <p className="font-bold text-sm">
+                                      Chưa cập nhật Tác dụng phụ
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      Không tìm thấy dữ liệu tác dụng phụ phù
+                                      hợp với bộ lọc hiện tại.
+                                    </p>
                                   </div>
                                 </div>
                               ) : (
@@ -1879,24 +2323,33 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                                                   <span
                                                     className={cn(
-                                                      "text-xs font-bold leading-tight",
+                                                      "text-xs sm:text-sm leading-tight font-medium",
                                                       isDarkMode
-                                                        ? "text-slate-200"
-                                                        : "text-slate-800",
+                                                        ? "text-slate-300"
+                                                        : "text-slate-600",
                                                     )}
                                                   >
                                                     {adr.name}
                                                   </span>
                                                 </div>
-                                                {currentSelectedIngredient === "all" && adr.ingredient && (
-                                                  <span className={cn(
-                                                    "inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm ml-3.5",
-                                                    isDarkMode ? "bg-indigo-950/40 border-indigo-900/30 text-indigo-350" : "bg-indigo-50 border-indigo-100 text-indigo-700"
-                                                  )}>
-                                                    <Pill size={8} className="text-indigo-500 shrink-0" />
-                                                    {adr.ingredient}
-                                                  </span>
-                                                )}
+                                                {currentSelectedIngredient ===
+                                                  "all" &&
+                                                  adr.ingredient && (
+                                                    <span
+                                                      className={cn(
+                                                        "inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm ml-3.5",
+                                                        isDarkMode
+                                                          ? "bg-indigo-950/40 border-indigo-900/30 text-indigo-350"
+                                                          : "bg-indigo-50 border-indigo-100 text-indigo-700",
+                                                      )}
+                                                    >
+                                                      <Pill
+                                                        size={8}
+                                                        className="text-indigo-500 shrink-0"
+                                                      />
+                                                      {adr.ingredient}
+                                                    </span>
+                                                  )}
                                               </div>
                                             ))}
                                           </div>
@@ -1907,169 +2360,278 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 ))
                               )}
                             </div>
-                            
-                            {drug.adrManagement && drug.adrManagement.trim() !== "" && (
-                              <div className={cn(
-                                "p-6 sm:p-8 rounded-[32px] border mt-6 space-y-3 transition-all duration-200",
-                                isDarkMode
-                                  ? "bg-amber-950/5 border-amber-900/20 text-slate-300"
-                                  : "bg-amber-50/10 border-slate-150 text-slate-850"
-                              )}>
-                                <h4 className={cn(
-                                  "text-xs font-black tracking-widest uppercase flex items-center gap-2",
-                                  isDarkMode ? "text-amber-400" : "text-amber-700"
-                                )}>
-                                  <AlertCircle size={16} className="text-amber-500 shrink-0" />
-                                  Xử trí phản ứng có hại (ADR)
-                                </h4>
-                                <p className={cn(
-                                  "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
-                                  isDarkMode ? "text-slate-300" : "text-slate-600"
-                                )}>
-                                  {drug.adrManagement}
-                                </p>
-                              </div>
-                            )}
+
+                            {drug.adrManagement &&
+                              drug.adrManagement.trim() !== "" && (
+                                <div
+                                  className={cn(
+                                    "p-6 sm:p-8 rounded-[32px] border mt-6 space-y-3 transition-all duration-200",
+                                    isDarkMode
+                                      ? "bg-amber-950/5 border-amber-900/20 text-slate-300"
+                                      : "bg-amber-50/10 border-slate-150 text-slate-850",
+                                  )}
+                                >
+                                  <h4
+                                    className={cn(
+                                      "text-xs font-black tracking-widest uppercase flex items-center gap-2",
+                                      isDarkMode
+                                        ? "text-amber-400"
+                                        : "text-amber-700",
+                                    )}
+                                  >
+                                    <AlertCircle
+                                      size={16}
+                                      className="text-amber-500 shrink-0"
+                                    />
+                                    Xử trí phản ứng có hại (ADR)
+                                  </h4>
+                                  <p
+                                    className={cn(
+                                      "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
+                                      isDarkMode
+                                        ? "text-slate-300"
+                                        : "text-slate-600",
+                                    )}
+                                  >
+                                    {drug.adrManagement}
+                                  </p>
+                                </div>
+                              )}
                           </div>
                         );
                       })()}
 
-                    {/* Pharmacology Tab */}
-                    {activeDetailTab === "pharmacology" && (() => {
-                      const hasPharmacodynamics = drug.pharmacodynamics && (
-                        typeof drug.pharmacodynamics === "string"
-                          ? drug.pharmacodynamics.trim() !== ""
-                          : Array.isArray(drug.pharmacodynamics) && drug.pharmacodynamics.length > 0
-                      );
-
-                      const hasPharmacokinetics = drug.pharmacokinetics && (
-                        typeof drug.pharmacokinetics === "string"
-                          ? drug.pharmacokinetics.trim() !== ""
-                          : Array.isArray(drug.pharmacokinetics) && drug.pharmacokinetics.length > 0
-                      );
-
-                      return (
-                        <div className="space-y-8">
-                          {drug.pharmacology && (
-                            <div
-                              className={cn(
-                                "p-8 rounded-[32px] border",
-                                isDarkMode
-                                  ? "bg-blue-500/5 border-blue-500/10 shadow-xl"
-                                  : "bg-blue-50 border-blue-100 shadow-sm",
-                              )}
-                            >
-                              <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 mb-4">
-                                <BookOpen size={16} /> Dược lý học
-                              </h4>
-                              <div className="text-sm leading-relaxed whitespace-pre-line opacity-90">
-                                {drug.pharmacology}
-                              </div>
-                            </div>
-                          )}
-
-                          {(hasPharmacodynamics || hasPharmacokinetics) && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              {hasPharmacodynamics && (
-                                <div
-                                  className={cn(
-                                    "p-6 rounded-3xl border shadow-sm flex flex-col gap-4",
-                                    isDarkMode
-                                      ? "bg-slate-800 border-slate-700"
-                                      : "bg-white border-slate-100",
-                                  )}
-                                >
-                                  <h5 className="text-[10px] font-black uppercase tracking-widest text-emerald-500 shrink-0">
-                                    Dược lực học
-                                  </h5>
-                                  <div className="text-sm leading-relaxed opacity-95 flex-1">
-                                    {typeof drug.pharmacodynamics === "string" ? (
-                                      <div className="whitespace-pre-wrap">{drug.pharmacodynamics}</div>
-                                    ) : (
-                                      <div className="space-y-4">
-                                        {(drug.pharmacodynamics || []).map((item: any, idx: number) => (
-                                          <div key={idx} className="space-y-1">
-                                            {item.category && (
-                                              <h6 className={cn(
-                                                "text-xs font-bold uppercase tracking-wider",
-                                                isDarkMode ? "text-emerald-400" : "text-emerald-700"
-                                              )}>
-                                                {item.category}
-                                              </h6>
-                                            )}
-                                            <div className={cn(
-                                              "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
-                                              isDarkMode ? "text-slate-300" : "text-slate-600"
-                                            )}>
-                                              {item.content}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              {hasPharmacokinetics && (
-                                <div
-                                  className={cn(
-                                    "p-6 rounded-3xl border shadow-sm flex flex-col gap-4",
-                                    isDarkMode
-                                      ? "bg-slate-800 border-slate-700"
-                                      : "bg-white border-slate-100",
-                                  )}
-                                >
-                                  <h5 className="text-[10px] font-black uppercase tracking-widest text-indigo-500 shrink-0">
-                                    Dược động học
-                                  </h5>
-                                  <div className="text-sm leading-relaxed opacity-95 flex-1">
-                                    {typeof drug.pharmacokinetics === "string" ? (
-                                      <div className="whitespace-pre-wrap">{drug.pharmacokinetics}</div>
-                                    ) : (
-                                      <div className="space-y-4">
-                                        {(drug.pharmacokinetics || []).map((item: any, idx: number) => (
-                                          <div key={idx} className="space-y-1">
-                                            {item.category && (
-                                              <h6 className={cn(
-                                                "text-xs font-bold uppercase tracking-wider",
-                                                isDarkMode ? "text-indigo-400" : "text-indigo-700"
-                                              )}>
-                                                {item.category}
-                                              </h6>
-                                            )}
-                                            <div className={cn(
-                                              "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
-                                              isDarkMode ? "text-slate-300" : "text-slate-600"
-                                            )}>
-                                              {item.content}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {!drug.pharmacology &&
-                            !hasPharmacodynamics &&
-                            !hasPharmacokinetics && (
-                              <div className="text-center py-20 opacity-40">
-                                <Activity size={48} className="mx-auto mb-4" />
-                                <p className="font-black uppercase tracking-tighter">
-                                  Thuốc này chưa cập nhật Dược lý.
-                                </p>
-                              </div>
-                            )}
-                        </div>
-                      );
-                    })()}
-
                     {/* Warnings Tab */}
                     {activeDetailTab === "warnings" && (
                       <div className="space-y-6">
+                        {/* ===== CẢNH BÁO (warnings) ===== */}
+                        {drug.warnings && drug.warnings.length > 0 && (
+                          <div
+                            className={cn(
+                              "p-6 rounded-3xl border shadow-sm",
+                              isDarkMode
+                                ? "bg-rose-900/10 border-rose-900/20"
+                                : "bg-rose-50/20 border-rose-100",
+                            )}
+                          >
+                            <h5 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-600 mb-4">
+                              <AlertTriangle size={16} /> Cảnh báo
+                            </h5>
+                            <div className="divide-y divide-rose-100/30 dark:divide-rose-950/20">
+                              {drug.warnings.map((item: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="py-3 flex items-start gap-3 first:pt-0 last:pb-0"
+                                >
+                                  <div
+                                    className={cn(
+                                      "p-1.5 rounded-xl shrink-0 mt-0.5",
+                                      isDarkMode
+                                        ? "bg-rose-950/40 text-rose-400"
+                                        : "bg-rose-50 text-rose-600",
+                                    )}
+                                  >
+                                    <AlertTriangle size={14} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                      {/* Phân loại Badge */}
+                                      {item.type && (
+                                        <span
+                                          className={cn(
+                                            "px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border",
+                                            isDarkMode
+                                              ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
+                                              : "bg-rose-50 border-rose-100 text-rose-700",
+                                          )}
+                                        >
+                                          {item.type === "Other"
+                                            ? "Khác"
+                                            : item.type === "Drug"
+                                              ? "Thuốc"
+                                              : item.type === "Weight"
+                                                ? "Cân nặng"
+                                                : item.type === "Age"
+                                                  ? "Tuổi"
+                                                  : item.type === "ICD-10"
+                                                    ? "ICD-10"
+                                                    : item.type || "Khác"}
+                                        </span>
+                                      )}
+
+                                      {/* Mức độ nghiêm trọng Badge */}
+                                      {item.severity && (
+                                        <span
+                                          className={cn(
+                                            "px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border",
+                                            item.severity === "Chống chỉ định"
+                                              ? isDarkMode
+                                                ? "bg-red-950/30 border-red-900/30 text-red-400"
+                                                : "bg-red-50 border-red-100 text-red-700"
+                                              : item.severity === "Phối hợp nguy hiểm"
+                                                  ? isDarkMode
+                                                    ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
+                                                    : "bg-rose-50 border-rose-100 text-rose-700"
+                                              : item.severity === "Cần cân nhắc lợi, hại"
+                                                ? isDarkMode
+                                                  ? "bg-orange-950/30 border-orange-900/30 text-orange-400"
+                                                  : "bg-orange-50 border-orange-100 text-orange-700"
+                                                : item.severity === "Cần theo dõi người bệnh"
+                                                  ? isDarkMode
+                                                    ? "bg-purple-950/30 border-purple-900/30 text-purple-400"
+                                                    : "bg-purple-50 border-purple-100 text-purple-700"
+                                                  : isDarkMode
+                                                    ? "bg-blue-950/30 border-blue-900/30 text-blue-400"
+                                                    : "bg-blue-50 border-blue-100 text-blue-700",
+                                          )}
+                                        >
+                                          {item.severity}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {item.title && (
+                                      <h5 className="text-xs font-black uppercase tracking-wider text-rose-600 mb-1">
+                                        {item.title}
+                                      </h5>
+                                    )}
+                                    <p
+                                      className={cn(
+                                        "text-xs sm:text-[13px] leading-relaxed font-semibold",
+                                        isDarkMode
+                                          ? "text-slate-200"
+                                          : "text-slate-800",
+                                      )}
+                                    >
+                                      {item.content}
+                                    </p>
+
+                                    {/* Gợi ý mốc tuổi & mốc sinh (chỉ có điểm quyền lực mới xem được) */}
+                                    {(() => {
+                                      const cfg = item.ageConfig as any;
+                                      if (item.type !== "Age" || !cfg) return null;
+                                      const valBefore = typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
+                                      const valAfter = typeof cfg.value === "number" ? cfg.value : null;
+                                      if (valBefore === null && valAfter === null) return null;
+
+                                      const calcDate = (val: number) => {
+                                        const d = new Date();
+                                        if (cfg.unit === "months") d.setMonth(d.getMonth() - val);
+                                        else d.setFullYear(d.getFullYear() - val);
+                                        return d.toLocaleDateString("vi-VN");
+                                      };
+
+                                      const dateBefore = valBefore !== null ? calcDate(valBefore) : null;
+                                      const dateAfter = valAfter !== null ? calcDate(valAfter) : null;
+
+                                      const display = [dateAfter, dateBefore].filter(Boolean).join(" – ");
+
+                                      return display ? (
+                                        <div className="mt-2">
+                                          {canSeeAgeContraindications ? (
+                                            <div className={cn(
+                                              "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold",
+                                              isDarkMode
+                                                ? "bg-slate-800 border-slate-700 text-slate-300"
+                                                : "bg-white border-slate-200 text-slate-600 shadow-xs",
+                                            )}>
+                                              <Calendar size={11} className="shrink-0 text-rose-400" />
+                                              <span>{display}</span>
+                                            </div>
+                                          ) : (
+                                            <div className={cn(
+                                              "px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 cursor-help",
+                                              isDarkMode
+                                                ? "bg-amber-950/20 border border-amber-900/30 text-amber-400"
+                                                : "bg-amber-50 border border-amber-100 text-amber-700",
+                                            )}
+                                              title="Bạn không có đủ điểm quyền lực để xem thông tin này"
+                                            >
+                                              <Lock size={12} className="text-amber-500 shrink-0" />
+                                              <span>Thông tin mốc tuổi & mốc sinh bị ẩn (Cần thêm điểm quyền lực)</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : null;
+                                    })()}
+
+                                    {/* Gợi ý ICD-10 */}
+                                    {canSeeIcdSuggestions &&
+                                      item.icd10s &&
+                                      item.icd10s.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {[...item.icd10s]
+                                            .sort((a, b) => a.localeCompare(b, "vi"))
+                                            .map((fullName, idx) => {
+                                              const code = fullName.split(" - ")[0];
+                                              const icdObj = icdList.find(
+                                                (icd) => icd.code === code,
+                                              );
+                                              const desc =
+                                                fullName.split(" - ")[1] ||
+                                                icdObj?.description;
+                                              return (
+                                                <div
+                                                  key={idx}
+                                                  className="flex items-center gap-1"
+                                                >
+                                                  <div
+                                                    className={cn(
+                                                      "px-2 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2",
+                                                      isDarkMode
+                                                        ? "bg-rose-900/20 border-rose-900/30 text-rose-400"
+                                                        : "bg-rose-50 border-rose-100 text-rose-600",
+                                                    )}
+                                                  >
+                                                    <span>{code}</span>
+                                                    {desc && (
+                                                      <span className="opacity-60 font-bold">
+                                                        {desc}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                        </div>
+                                      )}
+
+                                    {/* Gợi ý Thuốc */}
+                                    {item.drugs && item.drugs.length > 0 && (
+                                      <div className="mt-3 flex flex-wrap gap-2">
+                                        {item.drugs.map((drugName, idx) => {
+                                          const isCypSpecial = drugName === "CYP3A4";
+                                          return (
+                                            <div
+                                              key={idx}
+                                              className={cn(
+                                                "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
+                                                isCypSpecial
+                                                  ? isDarkMode
+                                                    ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
+                                                    : "bg-amber-50 border-amber-100 text-amber-700"
+                                                  : isDarkMode
+                                                    ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
+                                                    : "bg-rose-50 border-rose-100 text-rose-700",
+                                              )}
+                                            >
+                                              <span>
+                                                {isCypSpecial ? "⭐" : "💊"}
+                                              </span>
+                                              <span>{drugName}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ===== THẬN TRỌNG (precautions) ===== */}
                         <div
                           className={cn(
                             "p-6 rounded-3xl border border-amber-200/50 shadow-sm",
@@ -2077,7 +2639,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           )}
                         >
                           <h5 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-600 mb-4">
-                            <AlertTriangle size={16} /> Thận trọng
+                            <ShieldAlert size={16} /> Thận trọng
                           </h5>
                           <div className="text-sm leading-relaxed">
                             {typeof drug.precautions === "string" ? (
@@ -2141,11 +2703,14 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               <span
                                                 className={cn(
                                                   "px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border",
-                                                  item.severity ===
-                                                    "Phối hợp nguy hiểm"
-                                                    ? isDarkMode
-                                                      ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
-                                                      : "bg-rose-50 border-rose-100 text-rose-700"
+                                                   item.severity === "Chống chỉ định"
+                                                     ? isDarkMode
+                                                       ? "bg-red-950/30 border-red-900/30 text-red-400"
+                                                       : "bg-red-50 border-red-100 text-red-700"
+                                                     : item.severity === "Phối hợp nguy hiểm"
+                                                       ? isDarkMode
+                                                         ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
+                                                         : "bg-rose-50 border-rose-100 text-rose-700"
                                                     : item.severity ===
                                                         "Cần cân nhắc lợi, hại"
                                                       ? isDarkMode
@@ -2215,6 +2780,59 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               )}
                                             </div>
                                           )}
+
+                                        {/* Gợi ý Thuốc chống chỉ định (Chỉ người có điểm quyền lực mới xem được) */}
+                                        {item.type === "Drug" && item.drugs && item.drugs.length > 0 && (
+                                          <div className="mt-3">
+                                            <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1.5">
+                                              Thuốc &amp; Nhóm thuốc chống chỉ định:
+                                            </div>
+                                            {userPowerPoints > 0 ? (
+                                              <div className="flex flex-wrap gap-2">
+                                                {item.drugs.map((drugName, idx) => {
+                                                  const isCypSpecial = drugName === "CYP3A4";
+                                                  return (
+                                                    <div
+                                                      key={idx}
+                                                      className={cn(
+                                                        "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
+                                                        isCypSpecial
+                                                          ? isDarkMode
+                                                            ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
+                                                            : "bg-amber-50 border-amber-100 text-amber-700"
+                                                          : isDarkMode
+                                                            ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
+                                                            : "bg-rose-50 border border-rose-100 text-rose-750",
+                                                      )}
+                                                    >
+                                                      <span>💊</span>
+                                                      <span>{drugName}</span>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            ) : (
+                                              <div
+                                                className={cn(
+                                                  "p-2.5 rounded-xl border flex items-start gap-2.5 shadow-2xs transition-all",
+                                                  isDarkMode
+                                                    ? "bg-amber-950/20 border-amber-900/30 text-amber-400"
+                                                    : "bg-amber-50 border border-amber-100 text-amber-700",
+                                                )}
+                                              >
+                                                <Lock size={12} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                                                <div className="flex-1 space-y-0.5">
+                                                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-500">
+                                                    Nội dung bị khóa
+                                                  </div>
+                                                  <p className="text-[10px] leading-relaxed font-semibold opacity-80">
+                                                    Yêu cầu Điểm quyền lực &gt; 0 để xem danh sách thuốc chống chỉ định.
+                                                  </p>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   ))
@@ -2276,23 +2894,25 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     {/* Notes */}
                                     {notes ? (
                                       <div className="space-y-2 mb-3">
-                                        {notes.split("\n").map((noteLine, idx) => {
-                                          const lineTrimmed = noteLine.trim();
-                                          if (!lineTrimmed) return null;
-                                          return (
-                                            <p
-                                              key={idx}
-                                              className={cn(
-                                                "text-[11px] leading-relaxed font-semibold pl-3.5 relative before:content-['•'] before:absolute before:left-1 before:text-rose-500",
-                                                isDarkMode
-                                                  ? "text-slate-100"
-                                                  : "text-slate-900",
-                                              )}
-                                            >
-                                              {lineTrimmed}
-                                            </p>
-                                          );
-                                        })}
+                                        {notes
+                                          .split("\n")
+                                          .map((noteLine, idx) => {
+                                            const lineTrimmed = noteLine.trim();
+                                            if (!lineTrimmed) return null;
+                                            return (
+                                              <p
+                                                key={idx}
+                                                className={cn(
+                                                  "text-[11px] leading-relaxed font-semibold pl-3.5 relative before:content-['•'] before:absolute before:left-1 before:text-rose-500",
+                                                  isDarkMode
+                                                    ? "text-slate-100"
+                                                    : "text-slate-900",
+                                                )}
+                                              >
+                                                {lineTrimmed}
+                                              </p>
+                                            );
+                                          })}
                                       </div>
                                     ) : (
                                       !canSeePregnancyTrimesters && (
@@ -2351,7 +2971,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                           key={idx}
                                           className={cn(
                                             "text-[11px] leading-relaxed font-semibold pl-3.5 relative before:content-['•'] before:absolute before:left-1 before:text-rose-500",
-                                            isDarkMode ? "text-slate-100" : "text-slate-900",
+                                            isDarkMode
+                                              ? "text-slate-100"
+                                              : "text-slate-900",
                                           )}
                                         >
                                           {lineTrimmed}
@@ -2465,6 +3087,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     : "";
                               const hasValidStatus = [
                                 "Có thể dùng",
+                                "Cân nhắc lợi hại",
                                 "Không nên dùng",
                               ].includes(status);
                               const canShowStatusBadge =
@@ -2496,9 +3119,13 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                             ? isDarkMode
                                               ? "bg-rose-950/40 border-rose-900/30 text-rose-400"
                                               : "bg-rose-50 border-rose-100 text-rose-700"
-                                            : isDarkMode
-                                              ? "bg-blue-950/40 border-blue-900/30 text-blue-400"
-                                              : "bg-blue-50 border-blue-100 text-blue-700",
+                                            : displayStatus === "Có thể dùng"
+                                              ? isDarkMode
+                                                ? "bg-blue-950/40 border-blue-900/30 text-blue-400"
+                                                : "bg-blue-50 border-blue-100 text-blue-700"
+                                              : isDarkMode
+                                                ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
+                                                : "bg-amber-50 border-amber-100 text-amber-700",
                                         )}
                                       >
                                         {displayStatus}
@@ -2540,9 +3167,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 <h5 className="text-[10px] font-black uppercase tracking-wider text-rose-400 dark:text-rose-500">
                                   Triệu chứng & Biểu hiện
                                 </h5>
-                                <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">
+                                <div className={cn(
+                                  "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
+                                  isDarkMode ? "text-slate-300" : "text-slate-600"
+                                )}>
                                   {drug.overdose}
-                                </p>
+                                </div>
                               </div>
                             )}
                             {drug.overdoseManagement && (
@@ -2550,9 +3180,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 <h5 className="text-[10px] font-black uppercase tracking-wider text-rose-400 dark:text-rose-500">
                                   Hướng dẫn xử trí
                                 </h5>
-                                <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">
+                                <div className={cn(
+                                  "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
+                                  isDarkMode ? "text-slate-300" : "text-slate-600"
+                                )}>
                                   {drug.overdoseManagement}
-                                </p>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2574,7 +3207,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             <h5 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600 mb-3">
                               <RefreshCw size={16} /> Tương tác chung
                             </h5>
-                            <div className="text-sm leading-relaxed">
+                            <div className={cn(
+                              "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium",
+                              isDarkMode ? "text-slate-300" : "text-slate-650"
+                            )}>
                               {drug.interactions}
                             </div>
                           </div>
@@ -2582,13 +3218,24 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
                         {/* Tương tác cụ thể */}
                         {(() => {
-                          const selfActiveIngs = (drug.activeIngredients || []).map(ing => ing.name).filter(Boolean);
-                          const hasMultipleIngredients = selfActiveIngs.length > 1;
-                          const filteredInteractions = drug.specificInteractions || [];
+                          const selfActiveIngs = (drug.activeIngredients || [])
+                            .map((ing) => ing.name)
+                            .filter(Boolean);
+                          const hasMultipleIngredients =
+                            selfActiveIngs.length > 1;
+                          const filteredInteractions =
+                            drug.specificInteractions || [];
 
-                          if (!drug.specificInteractions || drug.specificInteractions.length === 0) return null;
+                          if (
+                            !drug.specificInteractions ||
+                            drug.specificInteractions.length === 0
+                          )
+                            return null;
 
-                          const renderInteractionItem = (item: any, idx: number) => (
+                          const renderInteractionItem = (
+                            item: any,
+                            idx: number,
+                          ) => (
                             <div
                               key={idx}
                               className={cn(
@@ -2601,84 +3248,143 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               <div
                                 className={cn(
                                   "p-2 rounded-xl shrink-0 shadow-sm",
-                                  item.severity === "Phối hợp nguy hiểm"
-                                    ? isDarkMode ? "bg-rose-950/50 text-rose-400" : "bg-rose-50 text-rose-500"
+                                  item.severity === "Chống chỉ định"
+                                    ? isDarkMode
+                                      ? "bg-red-950/50 text-red-400"
+                                      : "bg-red-50 text-red-500"
+                                    : item.severity === "Phối hợp nguy hiểm"
+                                      ? isDarkMode
+                                        ? "bg-rose-950/50 text-rose-400"
+                                        : "bg-rose-50 text-rose-500"
                                     : item.severity === "Cần cân nhắc lợi, hại"
-                                      ? isDarkMode ? "bg-orange-950/50 text-orange-400" : "bg-orange-50 text-orange-500"
-                                      : item.severity === "Cần theo dõi người bệnh"
-                                        ? isDarkMode ? "bg-purple-950/50 text-purple-400" : "bg-purple-50 text-purple-600"
-                                        : isDarkMode ? "bg-indigo-950/50 text-indigo-400" : "bg-indigo-50 text-indigo-500"
+                                      ? isDarkMode
+                                        ? "bg-orange-950/50 text-orange-400"
+                                        : "bg-orange-50 text-orange-500"
+                                      : item.severity ===
+                                          "Cần theo dõi người bệnh"
+                                        ? isDarkMode
+                                          ? "bg-purple-950/50 text-purple-400"
+                                          : "bg-purple-50 text-purple-600"
+                                        : isDarkMode
+                                          ? "bg-indigo-950/50 text-indigo-400"
+                                          : "bg-indigo-50 text-indigo-500",
                                 )}
                               >
                                 <RefreshCw size={20} />
                               </div>
                               <div className="flex-1">
                                 <div className="flex items-start justify-between gap-4 mb-2.5 flex-wrap">
-                                  <h5 className={cn(
-                                    "text-sm font-bold tracking-tight leading-snug",
-                                    isDarkMode ? "text-slate-100" : "text-slate-900"
-                                  )}>
+                                  <h5
+                                    className={cn(
+                                      "text-sm font-bold tracking-tight leading-snug",
+                                      isDarkMode
+                                        ? "text-slate-100"
+                                        : "text-slate-900",
+                                    )}
+                                  >
                                     {item.title || ""}
                                   </h5>
                                 </div>
 
-                                <p className={cn(
-                                  "text-sm leading-relaxed font-semibold",
-                                  isDarkMode ? "text-slate-200" : "text-slate-800"
-                                )}>
+                                <div
+                                  className={cn(
+                                    "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium",
+                                    isDarkMode
+                                      ? "text-slate-300"
+                                      : "text-slate-600",
+                                  )}
+                                >
                                   {item.content}
-                                </p>
+                                </div>
 
                                 {/* Gợi ý tương tác dời xuống dưới nội dung chi tiết & Mức độ nghiêm trọng */}
-                                {((item.target && item.target.trim() !== "") || item.severity) && (
-                                  <div className={cn(
-                                    "flex flex-wrap items-center justify-between gap-3 mt-3 pt-2.5 border-t border-dashed w-full",
-                                    isDarkMode ? "border-slate-850" : "border-slate-100"
-                                  )}>
-                                    {item.target && item.target.trim() !== "" ? (
+                                {((item.target && item.target.trim() !== "") ||
+                                  item.severity) && (
+                                  <div
+                                    className={cn(
+                                      "flex flex-wrap items-center justify-between gap-3 mt-3 pt-2.5 border-t border-dashed w-full",
+                                      isDarkMode
+                                        ? "border-slate-850"
+                                        : "border-slate-100",
+                                    )}
+                                  >
+                                    {item.target &&
+                                    item.target.trim() !== "" ? (
                                       <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className={cn(
-                                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border shadow-sm",
-                                          isDarkMode ? "bg-indigo-950/40 border-indigo-900/30 text-indigo-350" : "bg-indigo-50 border-indigo-100 text-indigo-700"
-                                        )}>
-                                          <Pill size={11} className="text-indigo-500" />
-                                          {item.selfIngredient || (selfActiveIngs.length === 1 ? selfActiveIngs[0] : "Hoạt chất")}
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border shadow-sm",
+                                            isDarkMode
+                                              ? "bg-indigo-950/40 border-indigo-900/30 text-indigo-350"
+                                              : "bg-indigo-50 border-indigo-100 text-indigo-700",
+                                          )}
+                                        >
+                                          <Pill
+                                            size={11}
+                                            className="text-indigo-500"
+                                          />
+                                          {item.selfIngredient ||
+                                            (selfActiveIngs.length === 1
+                                              ? selfActiveIngs[0]
+                                              : "Hoạt chất")}
                                         </span>
 
                                         <span className="text-xs font-bold px-1 text-slate-400 font-mono animate-pulse">
                                           ⇆
                                         </span>
 
-                                        <span className={cn(
-                                          "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border shadow-sm",
-                                          item.partnerType === 'group'
-                                            ? isDarkMode ? "bg-emerald-950/40 border-emerald-900/30 text-emerald-350" : "bg-emerald-50 border-emerald-100 text-emerald-700"
-                                            : isDarkMode ? "bg-purple-950/40 border-purple-900/30 text-purple-350" : "bg-purple-50 border-purple-100 text-purple-700"
-                                        )}>
-                                          {item.partnerType === 'group' ? (
-                                            <FolderTree size={11} className="text-emerald-500" />
-                                          ) : (
-                                            <Pill size={11} className="text-purple-500" />
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border shadow-sm",
+                                            item.partnerType === "group"
+                                              ? isDarkMode
+                                                ? "bg-emerald-950/40 border-emerald-900/30 text-emerald-350"
+                                                : "bg-emerald-50 border-emerald-100 text-emerald-700"
+                                              : isDarkMode
+                                                ? "bg-purple-950/40 border-purple-900/30 text-purple-350"
+                                                : "bg-purple-50 border-purple-100 text-purple-700",
                                           )}
-                                          <span className="font-semibold italic text-[8.5px] lowercase tracking-normal mr-0.5 text-slate-400">tương tác:</span>
+                                        >
+                                          {item.partnerType === "group" ? (
+                                            <FolderTree
+                                              size={11}
+                                              className="text-emerald-500"
+                                            />
+                                          ) : (
+                                            <Pill
+                                              size={11}
+                                              className="text-purple-500"
+                                            />
+                                          )}
+                                          <span className="font-semibold italic text-[8.5px] lowercase tracking-normal mr-0.5 text-slate-400">
+                                            tương tác:
+                                          </span>
                                           {item.target}
                                         </span>
                                       </div>
-                                    ) : <div />}
+                                    ) : (
+                                      <div />
+                                    )}
 
                                     {item.severity && (
                                       <span
                                         className={cn(
                                           "px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border shrink-0 sm:ml-auto md:float-right",
-                                          item.severity === "Phối hợp nguy hiểm"
+                                          item.severity === "Chống chỉ định"
                                             ? isDarkMode
-                                              ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
-                                              : "bg-rose-50 border-rose-100 text-rose-700"
-                                            : item.severity === "Cần cân nhắc lợi, hại"
+                                              ? "bg-red-950/30 border-red-900/30 text-red-400"
+                                              : "bg-red-50 border-red-100 text-red-700"
+                                            : item.severity === "Phối hợp nguy hiểm"
+                                              ? isDarkMode
+                                                ? "bg-rose-950/30 border-rose-900/30 text-rose-400"
+                                                : "bg-rose-50 border-rose-100 text-rose-700"
+                                            : item.severity ===
+                                                "Cần cân nhắc lợi, hại"
                                               ? isDarkMode
                                                 ? "bg-orange-950/30 border-orange-900/30 text-orange-400"
                                                 : "bg-orange-50 border-orange-100 text-orange-700"
-                                              : item.severity === "Cần theo dõi người bệnh"
+                                              : item.severity ===
+                                                  "Cần theo dõi người bệnh"
                                                 ? isDarkMode
                                                   ? "bg-purple-950/30 border-purple-900/30 text-purple-400"
                                                   : "bg-purple-50 border-purple-100 text-purple-700"
@@ -2696,25 +3402,39 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             </div>
                           );
 
-                          const grouped = selfActiveIngs.map(ingName => {
-                            const items = filteredInteractions.filter(item =>
-                              isIngredientMatch(item.selfIngredient, ingName, ingredients)
+                          const grouped = selfActiveIngs.map((ingName) => {
+                            const items = filteredInteractions.filter((item) =>
+                              isIngredientMatch(
+                                item.selfIngredient,
+                                ingName,
+                                ingredients,
+                              ),
                             );
                             return { ingName, items };
                           });
 
-                          const unassignedItems = filteredInteractions.filter(item => {
-                            return !selfActiveIngs.some(ingName =>
-                              isIngredientMatch(item.selfIngredient, ingName, ingredients)
-                            );
-                          });
+                          const unassignedItems = filteredInteractions.filter(
+                            (item) => {
+                              return !selfActiveIngs.some((ingName) =>
+                                isIngredientMatch(
+                                  item.selfIngredient,
+                                  ingName,
+                                  ingredients,
+                                ),
+                              );
+                            },
+                          );
 
                           return (
                             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                              <h6 className={cn(
-                                "text-[10px] font-black uppercase tracking-widest ml-1",
-                                isDarkMode ? "text-slate-400" : "text-slate-400"
-                              )}>
+                              <h6
+                                className={cn(
+                                  "text-[10px] font-black uppercase tracking-widest ml-1",
+                                  isDarkMode
+                                    ? "text-slate-400"
+                                    : "text-slate-400",
+                                )}
+                              >
                                 Tương tác thuốc cụ thể
                               </h6>
 
@@ -2724,15 +3444,24 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     if (items.length === 0) return null;
                                     return (
                                       <div key={ingName} className="space-y-3">
-                                        <div className={cn(
-                                          "flex items-center gap-2 px-3 py-1.5 rounded-xl border w-fit text-xs font-bold uppercase tracking-wider shadow-sm",
-                                          isDarkMode ? "bg-slate-900 border-slate-800 text-indigo-400" : "bg-indigo-50/50 border-indigo-100/50 text-indigo-700"
-                                        )}>
-                                          <Pill size={14} className="text-indigo-500" />
+                                        <div
+                                          className={cn(
+                                            "flex items-center gap-2 px-3 py-1.5 rounded-xl border w-fit text-xs font-bold uppercase tracking-wider shadow-sm",
+                                            isDarkMode
+                                              ? "bg-slate-900 border-slate-800 text-indigo-400"
+                                              : "bg-indigo-50/50 border-indigo-100/50 text-indigo-700",
+                                          )}
+                                        >
+                                          <Pill
+                                            size={14}
+                                            className="text-indigo-500"
+                                          />
                                           Hoạt chất: {ingName} ({items.length})
                                         </div>
                                         <div className="space-y-3">
-                                          {items.map((item, idx) => renderInteractionItem(item, idx))}
+                                          {items.map((item, idx) =>
+                                            renderInteractionItem(item, idx),
+                                          )}
                                         </div>
                                       </div>
                                     );
@@ -2740,22 +3469,34 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
                                   {unassignedItems.length > 0 && (
                                     <div className="space-y-3">
-                                      <div className={cn(
-                                        "flex items-center gap-2 px-3 py-1.5 rounded-xl border w-fit text-xs font-bold uppercase tracking-wider shadow-sm",
-                                        isDarkMode ? "bg-slate-900 border-slate-800 text-amber-400" : "bg-amber-50 border-amber-100 text-amber-700"
-                                      )}>
-                                        <AlertCircle size={14} className="text-amber-500" />
-                                        Tương tác khác / Chưa phân loại ({unassignedItems.length})
+                                      <div
+                                        className={cn(
+                                          "flex items-center gap-2 px-3 py-1.5 rounded-xl border w-fit text-xs font-bold uppercase tracking-wider shadow-sm",
+                                          isDarkMode
+                                            ? "bg-slate-900 border-slate-800 text-amber-400"
+                                            : "bg-amber-50 border-amber-100 text-amber-700",
+                                        )}
+                                      >
+                                        <AlertCircle
+                                          size={14}
+                                          className="text-amber-500"
+                                        />
+                                        Tương tác khác / Chưa phân loại (
+                                        {unassignedItems.length})
                                       </div>
                                       <div className="space-y-3">
-                                        {unassignedItems.map((item, idx) => renderInteractionItem(item, idx))}
+                                        {unassignedItems.map((item, idx) =>
+                                          renderInteractionItem(item, idx),
+                                        )}
                                       </div>
                                     </div>
                                   )}
                                 </div>
                               ) : (
                                 <div className="space-y-3">
-                                  {filteredInteractions.map((item, idx) => renderInteractionItem(item, idx))}
+                                  {filteredInteractions.map((item, idx) =>
+                                    renderInteractionItem(item, idx),
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -2820,17 +3561,33 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     <div
                                       key={idx}
                                       className={cn(
-                                        "px-4 py-2.5 rounded-xl border flex items-center justify-between text-xs sm:text-sm font-bold",
+                                        "px-4 py-2.5 rounded-xl border flex flex-col gap-1 text-xs sm:text-sm",
                                         isDarkMode
-                                          ? "bg-slate-900/50 border-slate-700 text-slate-200"
-                                          : "bg-slate-50 border-slate-100 text-slate-700",
+                                          ? "bg-slate-900/50 border-slate-700"
+                                          : "bg-slate-50 border-slate-100",
                                       )}
                                     >
-                                      <span>{ing.name}</span>
-                                      <span className="text-blue-500 font-mono">
-                                        {ing.amount}
-                                        {ing.unit}
-                                      </span>
+                                      <div className="flex items-center justify-between font-bold w-full">
+                                        <span className={isDarkMode ? "text-slate-200" : "text-slate-700"}>{ing.name}</span>
+                                        <span className="text-blue-500 font-mono">
+                                          {ing.amount}
+                                          {ing.unit}
+                                        </span>
+                                      </div>
+                                      {ing.equivalent && (
+                                        <div className="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1 mt-0.5 border-t border-dashed border-slate-200 dark:border-slate-800 pt-1 w-full">
+                                          <span>Tương đương:</span>
+                                          <span className={isDarkMode ? "text-slate-300" : "text-slate-600"}>
+                                            {ing.equivalent}
+                                            {(ing.equivalentAmount || ing.equivalentUnit) && (
+                                              <span className="text-blue-500 font-mono font-bold ml-1">
+                                                ({ing.equivalentAmount}
+                                                {ing.equivalentUnit})
+                                              </span>
+                                            )}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   ),
                                 )}
@@ -2868,10 +3625,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 ) : (
                                   <div
                                     className={cn(
-                                      "px-4 py-3 rounded-xl border text-xs sm:text-sm font-bold",
+                                      "px-4 py-3 rounded-xl border text-xs sm:text-sm font-medium leading-relaxed whitespace-pre-line",
                                       isDarkMode
-                                        ? "bg-slate-900/50 border-slate-750 text-slate-300"
-                                        : "bg-slate-50 border-slate-100 text-slate-600",
+                                        ? "bg-slate-900/50 border-slate-755 text-slate-300"
+                                        : "bg-slate-50 border-slate-150 text-slate-600",
                                     )}
                                   >
                                     {drug.excipients}
@@ -2887,7 +3644,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 </p>
                                 <div
                                   className={cn(
-                                    "px-4 py-3 rounded-xl border text-xs sm:text-sm font-semibold leading-relaxed",
+                                    "px-4 py-3 rounded-xl border text-xs sm:text-sm font-medium leading-relaxed whitespace-pre-line",
                                     isDarkMode
                                       ? "bg-slate-900/50 border-slate-700 text-slate-300"
                                       : "bg-slate-50 border-slate-100 text-slate-600",
@@ -2899,6 +3656,205 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             )}
                           </div>
                         </div>
+                        {/* ===== DƯỢC LÝ (trong tab Thông tin) ===== */}
+                        {(() => {
+                          const hasPharmacodynamics =
+                            drug.pharmacodynamics &&
+                            (typeof drug.pharmacodynamics === "string"
+                              ? drug.pharmacodynamics.trim() !== ""
+                              : Array.isArray(drug.pharmacodynamics) &&
+                                drug.pharmacodynamics.length > 0);
+
+                          const hasPharmacokinetics =
+                            drug.pharmacokinetics &&
+                            (typeof drug.pharmacokinetics === "string"
+                              ? drug.pharmacokinetics.trim() !== ""
+                              : Array.isArray(drug.pharmacokinetics) &&
+                                drug.pharmacokinetics.length > 0);
+
+                          const drugGroupNames = (() => {
+                            const ids = drug.groupIds && drug.groupIds.length > 0
+                              ? drug.groupIds
+                              : drug.groupId ? [drug.groupId] : [];
+                            return ids
+                              .map(id => drugGroups.find(g => g.id === id))
+                              .filter(Boolean) as import('../types').DrugGroup[];
+                          })();
+
+                          if (!drug.pharmacology && !hasPharmacodynamics && !hasPharmacokinetics && !drug.atcCode && drugGroupNames.length === 0) return null;
+
+                          return (
+                            <div className="space-y-4">
+
+                              {(drug.pharmacology || drug.atcCode || hasPharmacodynamics || hasPharmacokinetics || drugGroupNames.length > 0) && (
+                                <div
+                                  className={cn(
+                                    "p-6 rounded-3xl border",
+                                    isDarkMode
+                                      ? "bg-blue-500/5 border-blue-500/10 shadow-xl"
+                                      : "bg-blue-50 border-blue-100 shadow-sm",
+                                  )}
+                                >
+                                  <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 mb-4">
+                                    <BookOpen size={16} /> Dược lý học
+                                  </h4>
+                                  {(drug.atcCode || drugGroupNames.length > 0) && (
+                                    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+                                      {drug.atcCode && (
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[9px] font-black uppercase tracking-widest opacity-50">Mã ATC</span>
+                                          <span
+                                            className={cn(
+                                              "inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-wider border",
+                                              isDarkMode
+                                                ? "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                                                : "bg-blue-100 border-blue-200 text-blue-700",
+                                            )}
+                                          >
+                                            {drug.atcCode}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {drug.atcCode && drugGroupNames.length > 0 && (
+                                        <span className={cn("w-px h-4 shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-200")} />
+                                      )}
+                                      {drugGroupNames.length > 0 && (
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="text-[9px] font-black uppercase tracking-widest opacity-50">Nhóm thuốc theo điều trị</span>
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {drugGroupNames.map((group) => (
+                                              <span
+                                                key={group.id}
+                                                className={cn(
+                                                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black border",
+                                                  isDarkMode
+                                                    ? "bg-violet-500/10 border-violet-500/20 text-violet-400"
+                                                    : "bg-violet-50 border-violet-200 text-violet-700",
+                                                )}
+                                              >
+                                                <FolderTree size={10} />
+                                                {group.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {drug.pharmacology && (
+                                    <div className={cn(
+                                      "text-xs sm:text-sm leading-relaxed whitespace-pre-line font-medium mb-4",
+                                      isDarkMode ? "text-slate-300" : "text-slate-650"
+                                    )}>
+                                      {drug.pharmacology}
+                                    </div>
+                                  )}
+
+                                  {(hasPharmacodynamics || hasPharmacokinetics) && (
+                                    <div
+                                      className={cn(
+                                        "grid grid-cols-1 md:grid-cols-2 gap-4",
+                                        (drug.pharmacology || drug.atcCode) ? "mt-4 pt-4 border-t" : "",
+                                        isDarkMode ? "border-blue-900/30" : "border-blue-200/60",
+                                      )}
+                                    >
+                                      {hasPharmacodynamics && (
+                                        <div
+                                          className={cn(
+                                            "p-5 rounded-2xl border flex flex-col gap-3",
+                                            isDarkMode
+                                              ? "bg-slate-800/60 border-slate-700"
+                                              : "bg-white border-slate-100 shadow-sm",
+                                          )}
+                                        >
+                                          <h5 className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
+                                            Dược lực học
+                                          </h5>
+                                          <div className="text-sm leading-relaxed opacity-95">
+                                            {typeof drug.pharmacodynamics === "string" ? (
+                                              <div className="whitespace-pre-wrap">{drug.pharmacodynamics}</div>
+                                            ) : (
+                                              <div className="space-y-4">
+                                                {(drug.pharmacodynamics || []).map((item: any, idx: number) => (
+                                                  <div key={idx} className="space-y-1">
+                                                    {item.category && (
+                                                      <h6
+                                                        className={cn(
+                                                          "text-xs font-bold uppercase tracking-wider",
+                                                          isDarkMode ? "text-emerald-400" : "text-emerald-700",
+                                                        )}
+                                                      >
+                                                        {item.category}
+                                                      </h6>
+                                                    )}
+                                                    <div
+                                                      className={cn(
+                                                        "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
+                                                        isDarkMode ? "text-slate-300" : "text-slate-600",
+                                                      )}
+                                                    >
+                                                      {item.content}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {hasPharmacokinetics && (
+                                        <div
+                                          className={cn(
+                                            "p-5 rounded-2xl border flex flex-col gap-3",
+                                            isDarkMode
+                                              ? "bg-slate-800/60 border-slate-700"
+                                              : "bg-white border-slate-100 shadow-sm",
+                                          )}
+                                        >
+                                          <h5 className="text-[10px] font-black uppercase tracking-widest text-indigo-500">
+                                            Dược động học
+                                          </h5>
+                                          <div className="text-sm leading-relaxed opacity-95">
+                                            {typeof drug.pharmacokinetics === "string" ? (
+                                              <div className="whitespace-pre-wrap">{drug.pharmacokinetics}</div>
+                                            ) : (
+                                              <div className="space-y-4">
+                                                {(drug.pharmacokinetics || []).map((item: any, idx: number) => (
+                                                  <div key={idx} className="space-y-1">
+                                                    {item.category && (
+                                                      <h6
+                                                        className={cn(
+                                                          "text-xs font-bold uppercase tracking-wider",
+                                                          isDarkMode ? "text-indigo-400" : "text-indigo-700",
+                                                        )}
+                                                      >
+                                                        {item.category}
+                                                      </h6>
+                                                    )}
+                                                    <div
+                                                      className={cn(
+                                                        "text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium",
+                                                        isDarkMode ? "text-slate-300" : "text-slate-600",
+                                                      )}
+                                                    >
+                                                      {item.content}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         {/* Thông tin công ty */}
                         <div
                           className={cn(
@@ -2943,6 +3899,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               </p>
                             </div>
 
+
                             <div className="space-y-1">
                               <p className="text-[9px] font-black uppercase tracking-widest opacity-50">
                                 Dạng bào chế
@@ -2951,8 +3908,6 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 {drug.dosageForm || "Chưa cập nhật"}
                               </p>
                             </div>
-
-
 
                             {/* Badges for WHO-GMP and TCCS */}
                             {(drug.isWHOGMP || drug.isTCCS) && (
@@ -3209,6 +4164,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         )}
                       </div>
                     )}
+                    </div>
                   </motion.div>
                 </AnimatePresence>
               </div>

@@ -9,10 +9,12 @@ import ConfirmModal from './ConfirmModal';
 interface DrugGroupManagementProps {
   isDarkMode: boolean;
   onClose: () => void;
+  initialClassification?: 'treatment' | 'interaction';
 }
 
-const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, onClose }) => {
+const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, onClose, initialClassification }) => {
   const [groups, setGroups] = useState<DrugGroup[]>([]);
+  const [activeClassTab, setActiveClassTab] = useState<'treatment' | 'interaction'>(initialClassification || 'treatment');
   const [loading, setLoading] = useState(true);
   const [editingGroup, setEditingGroup] = useState<DrugGroup | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,7 +25,8 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
     parentId: null,
     level: 0,
     order: 0,
-    bannerUrl: ''
+    bannerUrl: '',
+    classification: 'treatment'
   });
 
   useEffect(() => {
@@ -44,9 +47,12 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
       setEditingGroup(group);
       setFormData({
         ...group,
-        bannerUrl: group.bannerUrl || ''
+        bannerUrl: group.bannerUrl || '',
+        classification: group.classification || 'treatment'
       });
     } else {
+      const parentGroup = parentId ? groups.find(g => g.id === parentId) : null;
+      const classification = parentGroup ? (parentGroup.classification || 'treatment') : activeClassTab;
       setEditingGroup(null);
       setFormData({
         id: Math.random().toString(36).substr(2, 9),
@@ -54,7 +60,8 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
         parentId: parentId,
         level: level,
         order: groups.filter(g => g.parentId === parentId).length,
-        bannerUrl: ''
+        bannerUrl: '',
+        classification: classification
       });
     }
     setIsModalOpen(true);
@@ -208,15 +215,44 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
           </div>
         </div>
 
+        {/* Classification Selector */}
+        <div className={cn(
+          "px-4 sm:px-6 py-3 border-b flex gap-2",
+          isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white"
+        )}>
+          <button
+            onClick={() => setActiveClassTab('treatment')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+              activeClassTab === 'treatment'
+                ? (isDarkMode ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "bg-blue-600 text-white shadow-lg shadow-blue-100")
+                : (isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200")
+            )}
+          >
+            Nhóm điều trị
+          </button>
+          <button
+            onClick={() => setActiveClassTab('interaction')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold transition-all",
+              activeClassTab === 'interaction'
+                ? (isDarkMode ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "bg-blue-600 text-white shadow-lg shadow-blue-100")
+                : (isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200")
+            )}
+          >
+            Nhóm tương tác
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-3 sm:p-6 custom-scrollbar">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
             </div>
-          ) : groups.length > 0 ? (
+          ) : groups.filter(g => (g.classification || 'treatment') === activeClassTab).length > 0 ? (
             <div className="space-y-4">
               {groups
-                .filter(g => g.parentId === null)
+                .filter(g => g.parentId === null && (g.classification || 'treatment') === activeClassTab)
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map(group => renderGroupItem(group, 0))}
             </div>
@@ -261,6 +297,36 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
                 </div>
                 
                 <div className="flex-1 p-4 sm:p-6 space-y-4 overflow-y-auto">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Loại phân nhóm</label>
+                    <div className="flex gap-2 mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, classification: 'treatment' })}
+                        className={cn(
+                          "flex-1 py-2 sm:py-2.5 rounded-xl text-xs font-bold border transition-all",
+                          formData.classification !== 'interaction'
+                            ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-500")
+                        )}
+                      >
+                        Điều trị
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, classification: 'interaction' })}
+                        className={cn(
+                          "flex-1 py-2 sm:py-2.5 rounded-xl text-xs font-bold border transition-all",
+                          formData.classification === 'interaction'
+                            ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-500")
+                        )}
+                      >
+                        Tương tác
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên nhóm thuốc</label>
                     <input

@@ -561,6 +561,13 @@
         "title": { "type": "string", "description": "Tiêu đề tài liệu" },
         "category": { "type": "string", "description": "Phân loại tài liệu" },
         "text": { "type": "string", "description": "Nội dung đầy đủ" },
+        "pdfUrl": { "type": "string", "description": "Đường dẫn file PDF đính kèm" },
+        "attachedUrl": { "type": "string", "description": "Đường dẫn tài liệu kèm theo / Nguồn gốc trực tuyến" },
+        "attachedUrls": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "description": "Các đường dẫn tài liệu kèm theo khác"
+        },
         "createdBy": { "type": "string", "description": "UID người tạo" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }

@@ -3,13 +3,87 @@ import {
   FileText, Sparkles, Search, Trash2, Plus, Loader2, Edit3,
   CheckCircle, AlertCircle, ExternalLink, BookOpen, 
   RotateCcw, ChevronRight, Check, FileSearch, Upload, ArrowLeft, RefreshCw,
-  X, Copy, Printer, Layers, MoreVertical, Eye, EyeOff, ArrowUp, ArrowDown
+  X, Copy, Printer, Layers, MoreVertical, Eye, EyeOff, ArrowUp, ArrowDown, Link2,
+  LayoutGrid, List
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '../lib/utils';
 import { db, collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from '../firebase';
 import { SAMPLE_DOCUMENTS, ClinicalDocument } from '../lib/sampleDocs';
+import ConfirmModal from './ConfirmModal';
+
+const FILE_TYPE_OPTIONS = [
+  { value: 'pdf', label: 'PDF (.pdf)' },
+  { value: 'docx', label: 'Word (.doc, .docx)' },
+  { value: 'xlsx', label: 'Excel (.xls, .xlsx)' },
+  { value: 'pptx', label: 'PowerPoint (.ppt, .pptx)' },
+  { value: 'image', label: 'Hình ảnh (JPEG, PNG...)' },
+  { value: 'drive', label: 'Google Drive / Docs' },
+  { value: 'website', label: 'Website / Link khác' },
+];
+
+const detectFileTypeFromUrl = (url: string): string => {
+  if (!url) return 'website';
+  const lowercase = url.toLowerCase().split('?')[0];
+  if (lowercase.endsWith('.pdf')) return 'pdf';
+  if (lowercase.endsWith('.doc') || lowercase.endsWith('.docx')) return 'docx';
+  if (lowercase.endsWith('.xls') || lowercase.endsWith('.xlsx')) return 'xlsx';
+  if (lowercase.endsWith('.ppt') || lowercase.endsWith('.pptx')) return 'pptx';
+  if (lowercase.endsWith('.png') || lowercase.endsWith('.jpg') || lowercase.endsWith('.jpeg') || lowercase.endsWith('.gif') || lowercase.endsWith('.webp') || lowercase.endsWith('.svg')) return 'image';
+  if (lowercase.includes('drive.google.com') || lowercase.includes('docs.google.com')) return 'drive';
+  return 'website';
+};
+
+const extractDriveId = (input: string): string => {
+  if (!input) return "";
+  const trimmed = input.trim();
+  
+  // Try to match standard URL file/d/{ID}
+  const fileDMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileDMatch && fileDMatch[1]) return fileDMatch[1];
+  
+  // Try to match open?id={ID} or uc?id={ID}
+  const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idParamMatch && idParamMatch[1]) return idParamMatch[1];
+
+  // Try to match file/{ID} (as user typed "https://drive.google.com/file/{ID}")
+  const fileMatch = trimmed.match(/\/file\/([a-zA-Z0-9_-]+)/);
+  if (fileMatch && fileMatch[1] && fileMatch[1] !== 'd') return fileMatch[1];
+  
+  return trimmed;
+};
+
+const formatDrivePreviewUrl = (urlOrId?: string): string => {
+  if (!urlOrId) return "";
+  const trimmed = urlOrId.trim();
+  const isDrive = trimmed.includes('drive.google.com') || trimmed.includes('docs.google.com');
+  const isRawId = !trimmed.includes('/') && !trimmed.includes('.') && trimmed.length >= 15;
+  
+  if (isDrive || isRawId) {
+    const id = extractDriveId(trimmed);
+    if (id) {
+      return `https://drive.google.com/file/d/${id}/preview`;
+    }
+  }
+  return trimmed;
+};
+
+const formatDriveViewUrl = (urlOrId?: string): string => {
+  if (!urlOrId) return "";
+  const trimmed = urlOrId.trim();
+  const isDrive = trimmed.includes('drive.google.com') || trimmed.includes('docs.google.com');
+  const isRawId = !trimmed.includes('/') && !trimmed.includes('.') && trimmed.length >= 15;
+  
+  if (isDrive || isRawId) {
+    const id = extractDriveId(trimmed);
+    if (id) {
+      return `https://drive.google.com/file/d/${id}/view`;
+    }
+  }
+  return trimmed;
+};
 
 interface DocCategory {
   id: string;
@@ -44,6 +118,14 @@ export default function DocumentManagement({
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   
+  // Custom Delete Confirm State
+  const [deleteConfirmData, setDeleteConfirmData] = useState<{
+    type: 'category' | 'document';
+    id: string;
+    name: string;
+    message: string;
+  } | null>(null);
+  
   // Create / Edit Form State
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingDoc, setEditingDoc] = useState<ClinicalDocument | null>(null);
@@ -51,6 +133,10 @@ export default function DocumentManagement({
   const [docCategory, setDocCategory] = useState<string>('Phác đồ điều trị');
   const [docText, setDocText] = useState<string>('');
   const [docPdfUrl, setDocPdfUrl] = useState<string>('');
+  const [docAttachedUrl, setDocAttachedUrl] = useState<string>('');
+  const [docAttachedUrls, setDocAttachedUrls] = useState<string[]>(['']);
+  const [docAttachedTypes, setDocAttachedTypes] = useState<string[]>(['']);
+  const [docAttachedTitles, setDocAttachedTitles] = useState<string[]>(['']);
   const [docTagKey, setDocTagKey] = useState<string>('');
   const [docDecisionNo, setDocDecisionNo] = useState<string>('');
   const [docDecisionDate, setDocDecisionDate] = useState<string>('');
@@ -62,6 +148,8 @@ export default function DocumentManagement({
   const [docDocType, setDocDocType] = useState<string>('Quyết định');
   const [docSigner, setDocSigner] = useState<string>('');
   const [docIsInternal, setDocIsInternal] = useState<boolean>(false);
+  const [docExpiryDate, setDocExpiryDate] = useState<string>('');
+  const [docExpiryDecision, setDocExpiryDecision] = useState<string>('');
   const [docTitleItalic, setDocTitleItalic] = useState<boolean>(true);
   const [docHighlights, setDocHighlights] = useState<any[]>([]);
   const [newHlText, setNewHlText] = useState<string>('');
@@ -79,10 +167,18 @@ export default function DocumentManagement({
   
   // AI Helper states
   const [isAIOptimizing, setIsAIOptimizing] = useState<boolean>(false);
+  const [isAIExtracting, setIsAIExtracting] = useState<boolean>(false);
+  const [activeTypingField, setActiveTypingField] = useState<string | null>(null);
+  const [aiAnalysisLog, setAiAnalysisLog] = useState<string>('');
+  const [pendingExtractionText, setPendingExtractionText] = useState<string | null>(null);
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null);
   
   // Notifications
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // View state (List or Grid)
+  const [docsViewMode, setDocsViewMode] = useState<'grid' | 'list'>('grid');
 
   // Dynamic libraries load states (mammoth, pdfjs)
   useEffect(() => {
@@ -263,6 +359,8 @@ export default function DocumentManagement({
         const titleFromUrl = urlInput.trim().replace(/https?:\/\/(www\.)?/, '').substring(0, 50) + "...";
         setDocTitle(titleFromUrl);
         setDocText(data.text);
+        setPendingExtractionText(data.text);
+        setPendingFileName("Liên kết: " + urlInput);
         showNotification('success', "Đã trích xuất văn bản liên kết thành công!");
       } else {
         throw new Error("Trang web trả về văn bản trống rỗng.");
@@ -288,6 +386,8 @@ export default function DocumentManagement({
         const text = e.target?.result as string;
         setDocText(text);
         setDocTitle(file.name.replace(/\.[^/.]+$/, ""));
+        setPendingExtractionText(text);
+        setPendingFileName(file.name);
         setIsParsingFile(false);
         showNotification('success', "Trích xuất văn bản .txt thành công!");
       };
@@ -304,6 +404,8 @@ export default function DocumentManagement({
           if (result && result.value) {
             setDocText(result.value);
             setDocTitle(file.name.replace(/\.[^/.]+$/, ""));
+            setPendingExtractionText(result.value);
+            setPendingFileName(file.name);
             showNotification('success', "Đọc tệp tin Word (.docx) thành công!");
           } else {
             throw new Error("Văn bản Word rỗng hoặc mã hóa.");
@@ -338,6 +440,8 @@ export default function DocumentManagement({
           if (textBuilder.trim()) {
             setDocText(textBuilder);
             setDocTitle(file.name.replace(/\.[^/.]+$/, ""));
+            setPendingExtractionText(textBuilder);
+            setPendingFileName(file.name);
             showNotification('success', "Đọc văn bản PDF thành công!");
           } else {
             throw new Error("Tệp PDF này không chứa văn bản (có thể là dạng scan ảnh).");
@@ -456,7 +560,10 @@ Văn bản gốc:
         })
       });
 
-      if (!response.ok) throw new Error("Mạng bận hoặc máy chủ Gemini tạm thời quá tải, vui lòng thử lại.");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Mạng bận hoặc máy chủ Gemini tạm thời quá tải, vui lòng thử lại.");
+      }
       const data = await response.json();
       if (data.text) {
         setDocText(data.text);
@@ -471,6 +578,286 @@ Văn bản gốc:
     }
   };
 
+  // Helper for typing animation for inputs
+  const typeText = (setter: (v: string) => void, finalVal: string) => {
+    return new Promise<void>((resolve) => {
+      if (!finalVal) {
+        setter('');
+        resolve();
+        return;
+      }
+      let current = '';
+      let i = 0;
+      // Stagger speed based on string length to avoid taking too long
+      const step = finalVal.length > 300 ? 12 : finalVal.length > 100 ? 5 : finalVal.length > 50 ? 3 : 1;
+      const interval = setInterval(() => {
+        if (i >= finalVal.length) {
+          setter(finalVal);
+          clearInterval(interval);
+          resolve();
+        } else {
+          current += finalVal.substring(i, i + step);
+          setter(current);
+          i += step;
+        }
+      }, 15);
+    });
+  };
+
+  const getFieldLabel = (key: string) => {
+    switch (key) {
+      case 'title': return 'Tiêu đề tài liệu';
+      case 'category': return 'Nhóm phân loại';
+      case 'tagKey': return 'Từ khóa';
+      case 'decisionNo': return 'Số quyết định';
+      case 'decisionDate': return 'Ngày ban hành';
+      case 'parentOrg': return 'Cơ quan chủ quản';
+      case 'issuingOrg': return 'Đơn vị ban hành';
+      case 'issuingLocation': return 'Địa danh ban hành';
+      case 'docType': return 'Phân loại văn bản';
+      case 'signer': return 'Người ký tên';
+      case 'expiryDecision': return 'Quyết định thay thế';
+      case 'expiryDate': return 'Ngày hết hiệu lực';
+      case 'text': return 'Nội dung tóm tắt y đức';
+      default: return '';
+    }
+  };
+
+  // Structured AI Extract and Form Filler
+  const handleAIExtractFields = async (textToExtract?: string) => {
+    const rawText = textToExtract || pendingExtractionText || docText;
+    if (!rawText || rawText.trim().length < 30) {
+      showNotification('error', "Nội dung văn bản quá ngắn để có thể trích xuất cấu trúc!");
+      return;
+    }
+
+    setIsAIExtracting(true);
+    setAiAnalysisLog("🔍 Đang đọc hiểu hệ thống văn bản và cấu trúc lâm sàng...");
+    
+    try {
+      // Step tracker logs
+      const logSteps = [
+        "🔍 Đang phân tích toàn văn hướng dẫn điều trị y khoa...",
+        "📊 Đang bóc tách thuộc tính hành chính (Cơ quan chủ quản, Ngày QĐ, Người ký...)...",
+        "🎯 Đang tìm kiếm các Điểm nhấn y văn cốt lõi (liều dùng, chống chỉ định, lưu ý...)...",
+        "✍ " + "Đang định dạng dữ liệu & chuẩn bị kết xuất JSON..."
+      ];
+      
+      let logIndex = 0;
+      const logTimer = setInterval(() => {
+        if (logIndex < logSteps.length - 1) {
+          logIndex++;
+          setAiAnalysisLog(logSteps[logIndex]);
+        }
+      }, 2000);
+
+      const prompt = `Bạn là Trợ lý số hóa văn bản y tế chuyên nghiệp của Bộ Y Tế.
+Hãy đọc kỹ văn bản lâm sàng sau đây và phân tích, trích xuất tất cả các thông tin hành chính cốt lõi và các Điểm nhấn y văn lâm sàng (các cảnh báo đặc biệt, liều dùng, chỉ định hoặc tương tác quan trọng).
+
+Nghiêm cấm viết lời mở đầu, giải thích hay lời kết. Chỉ trả về một đối tượng JSON phẳng nguyên mẫu có định cấu trúc chuẩn hóa như sau:
+
+{
+  "title": "QUY TRÌNH HƯỚNG DẪN CHẨN ĐOÁN VÀ ĐIỀU TRỊ...",
+  "category": "Nhóm phân loại khớp nhất với văn bản này (Ví dụ: Phác đồ điều trị, Dược lý học, Văn bản chỉ đạo, Dược thư quốc gia, Nghiên cứu học thuật, Thông tin thuốc)",
+  "tagKey": "Một vài từ khóa hoặc tag chính cách nhau bằng dấu phẩy, ví dụ: Sốt xuất huyết, Cấp cứu, Truyền dịch",
+  "decisionNo": "Số Quyết Định hoặc Thông Tư nếu có (Ví dụ: 4815/QĐ-BYT). Nếu không thấy ghi số QĐ hãy điền là 'Chưa rõ'",
+  "decisionDate": "Ngày ban hành định dạng YYYY-MM-DD (Ví dụ: 2023-12-30). Nếu không tìm thấy, hãy để rỗng ''",
+  "expiryDecision": "Số quyết định mà văn bản này thay thế/ bãi bỏ nếu có ghi trong văn bản, hoặc rỗng ''",
+  "expiryDate": "Ngày hết hiệu lực định dạng YYYY-MM-DD nếu có đề cập, hoặc rỗng ''",
+  "parentOrg": "Cơ quan trực thuộc chủ quản viết hoa, ví dụ: BỘ Y TẾ",
+  "issuingOrg": "Đơn vị ban hành viết hoa, ví dụ: CỤC QUẢN LÝ KHÁM CHỮA BỆNH",
+  "issuingLocation": "Địa danh ban hành, ví dụ: Hà Nội",
+  "docType": "Một trong các chuỗi chính xác sau đây: 'Quyết định' | 'Thông tư' | 'Công văn' | 'Chỉ thị' | 'Hướng dẫn điều trị' | 'Khác'",
+  "signer": "Phần chức danh và họ tên người ký, ví dụ: Thứ trưởng Trần Văn Thuấn",
+  "summary": "Bản tóm tắt y văn hoàn hảo bằng ngôn ngữ markdown chính xác (khoảng 300-500 từ), nêu bật ý nghĩa chuyên môn, quy chế điều trị hoặc phác đồ cốt lõi",
+  "highlights": [
+    {
+      "text": "Câu trích dẫn chính xác nguyên văn 1 phân đoạn y bạ quan trọng (chỉ định/liều dùng/lưu ý) từ văn bản gốc",
+      "category": "Chọn một: 'Chỉ định' | 'Chống chỉ định' | 'Liều lượng' | 'Cảnh báo' | 'Chẩn đoán'",
+      "color": "Chọn tương ứng: 'green' cho Chỉ định/Điều trị, 'red' cho Chống chỉ định, 'orange' cho Cảnh báo, 'blue' cho Liều lượng",
+      "note": "Phân tích y đức bổ sung ngắn gọn cho bác sĩ hiểu cách áp dụng điểm nhấn này"
+    }
+  ]
+}
+
+Bảo đảm định dạng JSON là tuyệt đối hợp lệ và không bị lỗi cú pháp.
+Văn bản gốc:
+"${rawText.substring(0, 15000)}"`;
+
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: [{ parts: [{ text: prompt }] }],
+          config: { responseMimeType: 'application/json', temperature: 0.15 }
+        })
+      });
+
+      clearInterval(logTimer);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Mạng bận hoặc máy chủ AI bận phản hồi, vui lòng kích hoạt lại.");
+      }
+      const data = await response.json();
+      
+      if (!data.text) throw new Error("AI không thể chiết xuất thông tin. Hãy kiểm tra văn bản.");
+
+      let parsedData;
+      try {
+        let cleanText = data.text.trim();
+        if (cleanText.includes('```')) {
+          const match = cleanText.match(/```(?:json)?([\s\S]*?)```/);
+          if (match && match[1]) cleanText = match[1].trim();
+        }
+        
+        // Helper function for extremely robust parsing
+        const robustParse = (str: string): any => {
+          let textToParse = str.trim();
+          
+          // Try direct parse first
+          try {
+            return JSON.parse(textToParse);
+          } catch (_) {}
+
+          // If there are extra closing braces at the end (e.g. }}), try stripping them one by one
+          while (textToParse.endsWith('}') && textToParse.length > 2) {
+            try {
+              return JSON.parse(textToParse);
+            } catch (_) {
+              // Try removing the last character if it is a closing brace
+              textToParse = textToParse.slice(0, -1).trim();
+            }
+          }
+
+          // Reset and try another robust method: finding the outer boundaries of { ... }
+          textToParse = str.trim();
+          const firstBrace = textToParse.indexOf('{');
+          if (firstBrace !== -1) {
+            // Find corresponding brace or try sub-strings ending on last '}'
+            let lastBrace = textToParse.lastIndexOf('}');
+            while (lastBrace > firstBrace) {
+              try {
+                const subStr = textToParse.substring(firstBrace, lastBrace + 1);
+                return JSON.parse(subStr);
+              } catch (_) {
+                lastBrace = textToParse.lastIndexOf('}', lastBrace - 1);
+              }
+            }
+          }
+
+          // If standard attempts failed, do stack-based recovery like in DrugDirectory
+          textToParse = str.trim();
+          let fixed = textToParse;
+          const stack: string[] = [];
+          let inString = false;
+          let escaped = false;
+
+          for (let i = 0; i < fixed.length; i++) {
+            const char = fixed[i];
+            if (escaped) {
+              escaped = false;
+              continue;
+            }
+            if (char === "\\") {
+              escaped = true;
+              continue;
+            }
+            if (char === '"') {
+              inString = !inString;
+              continue;
+            }
+            if (!inString) {
+              if (char === "{") stack.push("}");
+              else if (char === "[") stack.push("]");
+              else if (char === "}" || char === "]") {
+                if (stack.length > 0 && stack[stack.length - 1] === char) {
+                  stack.pop();
+                }
+              }
+            }
+          }
+
+          if (inString) fixed += '"';
+          while (stack.length > 0) {
+            fixed += stack.pop();
+          }
+
+          return JSON.parse(fixed);
+        };
+
+        parsedData = robustParse(cleanText);
+      } catch (err) {
+        console.error("Parse JSON failed on content:", data.text, err);
+        throw new Error("Không thể diễn giải cấu trúc JSON trả về từ AI. Vui lòng thử lại!");
+      }
+
+      setAiAnalysisLog("⚡ Đang bắt đầu khôi phục và tự động nhập liệu trực quan...");
+      
+      // Clear pending state banner since we are executing it
+      setPendingExtractionText(null);
+      setPendingFileName(null);
+
+      // Simulation start
+      const fieldsToType = [
+        { key: 'title', value: parsedData.title, setter: setDocTitle },
+        { key: 'category', value: parsedData.category, setter: setDocCategory, isSelect: true },
+        { key: 'tagKey', value: parsedData.tagKey, setter: setDocTagKey },
+        { key: 'decisionNo', value: parsedData.decisionNo, setter: setDocDecisionNo },
+        { key: 'decisionDate', value: parsedData.decisionDate, setter: setDocDecisionDate, isDate: true },
+        { key: 'parentOrg', value: parsedData.parentOrg, setter: setDocParentOrg },
+        { key: 'issuingOrg', value: parsedData.issuingOrg, setter: setDocIssuingOrg },
+        { key: 'issuingLocation', value: parsedData.issuingLocation, setter: setDocIssuingLocation },
+        { key: 'docType', value: parsedData.docType, setter: setDocDocType, isSelect: true },
+        { key: 'signer', value: parsedData.signer, setter: setDocSigner },
+        { key: 'expiryDecision', value: parsedData.expiryDecision, setter: setDocExpiryDecision },
+        { key: 'expiryDate', value: parsedData.expiryDate, setter: setDocExpiryDate, isDate: true },
+        { key: 'text', value: parsedData.summary || parsedData.text || rawText, setter: setDocText, isTextArea: true },
+      ];
+
+      for (const field of fieldsToType) {
+        if (field.value !== undefined && field.value !== null && field.value !== '') {
+          setActiveTypingField(field.key);
+          setAiAnalysisLog(`✍️ Đang điền trường: ${getFieldLabel(field.key)}...`);
+          
+          if (field.isSelect || field.isDate) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            field.setter(field.value);
+          } else {
+            await typeText(field.setter, field.value);
+          }
+        }
+      }
+
+      // Stagger highlights
+      if (parsedData.highlights && Array.isArray(parsedData.highlights) && parsedData.highlights.length > 0) {
+        setActiveTypingField('highlights');
+        setAiAnalysisLog("🧠 Đang ghim Điểm nhấn lâm sàng quan trọng nhất vào hệ quản lý...");
+        
+        const newHls = parsedData.highlights.map((hl: any, idx: number) => ({
+          id: 'hl_' + Math.random().toString(36).substring(2, 9) + '_' + idx,
+          text: hl.text || '',
+          category: hl.category || 'Chỉ định',
+          color: hl.color || 'green',
+          note: hl.note || ''
+        }));
+
+        await new Promise(resolve => setTimeout(resolve, 700));
+        setDocHighlights(newHls);
+      }
+
+      setActiveTypingField(null);
+      setAiAnalysisLog('');
+      showNotification('success', "Chúc mừng! Đã phân tích văn bản và tự động điền toàn bộ trường thông tin thành công!");
+    } catch (e: any) {
+      showNotification('error', e.message || "Gặp lỗi trong tiến trình chiết xuất AI.");
+    } finally {
+      setIsAIExtracting(false);
+      setActiveTypingField(null);
+    }
+  };
+
   // Save changes/Save new document
   const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -481,12 +868,30 @@ Văn bản gốc:
 
     const docId = editingDoc?.id || 'doc_' + Math.random().toString(36).substring(2, 9);
     
+    const finalAttachedUrls: string[] = [];
+    const finalAttachedTypes: string[] = [];
+    const finalAttachedTitles: string[] = [];
+    docAttachedUrls.forEach((url, idx) => {
+      const trimmedUrl = url.trim();
+      if (trimmedUrl) {
+        finalAttachedUrls.push(trimmedUrl);
+        const fileType = docAttachedTypes[idx]?.trim() || '';
+        finalAttachedTypes.push(fileType);
+        const fileTitle = docAttachedTitles[idx]?.trim() || '';
+        finalAttachedTitles.push(fileTitle);
+      }
+    });
+
     const nextDoc = {
       id: docId,
       title: docTitle.trim(),
       category: docCategory,
       text: docText.trim(),
-      pdfUrl: docPdfUrl.trim(),
+      pdfUrl: extractDriveId(docPdfUrl),
+      attachedUrl: finalAttachedUrls[0] || '',
+      attachedUrls: finalAttachedUrls,
+      attachedTypes: finalAttachedTypes,
+      attachedTitles: finalAttachedTitles,
       tagKey: docTagKey.trim(),
       decisionNo: docDecisionNo.trim(),
       decisionDate: docDecisionDate.trim(),
@@ -500,6 +905,8 @@ Văn bản gốc:
       highlights: docHighlights,
       signer: docSigner.trim(),
       isInternal: docIsInternal,
+      expiryDate: docExpiryDate.trim(),
+      expiryDecision: docExpiryDecision.trim(),
       isHidden: editingDoc?.isHidden || false,
       createdBy: editingDoc?.createdBy || currentUserUid,
       creatorName: editingDoc?.creatorName || currentUserName,
@@ -517,6 +924,10 @@ Văn bản gốc:
       setDocTitle('');
       setDocText('');
       setDocPdfUrl('');
+      setDocAttachedUrl('');
+      setDocAttachedUrls(['']);
+      setDocAttachedTypes(['']);
+      setDocAttachedTitles(['']);
       setDocTagKey('');
       setDocDecisionNo('');
       setDocDecisionDate('');
@@ -528,6 +939,8 @@ Văn bản gốc:
       setDocDocType('Quyết định');
       setDocSigner('');
       setDocIsInternal(false);
+      setDocExpiryDate('');
+      setDocExpiryDecision('');
       setDocTitleItalic(true);
       setDocHighlights([]);
       setNewHlText('');
@@ -553,6 +966,8 @@ Văn bản gốc:
           category: sample.category,
           text: sample.text,
           pdfUrl: sample.pdfUrl || '',
+          attachedUrl: sample.attachedUrl || '',
+          attachedUrls: sample.attachedUrls || (sample.attachedUrl ? [sample.attachedUrl] : []),
           tagKey: sample.tagKey || '',
           decisionNo: sample.decisionNo || '',
           decisionDate: sample.decisionDate || '',
@@ -640,34 +1055,44 @@ Văn bản gốc:
     }
   };
 
-  const handleDeleteCategory = async (id: string, catName: string) => {
+  const handleDeleteCategory = (id: string, catName: string) => {
     const hasDocs = documents.some(d => d.category === catName);
-    if (hasDocs) {
-      const confirmDel = window.confirm(`Cảnh báo: Có tài liệu đang thuộc nhóm "${catName}". Bạn có chắc chắn muốn xóa không?`);
-      if (!confirmDel) return;
-    } else {
-      const confirmDel = window.confirm(`Bạn có chắc chắn muốn xóa nhóm loại văn bản "${catName}" không?`);
-      if (!confirmDel) return;
-    }
-
-    try {
-      await deleteDoc(doc(db, 'y_khoa_categories', id));
-      showNotification('success', `Đã xóa loại văn bản "${catName}".`);
-    } catch (e: any) {
-      console.error(e);
-      showNotification('error', 'Không thể xóa loại văn bản: ' + e.message);
-    }
+    const message = hasDocs
+      ? `Cảnh báo: Có tài liệu đang thuộc nhóm "${catName}". Bạn có chắc chắn muốn xóa không?`
+      : `Bạn có chắc chắn muốn xóa nhóm loại văn bản "${catName}" không?`;
+    setDeleteConfirmData({
+      type: 'category',
+      id,
+      name: catName,
+      message
+    });
   };
 
   // Delete Document
-  const handleDeleteDocument = async (id: string, name: string) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài liệu "${name}" khỏi cơ sở dữ liệu y khoa không? Hành động này không thể hoàn tác.`)) return;
+  const handleDeleteDocument = (id: string, name: string) => {
+    setDeleteConfirmData({
+      type: 'document',
+      id,
+      name,
+      message: `Bạn có chắc chắn muốn xóa tài liệu "${name}" khỏi cơ sở dữ liệu y khoa không? Hành động này không thể hoàn tác.`
+    });
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirmData) return;
+    const { type, id, name } = deleteConfirmData;
 
     try {
-      await deleteDoc(doc(db, 'y_khoa_documents', id));
-      showNotification('success', "Đã gỡ bỏ tài liệu khỏi cơ sở dữ liệu.");
+      if (type === 'category') {
+        await deleteDoc(doc(db, 'y_khoa_categories', id));
+        showNotification('success', `Đã xóa loại văn bản "${name}".`);
+      } else {
+        await deleteDoc(doc(db, 'y_khoa_documents', id));
+        showNotification('success', "Đã gỡ bỏ tài liệu khỏi cơ sở dữ liệu.");
+      }
     } catch (e: any) {
-      showNotification('error', "Xóa thất bại: " + e.message);
+      console.error(e);
+      showNotification('error', 'Không thể xóa: ' + e.message);
     }
   };
 
@@ -694,6 +1119,17 @@ Văn bản gốc:
     setDocCategory(docItem.category);
     setDocText(docItem.text);
     setDocPdfUrl(docItem.pdfUrl || '');
+    setDocAttachedUrl(docItem.attachedUrl || '');
+    const initialUrls = docItem.attachedUrls && docItem.attachedUrls.length > 0 ? docItem.attachedUrls : (docItem.attachedUrl ? [docItem.attachedUrl] : ['']);
+    setDocAttachedUrls(initialUrls);
+    const initialTypes = docItem.attachedTypes && docItem.attachedTypes.length > 0 
+      ? docItem.attachedTypes 
+      : initialUrls.map(() => '');
+    setDocAttachedTypes(initialTypes);
+    const initialTitles = docItem.attachedTitles && docItem.attachedTitles.length > 0
+      ? docItem.attachedTitles
+      : initialUrls.map(() => '');
+    setDocAttachedTitles(initialTitles);
     setDocTagKey(docItem.tagKey || '');
     setDocDecisionNo(docItem.decisionNo || '');
     setDocDecisionDate(docItem.decisionDate || '');
@@ -705,6 +1141,8 @@ Văn bản gốc:
     setDocDocType(docItem.docType || 'Quyết định');
     setDocSigner(docItem.signer || '');
     setDocIsInternal(!!docItem.isInternal);
+    setDocExpiryDate(docItem.expiryDate || '');
+    setDocExpiryDecision(docItem.expiryDecision || '');
     setDocTitleItalic(docItem.titleItalic !== undefined ? docItem.titleItalic : true);
     setDocHighlights(docItem.highlights || []);
     setIsFormOpen(true);
@@ -767,6 +1205,10 @@ Văn bản gốc:
                 setDocTitle('');
                 setDocText('');
                 setDocPdfUrl('');
+                setDocAttachedUrl('');
+                setDocAttachedUrls(['']);
+                setDocAttachedTypes(['']);
+                setDocAttachedTitles(['']);
                 setUrlInput('');
                 setDocParentOrg('');
                 setDocIssuingOrg('');
@@ -776,6 +1218,8 @@ Văn bản gốc:
                 setDocDocType('Quyết định');
                 setDocSigner('');
                 setDocIsInternal(false);
+                setDocExpiryDate('');
+                setDocExpiryDecision('');
                 setDocHighlights([]);
                 setNewHlText('');
                 setNewHlNote('');
@@ -832,8 +1276,8 @@ Văn bản gốc:
               </h3>
             </div>
 
-            {/* Quick Extraction Assist Panel, only available when creating new doc */}
-            {!editingDoc && (
+            {/* Quick Extraction Assist Panel, available both when creating and editing doc */}
+            {true && (
               <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/10 space-y-4">
                 <div className="flex items-center gap-2 text-xs font-black text-amber-500 uppercase tracking-widest">
                   <Sparkles size={14} />
@@ -931,20 +1375,91 @@ Văn bản gốc:
                   )}
 
                   {importTab === 'paste' && (
-                    <textarea
-                      placeholder="Nhập hoặc dán trực tiếp đoạn văn bản y văn thô tại đây..."
-                      rows={5}
-                      value={docText}
-                      onChange={(e) => setDocText(e.target.value)}
-                      className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-white border-slate-200 text-slate-800"
+                    <div className="space-y-3">
+                      <textarea
+                        placeholder="Nhập hoặc dán trực tiếp đoạn văn bản y văn thô tại đây..."
+                        rows={5}
+                        value={docText}
+                        onChange={(e) => setDocText(e.target.value)}
+                        className={cn(
+                          "w-full px-4 py-3 rounded-xl border text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500",
+                          isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-white border-slate-200 text-slate-800"
+                        )}
+                      />
+                      {docText.length > 50 && !pendingExtractionText && !isAIExtracting && (
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingExtractionText(docText);
+                              setPendingFileName("Văn bản dán tay");
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-amber-500/20 active:scale-95 transition-all"
+                          >
+                            <Sparkles size={11} />
+                            🪄 Chiết xuất thông tin bằng AI
+                          </button>
+                        </div>
                       )}
-                    />
+                    </div>
                   )}
                 </div>
+
+                {/* AI Automated Extraction Banner */}
+                {(pendingExtractionText || isAIExtracting) && (
+                  <div className="mt-4 p-4 rounded-xl border border-amber-500 bg-amber-500/10 animate-fade-in space-y-3 shadow-md relative overflow-hidden">
+                    {/* Background radial glow */}
+                    <div className="absolute right-0 top-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+                    
+                    <div className="flex items-start gap-2.5">
+                      <div className="p-2 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                        <Sparkles size={16} className={isAIExtracting ? "animate-spin" : "animate-bounce"} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                          {isAIExtracting ? "AI Đang Tự Động Nhập Liệu..." : "Trợ Lý Bóc Tách Y Văn AI Đã Sẵn Sàng!"}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal mt-0.5 font-sans whitespace-normal">
+                          {isAIExtracting 
+                            ? (aiAnalysisLog || "Đang bóc tách và tạo điểm nhấn...")
+                            : `Nội dung từ "${pendingFileName}" đã được nạp thành công. Bạn có muốn sử dụng AI bóc tách toàn bộ thông tin hành chính, số hiệu và tạo Điểm Nhấn lâm sàng tự động không?`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isAIExtracting ? (
+                      <div className="space-y-1.5">
+                        <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-amber-500 h-full rounded-full animate-pulse" style={{ width: '85%' }} />
+                        </div>
+                        <div className="flex justify-between text-[9px] font-bold uppercase tracking-wider text-amber-500/80">
+                          <span>Trạng thái nhập liệu:</span>
+                          <span className="animate-pulse">Đang điền các trường...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => { setPendingExtractionText(null); setPendingFileName(null); }}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-850 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-all"
+                        >
+                          Bỏ qua
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAIExtractFields()}
+                          className="px-4 py-1.5 rounded-lg bg-amber-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-amber-600 hover:shadow-lg hover:shadow-amber-500/20 active:scale-95 transition-all flex items-center gap-1 animate-pulse"
+                        >
+                          <Sparkles size={11} />
+                          🪄 Tự động điền bằng AI
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -952,8 +1467,13 @@ Văn bản gốc:
             <form onSubmit={handleSaveDocument} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Tiêu đề tài liệu y đức / văn bản hướng dẫn
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Tiêu đề tài liệu y đức / văn bản hướng dẫn</span>
+                    {activeTypingField === 'title' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI đang gõ...
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
@@ -962,26 +1482,35 @@ Văn bản gốc:
                     value={docTitle}
                     onChange={(e) => setDocTitle(e.target.value)}
                     className={cn(
-                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                      isDarkMode 
-                        ? "bg-slate-950 border-slate-800 text-white" 
-                        : "bg-slate-50 border-slate-250 text-slate-800"
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'title'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
                     )}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Nhóm phân loại
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Nhóm phân loại</span>
+                    {activeTypingField === 'category' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI chọn...
+                      </span>
+                    )}
                   </label>
                   <select
                     value={docCategory}
                     onChange={(e) => setDocCategory(e.target.value)}
                     className={cn(
-                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                      isDarkMode 
-                        ? "bg-slate-950 border-slate-800 text-white" 
-                        : "bg-slate-50 border-slate-250 text-slate-800"
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'category'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
                     )}
                   >
                     {categories.length > 0 ? (
@@ -1004,14 +1533,14 @@ Văn bản gốc:
 
               <div className="space-y-1">
                 <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center gap-1.5">
-                  Đường dẫn tập tin PDF hướng dẫn điều trị (Google Drive Preview)
+                  ID Google Drive của tập tin PDF hướng dẫn (Tự động chuyển preview)
                   <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500 text-[8px] font-black uppercase">
                     Có thể tải/nhúng trực quan
                   </span>
                 </label>
                 <input
-                  type="url"
-                  placeholder="Ví dụ: https://drive.google.com/file/d/14pQED9OlXOXzAzP4PIZq9b05OXfk2OQA/preview"
+                  type="text"
+                  placeholder="Ví dụ: 14pQED9OlXOXzAzP4PIZq9b05OXfk2OQA (Dán link Drive bất kỳ hệ thống tự bóc tách ID)"
                   value={docPdfUrl}
                   onChange={(e) => setDocPdfUrl(e.target.value)}
                   className={cn(
@@ -1022,14 +1551,19 @@ Văn bản gốc:
                   )}
                 />
                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">
-                  Khuyên dùng dạng link xem trước Google Drive có đuôi <code className="text-[#8b5cf6]">/preview</code> để nạp trình đọc PDF trực tiếp trong ứng dụng.
+                  Bạn nhập trực tiếp Mã ID hoặc dán đường dẫn Google Drive. Hệ thống sẽ lưu giữ Mã ID và tự động chuyển đổi thành đường dẫn xem trước <code className="text-[#8b5cf6]">/preview</code> trực quan khi hiển thị A4.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Từ khóa / Tag Key / Gợi ý tra cứu
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Từ khóa / Tag Key / Gợi ý tra cứu</span>
+                    {activeTypingField === 'tagKey' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI điền...
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
@@ -1037,17 +1571,24 @@ Văn bản gốc:
                     value={docTagKey}
                     onChange={(e) => setDocTagKey(e.target.value)}
                     className={cn(
-                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                      isDarkMode 
-                        ? "bg-slate-950 border-slate-800 text-white" 
-                        : "bg-slate-50 border-slate-250 text-slate-800"
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'tagKey'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
                     )}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Số Quyết Định (Số QĐ)
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Số Quyết Định (Số QĐ)</span>
+                    {activeTypingField === 'decisionNo' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI trích...
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
@@ -1055,27 +1596,87 @@ Văn bản gốc:
                     value={docDecisionNo}
                     onChange={(e) => setDocDecisionNo(e.target.value)}
                     className={cn(
-                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                      isDarkMode 
-                        ? "bg-slate-950 border-slate-800 text-white" 
-                        : "bg-slate-50 border-slate-250 text-slate-800"
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'decisionNo'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
                     )}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Ngày Ban Hành Quyết Định (Ngày QĐ)
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Ngày Ban Hành Quyết Định (Ngày QĐ)</span>
+                    {activeTypingField === 'decisionDate' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI chọn...
+                      </span>
+                    )}
                   </label>
                   <input
                     type="date"
                     value={docDecisionDate}
                     onChange={(e) => setDocDecisionDate(e.target.value)}
                     className={cn(
-                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                      isDarkMode 
-                        ? "bg-slate-950 border-slate-800 text-white" 
-                        : "bg-slate-50 border-slate-250 text-slate-800 animate-none"
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'decisionDate'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Quyết định hết hiệu lực (Nếu có)</span>
+                    {activeTypingField === 'expiryDecision' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI điền...
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Quyết định thay thế hoặc bãi bỏ số..."
+                    value={docExpiryDecision}
+                    onChange={(e) => setDocExpiryDecision(e.target.value)}
+                    className={cn(
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'expiryDecision'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
+                    )}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                    <span>Ngày hết hiệu lực (Nếu có)</span>
+                    {activeTypingField === 'expiryDate' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} /> AI chọn...
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="date"
+                    value={docExpiryDate}
+                    onChange={(e) => setDocExpiryDate(e.target.value)}
+                    className={cn(
+                      "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                      activeTypingField === 'expiryDate'
+                        ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                        : isDarkMode 
+                          ? "bg-slate-950 border-slate-800 text-white" 
+                          : "bg-slate-50 border-slate-250 text-slate-800"
                     )}
                   />
                 </div>
@@ -1114,8 +1715,13 @@ Văn bản gốc:
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                      Cơ quan trực thuộc (Cơ quan chủ quản)
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                      <span>Cơ quan trực thuộc (Cơ quan chủ quản)</span>
+                      {activeTypingField === 'parentOrg' && (
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                          <Sparkles size={8} /> AI đang điền...
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
@@ -1123,17 +1729,24 @@ Văn bản gốc:
                       value={docParentOrg}
                       onChange={(e) => setDocParentOrg(e.target.value)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-slate-50 border-slate-250 text-slate-800"
+                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                        activeTypingField === 'parentOrg'
+                          ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                          : isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-slate-50 border-slate-250 text-slate-800"
                       )}
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                      Đơn vị ban hành
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                      <span>Đơn vị ban hành</span>
+                      {activeTypingField === 'issuingOrg' && (
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                          <Sparkles size={8} /> AI đang điền...
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
@@ -1141,17 +1754,24 @@ Văn bản gốc:
                       value={docIssuingOrg}
                       onChange={(e) => setDocIssuingOrg(e.target.value)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-slate-50 border-slate-250 text-slate-800"
+                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                        activeTypingField === 'issuingOrg'
+                          ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                          : isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-slate-50 border-slate-250 text-slate-800"
                       )}
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                      Địa danh ban hành
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                      <span>Địa danh ban hành</span>
+                      {activeTypingField === 'issuingLocation' && (
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                          <Sparkles size={8} /> AI đang điền...
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
@@ -1159,10 +1779,12 @@ Văn bản gốc:
                       value={docIssuingLocation}
                       onChange={(e) => setDocIssuingLocation(e.target.value)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-slate-50 border-slate-250 text-slate-800"
+                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                        activeTypingField === 'issuingLocation'
+                          ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                          : isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-slate-50 border-slate-250 text-slate-800"
                       )}
                     />
                   </div>
@@ -1170,17 +1792,24 @@ Văn bản gốc:
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                      Phân loại văn bản (Thông tư, Quyết định, Công văn,...)
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                     <span>Phân loại văn bản (Thông tư, Quyết định, Công văn,...)</span>
+                     {activeTypingField === 'docType' && (
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                          <Sparkles size={8} /> AI chọn...
+                        </span>
+                      )}
                     </label>
                     <select
                       value={docDocType}
                       onChange={(e) => setDocDocType(e.target.value)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-slate-50 border-slate-250 text-slate-800"
+                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                        activeTypingField === 'docType'
+                          ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                          : isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-slate-50 border-slate-250 text-slate-800"
                       )}
                     >
                       <option value="Quyết định">Quyết định</option>
@@ -1193,8 +1822,13 @@ Văn bản gốc:
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                      Người ký
+                    <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center justify-between">
+                      <span>Người ký</span>
+                      {activeTypingField === 'signer' && (
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                          <Sparkles size={8} /> AI trích...
+                        </span>
+                      )}
                     </label>
                     <input
                       type="text"
@@ -1202,10 +1836,12 @@ Văn bản gốc:
                       value={docSigner}
                       onChange={(e) => setDocSigner(e.target.value)}
                       className={cn(
-                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                        isDarkMode 
-                          ? "bg-slate-950 border-slate-800 text-white" 
-                          : "bg-slate-50 border-slate-250 text-slate-800"
+                        "w-full px-4 py-3 rounded-xl border text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300",
+                        activeTypingField === 'signer'
+                          ? "border-amber-500 ring-2 ring-amber-500/20 bg-amber-500/5 shadow-[0_0_12px_rgba(245,158,11,0.2)] animate-pulse"
+                          : isDarkMode 
+                            ? "bg-slate-950 border-slate-800 text-white" 
+                            : "bg-slate-50 border-slate-250 text-slate-800"
                       )}
                     />
                   </div>
@@ -1250,8 +1886,13 @@ Văn bản gốc:
 
               <div className="space-y-1">
                 <div className="flex justify-between items-end">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6]">
-                    Tóm tắt bằng AI
+                  <label className="text-[9px] font-black uppercase tracking-widest text-[#8b5cf6] flex items-center gap-1.5">
+                    <span>Nội dung hoặc Tóm tắt y văn</span>
+                    {activeTypingField === 'text' && (
+                      <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest animate-pulse flex items-center gap-1">
+                        <Sparkles size={8} className="animate-spin" /> AI đang soạn thảo thông suốt...
+                      </span>
+                    )}
                   </label>
                   {((docPdfUrl && docPdfUrl.trim()) || (docText && docText.length > 20)) && (
                     <button
@@ -1281,12 +1922,154 @@ Văn bản gốc:
                   value={docText}
                   onChange={(e) => setDocText(e.target.value)}
                   className={cn(
-                    "w-full px-4 py-3 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6]",
-                    isDarkMode 
-                      ? "bg-slate-950 border-slate-800 text-white" 
-                      : "bg-white border-slate-200 text-slate-800"
+                    "w-full px-4 py-3 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] transition-all duration-300 pb-16",
+                    activeTypingField === 'text'
+                      ? "border-amber-500 ring-4 ring-amber-500/10 bg-amber-500/5 shadow-[0_0_20px_rgba(245,158,11,0.15)] focus:ring-amber-500"
+                      : isDarkMode 
+                        ? "bg-slate-950 border-slate-800 text-white" 
+                        : "bg-white border-slate-200 text-slate-800"
                   )}
                 />
+              </div>
+
+              {/* Multiple attached URLs Section */}
+              <div className="space-y-2 p-5 rounded-3xl bg-emerald-500/5 border border-emerald-500/10">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <Link2 size={12} className="text-emerald-500" />
+                    Đường dẫn tài liệu kèm theo (URL / Link nguồn gốc)
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[8px] font-black uppercase">
+                      Chấp nhận nhiều liên kết
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocAttachedUrls([...docAttachedUrls, '']);
+                      setDocAttachedTypes([...docAttachedTypes, '']);
+                      setDocAttachedTitles([...docAttachedTitles, '']);
+                    }}
+                    className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 bg-emerald-500/5 px-2.5 py-1 rounded-xl transition-all active:scale-95 border border-emerald-500/15"
+                  >
+                    <Plus size={10} /> Thêm đường dẫn
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {docAttachedUrls.map((url, index) => (
+                    <div key={index} className={cn(
+                      "flex flex-col gap-2.5 p-3.5 rounded-2xl border transition-all",
+                      isDarkMode 
+                        ? "bg-slate-900/40 border-slate-800 focus-within:border-emerald-500/35" 
+                        : "bg-slate-50/60 border-slate-200/60 focus-within:border-emerald-500/35"
+                    )}>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        {/* Title Display Column */}
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            placeholder={`Tiêu đề hiển thị (ví dụ: Quyết định 123/QĐ-BYT...) - Bỏ trống để dùng mặc định`}
+                            value={docAttachedTitles[index] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const updatedTitles = [...docAttachedTitles];
+                              updatedTitles[index] = val;
+                              setDocAttachedTitles(updatedTitles);
+                            }}
+                            className={cn(
+                              "w-full px-4 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 block pr-10 transition-all",
+                              isDarkMode 
+                                ? "bg-slate-950 border-slate-800 text-white focus:border-emerald-500" 
+                                : "bg-white border-slate-250 text-slate-800 focus:border-emerald-500"
+                            )}
+                          />
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                            <FileText size={12} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="w-full sm:w-36 md:w-44">
+                            <select
+                              value={docAttachedTypes[index] || ''}
+                              onChange={(e) => {
+                                const updatedTypes = [...docAttachedTypes];
+                                updatedTypes[index] = e.target.value;
+                                setDocAttachedTypes(updatedTypes);
+                              }}
+                              className={cn(
+                                "w-full px-2.5 py-2 rounded-xl border text-[11px] font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all cursor-pointer",
+                                isDarkMode 
+                                  ? "bg-slate-950 border-slate-800 text-slate-300 focus:border-emerald-500" 
+                                  : "bg-white border-slate-250 text-slate-700 focus:border-emerald-500"
+                              )}
+                            >
+                              <option value="">-- Loại File (Tự động) --</option>
+                              {FILE_TYPE_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {docAttachedUrls.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updatedUrls = docAttachedUrls.filter((_, i) => i !== index);
+                                const updatedTypes = docAttachedTypes.filter((_, i) => i !== index);
+                                const updatedTitles = docAttachedTitles.filter((_, i) => i !== index);
+                                setDocAttachedUrls(updatedUrls);
+                                setDocAttachedTypes(updatedTypes);
+                                setDocAttachedTitles(updatedTitles);
+                              }}
+                              className="p-2 rounded-xl border border-rose-500/20 text-rose-500 hover:bg-rose-500/5 active:scale-95 transition-all duration-300 shrink-0"
+                              title="Xóa đường dẫn này"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="url"
+                          placeholder={`Đường dẫn liên kết thứ ${index + 1}: https://moh.gov.vn/documents/huong-dan.docx`}
+                          value={url}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const updatedUrls = [...docAttachedUrls];
+                            updatedUrls[index] = val;
+                            setDocAttachedUrls(updatedUrls);
+
+                            // Auto-detect type if not manually set yet
+                            if (!docAttachedTypes[index]) {
+                              const detected = detectFileTypeFromUrl(val);
+                              const updatedTypes = [...docAttachedTypes];
+                              updatedTypes[index] = detected;
+                              setDocAttachedTypes(updatedTypes);
+                            }
+                          }}
+                          className={cn(
+                            "w-full px-4 py-2 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 block pr-10 transition-all text-slate-500",
+                            isDarkMode 
+                              ? "bg-slate-950 border-slate-800 text-slate-300 focus:border-emerald-500" 
+                              : "bg-white border-slate-250 text-slate-600 focus:border-emerald-500"
+                          )}
+                        />
+                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                          <Link2 size={12} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                  Đường dẫn liên kết chính thức hoặc tệp tài liệu đi kèm (Word, Excel, PDF, Website...) để tra cứu bổ sung. Hệ thống sẽ tự động phát hiện loại tệp, hoặc bạn có thể chọn thủ công.
+                </p>
               </div>
 
               {/* Highlights (Điểm nhấn y văn) Configuration Section */}
@@ -1630,21 +2413,56 @@ Văn bản gốc:
             className="space-y-6"
           >
             {/* Search and Filters bar */}
-            <div className="flex flex-col md:flex-row items-center gap-4 justify-between">
-              <div className="relative w-full md:w-[350px]">
-                <input
-                  type="text"
-                  placeholder="Tìm theo tiêu đề, nội dung..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className={cn(
-                    "pl-10 pr-4 py-2.5 rounded-2xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] w-full",
-                    isDarkMode 
-                      ? "bg-slate-900 border-slate-800 text-white placeholder-slate-600 focus:border-[#8b5cf6]" 
-                      : "bg-white border-slate-200 placeholder-slate-400 focus:border-[#8b5cf6]"
-                  )}
-                />
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="flex flex-col lg:flex-row items-center gap-4 justify-between">
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                <div className="relative w-full sm:w-[320px]">
+                  <input
+                    type="text"
+                    placeholder="Tìm theo tiêu đề, nội dung..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={cn(
+                      "pl-10 pr-4 py-2.5 rounded-2xl border text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#8b5cf6] w-full",
+                      isDarkMode 
+                        ? "bg-slate-900 border-slate-800 text-white placeholder-slate-600 focus:border-[#8b5cf6]" 
+                        : "bg-white border-slate-200 placeholder-slate-400 focus:border-[#8b5cf6]"
+                    )}
+                  />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+
+                {/* View switcher */}
+                <div className={cn(
+                  "p-1 rounded-xl border flex items-center gap-1 shrink-0 self-stretch sm:self-auto justify-center sm:justify-start",
+                  isDarkMode ? "bg-slate-950 border-slate-850" : "bg-slate-100 border-slate-200"
+                )}>
+                  <button
+                    onClick={() => setDocsViewMode('grid')}
+                    className={cn(
+                      "p-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 px-3 py-1 uppercase tracking-wider",
+                      docsViewMode === 'grid'
+                        ? "bg-[#8b5cf6] text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    )}
+                    title="Dạng lưới"
+                  >
+                    <LayoutGrid size={12} />
+                    Lưới
+                  </button>
+                  <button
+                    onClick={() => setDocsViewMode('list')}
+                    className={cn(
+                      "p-1.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 px-3 py-1 uppercase tracking-wider",
+                      docsViewMode === 'list'
+                        ? "bg-[#8b5cf6] text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    )}
+                    title="Dạng danh sách"
+                  >
+                    <List size={12} />
+                    Danh sách
+                  </button>
+                </div>
               </div>
 
               {/* Tags filter list */}
@@ -1703,7 +2521,204 @@ Văn bản gốc:
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              docsViewMode === 'list' ? (
+                <div className="flex flex-col gap-4">
+                  {filteredDocs.map((docItem) => (
+                    <div
+                      key={docItem.id}
+                      onClick={() => setSelectedPreviewDoc(docItem)}
+                      className={cn(
+                        "p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-300 relative group overflow-visible cursor-pointer hover:shadow-lg",
+                        isDarkMode 
+                          ? "bg-slate-900 border-slate-850 hover:border-[#8b5cf6]/40 hover:bg-slate-900/70" 
+                          : "bg-white border-slate-100 hover:border-[#8b5cf6]/20 shadow-sm shadow-slate-200/20"
+                      )}
+                    >
+                      {/* Left: Info details */}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-[#8b5cf6]/10 text-[#8b5cf6]">
+                            {docItem.category}
+                          </span>
+                          {docItem.docType && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-slate-500/10 text-slate-400">
+                              {docItem.docType}
+                            </span>
+                          )}
+                          <span className="text-[9px] font-mono text-slate-400">
+                            {docItem.decisionNo || docItem.id.replace(/^doc_/, '#')}
+                          </span>
+                          {(docItem.expiryDate || docItem.expiryDecision) && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-600/15 text-red-500 whitespace-nowrap">
+                              HẾT HIỆU LỰC
+                            </span>
+                          )}
+                          {docItem.isHidden && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-500 whitespace-nowrap">
+                              ĐÃ ẨN
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className={cn("text-xs sm:text-sm font-extrabold leading-snug group-hover:text-[#8b5cf6] transition-colors", isDarkMode ? "text-slate-100" : "text-slate-800")}>
+                          {docItem.title}
+                        </h3>
+
+                        <p className="text-[10px] text-slate-400 line-clamp-2 md:line-clamp-1 font-medium">
+                          {docItem.text}
+                        </p>
+
+                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                          <span className="text-[9px] text-slate-500 italic font-medium">
+                            Bởi {docItem.creatorName || "Hệ thống"} • {new Date(docItem.createdAt).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mid-Right: Attachments & badges */}
+                      <div className="flex flex-row md:flex-col items-start gap-2 shrink-0 md:justify-center border-t md:border-t-0 md:border-l border-slate-200/20 pt-3 md:pt-0 md:pl-4">
+                        {docItem.pdfUrl && (
+                          <div className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                            <FileText size={10} />
+                            PDF Đính Kèm
+                          </div>
+                        )}
+                        {(docItem.attachedUrl || (docItem.attachedUrls && docItem.attachedUrls.length > 0)) && (
+                          <div className="flex items-center gap-1 text-[9px] font-black uppercase text-[#8b5cf6] bg-[#8b5cf6]/10 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                            <Link2 size={10} />
+                            {(docItem.attachedUrls && docItem.attachedUrls.length > 1) ? `${docItem.attachedUrls.length} Tài Liệu Kèm` : "Tài Liệu Kèm"}
+                          </div>
+                        )}
+                        {!docItem.pdfUrl && !docItem.attachedUrl && (!docItem.attachedUrls || docItem.attachedUrls.length === 0) && (
+                          <span className="text-[9px] font-mono text-slate-500 italic">Không tài liệu đính kèm</span>
+                        )}
+                      </div>
+
+                      {/* Right: Actions button group */}
+                      <div className="flex items-center gap-1.5 relative shrink-0 self-end md:self-auto border-t md:border-t-0 border-slate-200/10 pt-2 md:pt-0">
+                        {onNavigateToTab && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              localStorage.setItem('viewDocId', docItem.id);
+                              onNavigateToTab('view_doc_lookup');
+                            }}
+                            className={cn(
+                              "p-2 rounded-xl border transition-all active:scale-95 flex items-center justify-center",
+                              isDarkMode
+                                ? "bg-slate-950 border-slate-800 text-violet-400 hover:bg-slate-900"
+                                : "bg-violet-50 border-violet-100 text-violet-600 hover:bg-white hover:shadow"
+                            )}
+                            title="Xem chi tiết bản A4"
+                          >
+                            <BookOpen size={11} />
+                          </button>
+                        )}
+
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuDocId(activeMenuDocId === docItem.id ? null : docItem.id);
+                            }}
+                            className={cn(
+                              "p-2 rounded-xl border transition-all active:scale-95 flex items-center justify-center",
+                              isDarkMode
+                               ? "bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-900"
+                               : "bg-slate-55 border-slate-100 bg-slate-50 text-slate-500 hover:bg-white hover:shadow"
+                            )}
+                            title="Thao tác"
+                          >
+                            <MoreVertical size={11} />
+                          </button>
+
+                          {/* Dropdown Menu */}
+                          {activeMenuDocId === docItem.id && (
+                            <>
+                              {/* Transparent overlay backdrop to dismiss menu on outer clicks */}
+                              <div 
+                                className="fixed inset-0 z-40"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuDocId(null);
+                                }}
+                              />
+                              <div 
+                                className={cn(
+                                  "absolute right-0 bottom-full mb-2 w-36 rounded-2xl border shadow-2xl z-50 p-1 flex flex-col gap-0.5",
+                                  isDarkMode
+                                    ? "bg-slate-950 border-slate-800 text-slate-200"
+                                    : "bg-white border-slate-100 text-slate-705 bg-white text-slate-700"
+                                )}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditInit(docItem);
+                                    setActiveMenuDocId(null);
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold w-full text-left transition-colors",
+                                    isDarkMode ? "hover:bg-slate-900 hover:text-sky-400" : "hover:bg-sky-50 hover:text-sky-600"
+                                  )}
+                                >
+                                  <Edit3 size={11} />
+                                  Chỉnh sửa
+                                </button>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleHideDocument(docItem);
+                                    setActiveMenuDocId(null);
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold w-full text-left transition-colors",
+                                    docItem.isHidden
+                                      ? (isDarkMode ? "hover:bg-slate-900 hover:text-emerald-400" : "hover:bg-emerald-50 hover:text-emerald-600")
+                                      : (isDarkMode ? "hover:bg-slate-900 hover:text-amber-400" : "hover:bg-amber-50 hover:text-amber-600")
+                                  )}
+                                >
+                                  {docItem.isHidden ? (
+                                    <>
+                                      <Eye size={11} />
+                                      Hiện văn bản
+                                    </>
+                                  ) : (
+                                    <>
+                                      <EyeOff size={11} />
+                                      Ẩn văn bản
+                                    </>
+                                  )}
+                                </button>
+
+                                <div className={cn("h-px my-0.5", isDarkMode ? "bg-slate-850" : "bg-slate-100")} />
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteDocument(docItem.id, docItem.title);
+                                    setActiveMenuDocId(null);
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold w-full text-left transition-colors",
+                                    isDarkMode ? "hover:bg-slate-900 hover:text-rose-400" : "hover:bg-rose-50 hover:text-rose-600"
+                                  )}
+                                >
+                                  <Trash2 size={11} />
+                                  Xóa tài liệu
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                  {filteredDocs.map((docItem) => (
                    <div
                      key={docItem.id}
@@ -1721,6 +2736,11 @@ Văn bản gốc:
                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-[#8b5cf6]/10 text-[#8b5cf6]">
                              {docItem.category}
                            </span>
+                           {(docItem.expiryDate || docItem.expiryDecision) && (
+                             <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-600/15 text-red-500 whitespace-nowrap">
+                               HẾT HIỆU LỰC
+                             </span>
+                           )}
                            {docItem.isHidden && (
                              <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-rose-500/10 text-rose-500 whitespace-nowrap">
                                ĐÃ ẨN
@@ -1728,20 +2748,28 @@ Văn bản gốc:
                            )}
                          </div>
                          <span className="text-[8px] font-black uppercase text-slate-400">
-                           {docItem.id}
-                         </span>
+                            {docItem.decisionNo || docItem.id.replace(/^doc_/, '#')}
+                          </span>
                        </div>
 
                        <h3 className={cn("text-xs font-extrabold leading-relaxed line-clamp-2 group-hover:text-[#8b5cf6] transition-colors", isDarkMode ? "text-slate-100" : "text-slate-850")}>
                          {docItem.title}
                        </h3>
 
-                       {docItem.pdfUrl && (
-                         <div className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-lg w-max mb-1">
-                           <FileText size={10} />
-                           PDF Đính Kèm
-                         </div>
-                       )}
+                       <div className="flex items-center gap-1.5 flex-wrap">
+                         {docItem.pdfUrl && (
+                           <div className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-lg w-max mb-1">
+                             <FileText size={10} />
+                             PDF Đính Kèm
+                           </div>
+                         )}
+                         {(docItem.attachedUrl || (docItem.attachedUrls && docItem.attachedUrls.length > 0)) && (
+                           <div className="flex items-center gap-1 text-[9px] font-black uppercase text-[#8b5cf6] bg-[#8b5cf6]/10 px-2 py-0.5 rounded-lg w-max mb-1">
+                             <Link2 size={10} />
+                             {(docItem.attachedUrls && docItem.attachedUrls.length > 1) ? `${docItem.attachedUrls.length} Tài Liệu Kèm` : "Tài Liệu Kèm Theo"}
+                           </div>
+                         )}
+                       </div>
 
                        <p className="text-[10px] text-slate-400 line-clamp-3 font-medium mt-1">
                          {docItem.text}
@@ -1876,7 +2904,7 @@ Văn bản gốc:
                    </div>
                  ))}
               </div>
-            )}
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
@@ -2197,6 +3225,22 @@ Văn bản gốc:
                       <span className="whitespace-pre-line font-medium text-[11px] block mt-0.5 leading-normal">{selectedPreviewDoc.recipients || "---"}</span>
                     </div>
                   </div>
+
+                  {/* Expiry Details */}
+                  {(selectedPreviewDoc.expiryDate || selectedPreviewDoc.expiryDecision) && (
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-rose-500/10 bg-rose-500/5 p-3 rounded-xl mt-1">
+                      <div>
+                        <span className="opacity-70 block text-[9px] uppercase tracking-wider font-extrabold text-rose-500">Quyết định hết hiệu lực:</span>
+                        <span className="font-bold text-rose-600 dark:text-rose-400">{selectedPreviewDoc.expiryDecision || "---"}</span>
+                      </div>
+                      <div>
+                        <span className="opacity-70 block text-[9px] uppercase tracking-wider font-extrabold text-rose-500">Ngày hết hiệu lực:</span>
+                        <span className="font-bold text-rose-600 dark:text-rose-400">
+                          {selectedPreviewDoc.expiryDate ? selectedPreviewDoc.expiryDate.split('-').reverse().join('/') : "---"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Text Content display */}
@@ -2210,10 +3254,12 @@ Văn bản gốc:
                       {selectedPreviewDoc.text.length.toLocaleString()} Ký tự
                     </span>
                   </div>
-                  <div className={cn(
-                    "p-6 rounded-2xl border font-normal text-sm leading-relaxed select-text font-serif overflow-y-auto max-h-[40vh] custom-scrollbar shadow-inner text-left",
-                    isDarkMode ? "bg-slate-950/60 border-slate-850 text-slate-200" : "bg-slate-50/50 border-slate-100 text-slate-800",
-                    "whitespace-normal break-words",
+                  <div 
+                    style={{ fontFamily: 'Times New Roman', fontSize: '15px' }}
+                    className={cn(
+                      "p-6 rounded-2xl border font-normal leading-relaxed select-text overflow-y-auto max-h-[40vh] custom-scrollbar shadow-inner text-left",
+                      isDarkMode ? "bg-slate-950/60 border-slate-850 text-slate-200" : "bg-slate-50/50 border-slate-100 text-slate-800",
+                      "whitespace-normal break-words",
                     "[&_h1]:text-base [&_h1]:font-black [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:text-violet-500 [&_h1]:uppercase [&_h1]:tracking-wider",
                     "[&_h2]:text-sm [&_h2]:font-extrabold [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[#8b5cf6]",
                     "[&_h3]:text-xs [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1",
@@ -2227,7 +3273,7 @@ Văn bản gốc:
                     "[&_th]:border [&_th]:border-slate-300/30 [&_th]:p-1.5 [&_th]:bg-slate-500/10 [&_th]:font-bold",
                     "[&_td]:border [&_td]:border-slate-300/30 [&_td]:p-1.5"
                   )}>
-                    <Markdown>{selectedPreviewDoc.text}</Markdown>
+                    <Markdown remarkPlugins={[remarkGfm]}>{selectedPreviewDoc.text}</Markdown>
                   </div>
                 </div>
               </div>
@@ -2279,7 +3325,7 @@ Văn bản gốc:
                 <div className="flex items-center gap-2">
                   {selectedPreviewDoc.pdfUrl && (
                     <a
-                      href={selectedPreviewDoc.pdfUrl}
+                      href={formatDrivePreviewUrl(selectedPreviewDoc.pdfUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-md shadow-amber-500/15"
@@ -2287,6 +3333,33 @@ Văn bản gốc:
                       <ExternalLink size={12} />
                       Mở liên kết PDF
                     </a>
+                  )}
+
+                  {selectedPreviewDoc.attachedUrls && selectedPreviewDoc.attachedUrls.length > 0 ? (
+                    selectedPreviewDoc.attachedUrls.map((url, uidx) => (
+                      <a
+                        key={uidx}
+                        href={formatDriveViewUrl(url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-md shadow-emerald-500/15"
+                      >
+                        <Link2 size={12} />
+                        Tài liệu kèm theo {selectedPreviewDoc.attachedUrls.length > 1 ? `#${uidx + 1}` : ""}
+                      </a>
+                    ))
+                  ) : (
+                    selectedPreviewDoc.attachedUrl && (
+                      <a
+                        href={formatDriveViewUrl(selectedPreviewDoc.attachedUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-md shadow-emerald-500/15"
+                      >
+                        <Link2 size={12} />
+                        Tài liệu kèm theo
+                      </a>
+                    )
                   )}
 
                   <button
@@ -2301,6 +3374,18 @@ Văn bản gốc:
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={!!deleteConfirmData}
+        onClose={() => setDeleteConfirmData(null)}
+        onConfirm={executeDelete}
+        title="Xác nhận xóa"
+        message={deleteConfirmData?.message || ""}
+        confirmText="Đồng ý xóa"
+        cancelText="Hủy bỏ"
+        type="danger"
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }

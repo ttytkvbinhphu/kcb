@@ -26,13 +26,54 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  const normalizeAndValidateUrl = (inputUrl: string): string => {
+    let url = inputUrl.trim();
+    if (!url) return "";
+
+    // If it's a raw Google Drive ID or matches alphanumeric layout without dots/slashes
+    const driveIdRegex = /^[a-zA-Z0-9_-]{15,100}$/;
+    if (driveIdRegex.test(url) && !url.includes('.') && !url.includes('/')) {
+      return `https://drive.google.com/uc?export=download&id=${url}`;
+    }
+
+    // Check if it's already a Google Drive URL
+    if (url.includes('drive.google.com')) {
+      let fileId = "";
+      if (url.includes('/file/d/')) {
+        const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) fileId = match[1];
+      } else if (url.includes('?id=')) {
+        const match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) fileId = match[1];
+      }
+      if (fileId) {
+        return `https://drive.google.com/uc?export=download&id=${fileId}`;
+      }
+    }
+
+    // Prepend https:// if it looks like a domain but has no protocol
+    if (!/^https?:\/\//i.test(url)) {
+      url = "https://" + url;
+    }
+
+    try {
+      // Validate structure
+      new URL(url);
+    } catch (_) {
+      throw new Error("Đường dẫn liên kết (URL) không đúng định dạng. Vui lòng kiểm tra lại.");
+    }
+
+    return url;
+  };
+
   app.post("/api/document/fetch-url", async (req, res) => {
     const { url } = req.body;
     if (!url) {
       return res.status(400).json({ error: "Yêu cầu cung cấp URL" });
     }
     try {
-      const response = await fetch(url, {
+      const validatedUrl = normalizeAndValidateUrl(url);
+      const response = await fetch(validatedUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
         },
@@ -67,24 +108,9 @@ async function startServer() {
       return res.status(400).json({ error: "Yêu cầu cung cấp URL" });
     }
     try {
-      let targetUrl = url.trim();
-      
-      // Automatically normalize Google Drive files for raw download
-      if (targetUrl.includes('drive.google.com')) {
-        let fileId = "";
-        if (targetUrl.includes('/file/d/')) {
-          const match = targetUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-          if (match && match[1]) fileId = match[1];
-        } else if (targetUrl.includes('?id=')) {
-          const match = targetUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-          if (match && match[1]) fileId = match[1];
-        }
-        if (fileId) {
-          targetUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-        }
-      }
+      const validatedUrl = normalizeAndValidateUrl(url);
 
-      const response = await fetch(targetUrl, {
+      const response = await fetch(validatedUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
         },
@@ -117,58 +143,109 @@ async function startServer() {
       selectedModel = "gemini-3.5-flash";
     }
 
-    const maxRetries = 3;
+    // Prioritized list of models to try
+    const candidates = [selectedModel, "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.1-pro-preview"];
+    // Deduplicate candidate list
+    const modelPool = Array.from(new Set(candidates));
+
+    const maxRetriesPerModel = 3;
     let lastError: any = null;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Helper for robustly diagnosing transient / overloaded errors
+    const isErrorTransient = (err: any): boolean => {
+      if (!err) return false;
+      let msg = "";
       try {
-        const response = await ai.models.generateContent({
-          model: selectedModel,
-          contents,
-          config
-        });
-        
-        return res.json({ text: response.text });
-      } catch (error: any) {
-        lastError = error;
-        console.warn(`Gemini API attempt ${attempt} failed with error:`, error.message || error);
-        
-        const isTransient = error.message?.includes("503") || 
-                            error.message?.includes("UNAVAILABLE") || 
-                            error.message?.includes("429") ||
-                            error.message?.includes("RESOURCE_EXHAUSTED") ||
-                            error.status === 503 ||
-                            error.status === 429;
-                            
-        if (isTransient && attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+        if (typeof err === "string") {
+          msg = err;
         } else {
-          // If error is code 503/429 or similar transient issue and we have exhausted retries for the requested model,
-          // try a last-ditch attempt with gemini-3.5-flash
-          if (isTransient && attempt === maxRetries && selectedModel !== "gemini-3.5-flash") {
-            try {
-              console.log("Attempting last-ditch fallback to gemini-3.5-flash...");
-              const fallbackResponse = await ai.models.generateContent({
-                model: "gemini-3.5-flash",
-                contents,
-                config
-              });
-              return res.json({ text: fallbackResponse.text });
-            } catch (fallbackError: any) {
-              lastError = fallbackError;
-            }
+          msg = err.message || JSON.stringify(err) || "";
+        }
+      } catch (e) {
+        msg = String(err);
+      }
+      
+      const lowerMsg = msg.toLowerCase();
+      if (
+        lowerMsg.includes("503") ||
+        lowerMsg.includes("unavailable") ||
+        lowerMsg.includes("429") ||
+        lowerMsg.includes("resource_exhausted") ||
+        lowerMsg.includes("limit") ||
+        lowerMsg.includes("overloaded") ||
+        lowerMsg.includes("busy") ||
+        lowerMsg.includes("demand") ||
+        lowerMsg.includes("temporary") ||
+        lowerMsg.includes("try again later") ||
+        lowerMsg.includes("fetch failed") ||
+        lowerMsg.includes("econnreset") ||
+        lowerMsg.includes("socket") ||
+        lowerMsg.includes("timeout") ||
+        lowerMsg.includes("network") ||
+        lowerMsg.includes("connect") ||
+        lowerMsg.includes("dns") ||
+        lowerMsg.includes("service description")
+      ) {
+        return true;
+      }
+
+      const code = err.status || err.statusCode || err.code || err.error?.code || err.error?.status;
+      if (code === 503 || code === 429 || code === "UNAVAILABLE" || code === "RESOURCE_EXHAUSTED") {
+        return true;
+      }
+      return false;
+    };
+
+    // Try models one by one from the prioritized pool.
+    // We retry transient errors (like 503/429) a few times with incremental backoff 
+    // to give the primary model the best chance before falling back to alternative models.
+    for (const currentModel of modelPool) {
+      lastError = null; // Reset for each model candidate
+      const isPrimary = (currentModel === selectedModel);
+      const maxAttempts = isPrimary ? 3 : 2; // Primary model gets 3 attempts, backups get 2 attempts
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          console.log(`Trying Gemini API call (Model: ${currentModel}, Attempt: ${attempt}/${maxAttempts})...`);
+          const response = await ai.models.generateContent({
+            model: currentModel,
+            contents,
+            config
+          });
+          
+          console.log(`Gemini call succeeded with model: ${currentModel} on attempt ${attempt}!`);
+          return res.json({ text: response.text });
+        } catch (error: any) {
+          lastError = error;
+          const errMsg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+          console.log(`Gemini API call failed with model ${currentModel} on attempt ${attempt}/${maxAttempts}: ${errMsg}`);
+          
+          const isTransient = isErrorTransient(error);
+          // If it is transient and we have more attempts for this model, wait and retry
+          if (isTransient && attempt < maxAttempts) {
+            const delay = Math.pow(1.8, attempt) * 400 + Math.floor(Math.random() * 200);
+            console.log(`Transient error detected on ${currentModel}. Retrying in ${Math.round(delay)}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            // Non-transient errors or maximum attempts reached: exit the retry loop and try the next model candidate
+            break;
           }
-          break;
         }
       }
+      
+      console.log(`Model ${currentModel} failed completely. Moving to next model candidate if available...`);
     }
 
-    console.error("Gemini Error after retries:", lastError);
-    res.status(503).json({ 
-      error: lastError?.message || "Model is currently experiencing high demand. Spikes in demand are temporary, please try again." 
-    });
+    console.error("Gemini Error after all model candidates failed:", lastError);
+    let readableErrorMsg = "Hệ thống AI đang quá tải tạm thời do lượt truy cập tăng cao. Vui lòng bấm thử lại sau 1-2 phút.";
+    if (lastError && typeof lastError === 'object') {
+      const errDetail = lastError.message || lastError.error?.message;
+      if (errDetail) {
+        readableErrorMsg += ` (Chi tiết: ${errDetail})`;
+      }
+    }
+    
+    res.status(503).json({ error: readableErrorMsg });
   });
 
   // Vite middleware for development

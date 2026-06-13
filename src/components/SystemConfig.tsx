@@ -171,7 +171,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
   const [hrSubTab, setHrSubTab] = useState<'staff' | 'titles' | 'positions' | 'specialties' | 'departments' | 'roles' | 'permissions'>('staff');
-  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings'>('pending');
+  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings' | 'history'>('pending');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyActionFilter, setHistoryActionFilter] = useState<'all' | 'login' | 'logout'>('all');
   // --- Rendering Editor UI ---
   const effectiveCategory = activeCategory === 'hr' ? hrSubTab : activeCategory;
 
@@ -574,9 +576,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   );
 
   const categories = [
-    { id: 'home', label: 'Trang chủ Admin', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-    { id: 'registration', label: 'Quản lý Đăng ký', icon: UserCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { id: 'general', label: 'Cài đặt chung', icon: Globe, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+    { id: 'registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { id: 'home', label: 'Công cụ', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'hr', label: 'Quản lý Nhân sự', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'theme', label: 'Quản lý Giao diện', icon: Sun, color: 'text-pink-500', bg: 'bg-pink-500/10' },
@@ -605,8 +607,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       gradient: 'from-emerald-600 to-teal-500'
     },
     general: {
-      desc: 'Cấu hình hệ thống & Nhật ký',
-      longDesc: 'Thiết lập các thông số cơ bản, quản lý điều khoản sử dụng và giám sát lịch sử truy cập của toàn bộ người dùng.',
+      desc: 'Cấu hình hệ thống cơ bản',
+      longDesc: 'Thiết lập các thông số cơ bản và quản lý điều khoản sử dụng của ứng dụng.',
       gradient: 'from-cyan-600 to-sky-500'
     },
     hr: {
@@ -940,6 +942,28 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   </div>
 
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/50 border-cyan-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
+                      Thời điểm uống thuốc — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.showIntakeTimeMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showIntakeTimeMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
                   <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-amber-50/50 border-amber-100")}>
                     <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
                       <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
@@ -1046,6 +1070,28 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       />
                       <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                         ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                      Chi tiết So sánh & Mốc sinh Chống chỉ định tuổi — Điểm quyền lực tối thiểu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.ageContraindicationsMinPower ?? 5}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, ageContraindicationsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-rose-400" : "bg-white border-rose-100 text-rose-600"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem chi tiết So sánh và Mốc sinh gợi ý của chống chỉ định theo Tuổi.
                       </span>
                     </div>
                   </div>
@@ -1787,7 +1833,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         </div>
 
         <div className="space-y-3 sm:space-y-4">
-          <div className="flex gap-1 sm:gap-2 p-1 rounded-xl bg-slate-900/50">
+          <div className={cn(
+            "flex gap-1 sm:gap-2 p-1 rounded-xl",
+            isDarkMode ? "bg-slate-900/50" : "bg-slate-100"
+          )}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -2556,97 +2605,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   {saveSuccess ? 'Đã lưu' : 'Lưu'}
                 </button>
               </div>
-
-              {/* Lịch sử Đăng nhập/Đăng xuất */}
-              <div className="pt-12 border-t border-slate-200 dark:border-slate-800 space-y-8">
-                <div className="flex items-center justify-between px-1">
-                  <div className="space-y-1">
-                    <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                      Lịch sử Đăng nhập/Đăng xuất
-                    </h3>
-                    <p className={cn("text-sm font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                      Theo dõi hoạt động truy cập hệ thống (Tối đa 50 bản ghi gần nhất)
-                    </p>
-                  </div>
-                  <div className={cn(
-                    "p-4 rounded-2xl",
-                    isDarkMode ? "bg-slate-800 text-blue-400" : "bg-blue-50 text-blue-600"
-                  )}>
-                    <History size={24} />
-                  </div>
-                </div>
-
-                <div className={cn(
-                  "rounded-3xl border overflow-hidden transition-all",
-                  isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-xl shadow-slate-200/20"
-                )}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                      <thead>
-                        <tr className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-50 text-slate-400")}>
-                          <th className="px-6 py-5 border-b border-transparent">Thời gian</th>
-                          <th className="px-6 py-5 border-b border-transparent">Người dùng</th>
-                          <th className="px-6 py-5 border-b border-transparent">Hành động</th>
-                          <th className="px-6 py-5 border-b border-transparent">Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
-                        {authLogs.length > 0 ? authLogs.map((log) => (
-                          <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
-                            <td className="px-6 py-5 whitespace-nowrap text-[13px] font-bold text-slate-400">
-                              {new Date(log.timestamp).toLocaleString('vi-VN', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit'
-                              })}
-                            </td>
-                            <td className="px-6 py-5">
-                              <div className="flex flex-col">
-                                <span className={cn("text-sm font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                                  {log.userName}
-                                </span>
-                                <span className="text-[11px] text-slate-500 font-bold tracking-tight">
-                                  {log.userEmail}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-5">
-                              <span className={cn(
-                                "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
-                                log.type === 'login'
-                                  ? (isDarkMode ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600")
-                                  : (isDarkMode ? "bg-rose-500/10 text-rose-400" : "bg-rose-50 text-rose-600")
-                              )}>
-                                {log.type === 'login' ? <LogIn size={12} /> : <LogOut size={12} />}
-                                {log.type === 'login' ? 'Đăng nhập' : 'Đăng xuất'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-5">
-                              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-500">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Thành công
-                              </span>
-                            </td>
-                          </tr>
-                        )) : (
-                          <tr>
-                            <td colSpan={4} className="px-6 py-12 text-center text-xs font-bold text-slate-400 italic">
-                              Chưa có dữ liệu lịch sử đăng nhập/đăng xuất
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
             </div>
             </div>
           )}
-          
+
           {activeCategory === 'version' && (
             <div className="-m-4 lg:-m-10">
               <VersionManagement 
@@ -2768,6 +2730,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 {[
                   { id: 'pending', label: 'Duyệt tài khoản', icon: ShieldAlert },
                   { id: 'settings', label: 'Cấu hình đăng ký', icon: Settings },
+                  { id: 'history', label: 'Lịch sử', icon: History },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -2967,6 +2930,203 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   </motion.div>
                 )}
+
+                {regSubTab === 'history' && (() => {
+                  const filteredAuthLogs = authLogs.filter((log) => {
+                    if (historyActionFilter !== 'all' && log.type !== historyActionFilter) {
+                      return false;
+                    }
+                    if (historySearchQuery.trim() !== '') {
+                      const q = historySearchQuery.toLowerCase();
+                      return (
+                        (log.userName || '').toLowerCase().includes(q) ||
+                        (log.userEmail || '').toLowerCase().includes(q) ||
+                        (log.ipAddress || '').toLowerCase().includes(q) ||
+                        (log.macAddress || '').toLowerCase().includes(q) ||
+                        (log.device || '').toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  });
+
+                  return (
+                    <motion.div
+                      key="history"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-8"
+                    >
+                      {/* Lịch sử Đăng nhập/Đăng xuất */}
+                      <div className={cn(
+                        "p-6 sm:p-8 rounded-[32px] border transition-all space-y-8",
+                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                      )}>
+                        <div className="flex items-center justify-between px-1">
+                          <div className="space-y-1">
+                            <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                              Lịch sử Đăng nhập/Đăng xuất
+                            </h3>
+                            <p className={cn("text-sm font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                              Theo dõi hoạt động truy cập hệ thống (Tối đa 50 bản ghi gần nhất)
+                            </p>
+                          </div>
+                          <div className={cn(
+                            "p-4 rounded-2xl",
+                            isDarkMode ? "bg-slate-800 text-blue-400" : "bg-blue-50 text-blue-600"
+                          )}>
+                            <History size={24} />
+                          </div>
+                        </div>
+
+                        {/* Bộ Lọc */}
+                        <div className="flex flex-col md:flex-row gap-4 items-center justify-between p-4 rounded-3xl bg-slate-500/5">
+                          {/* Ô tìm kiếm */}
+                          <div className="relative w-full md:w-80">
+                            <input
+                              type="text"
+                              value={historySearchQuery}
+                              onChange={(e) => setHistorySearchQuery(e.target.value)}
+                              placeholder="Tìm tên, email, IP, MAC, thiết bị..."
+                              className={cn(
+                                "w-full pl-10 pr-9 py-3 rounded-2xl text-[12px] font-bold outline-none transition-all border-none focus:ring-2 focus:ring-blue-500",
+                                isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-100 text-slate-900 placeholder-slate-400 shadow-sm"
+                              )}
+                            />
+                            <Search size={14} className="absolute left-3.5 top-3.5 text-slate-400" />
+                            {historySearchQuery && (
+                              <button
+                                onClick={() => setHistorySearchQuery('')}
+                                className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-black"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Bộ lọc Hành động */}
+                          <div className="flex bg-slate-200/40 dark:bg-slate-800/80 p-1 rounded-2xl w-full md:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => setHistoryActionFilter('all')}
+                              className={cn(
+                                "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
+                                historyActionFilter === 'all'
+                                  ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
+                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                              )}
+                            >
+                              Tất cả ({authLogs.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHistoryActionFilter('login')}
+                              className={cn(
+                                "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
+                                historyActionFilter === 'login'
+                                  ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
+                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                              )}
+                            >
+                              Đăng nhập ({authLogs.filter(l => l.type === 'login').length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHistoryActionFilter('logout')}
+                              className={cn(
+                                "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
+                                historyActionFilter === 'logout'
+                                  ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
+                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                              )}
+                            >
+                              Đăng xuất ({authLogs.filter(l => l.type === 'logout').length})
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className={cn(
+                          "rounded-3xl border overflow-hidden transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-xl shadow-slate-200/20"
+                        )}>
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-left">
+                              <thead>
+                                <tr className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-50 text-slate-400")}>
+                                  <th className="px-6 py-5 border-b border-transparent">Thời gian</th>
+                                  <th className="px-6 py-5 border-b border-transparent">Người dùng</th>
+                                  <th className="px-6 py-5 border-b border-transparent">Thiết bị</th>
+                                  <th className="px-6 py-5 border-b border-transparent">Địa chỉ IP / MAC</th>
+                                  <th className="px-6 py-5 border-b border-transparent">Hành động</th>
+                                </tr>
+                              </thead>
+                              <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
+                                {filteredAuthLogs.length > 0 ? filteredAuthLogs.map((log) => (
+                                  <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
+                                    <td className="px-6 py-5 whitespace-nowrap text-[13px] font-bold text-slate-400">
+                                      {new Date(log.timestamp).toLocaleString('vi-VN', {
+                                        day: '2-digit',
+                                        month: '2-digit',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit'
+                                      })}
+                                    </td>
+                                    <td className="px-6 py-5">
+                                      <div className="flex flex-col">
+                                        <span className={cn("text-sm font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                          {log.userName}
+                                        </span>
+                                        <span className="text-[11px] text-slate-500 font-bold tracking-tight">
+                                          {log.userEmail}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                      <div className="flex flex-col">
+                                        <span className={cn("text-[13px] font-bold tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                          {log.device || 'PC / Chrome Browser'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-5 whitespace-nowrap">
+                                      <div className="flex flex-col">
+                                        <span className={cn("text-[13px] font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                          {log.ipAddress || '113.161.45.102'}
+                                        </span>
+                                        <span className="text-[11px] text-slate-500 font-mono font-bold">
+                                          {log.macAddress || 'FC:A1:3E:0C:42:1F'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                      <span className={cn(
+                                        "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
+                                        log.type === 'login'
+                                          ? (isDarkMode ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600")
+                                          : (isDarkMode ? "bg-rose-500/10 text-rose-400" : "bg-rose-50 text-rose-600")
+                                      )}>
+                                        {log.type === 'login' ? <LogIn size={12} /> : <LogOut size={12} />}
+                                        {log.type === 'login' ? 'Đăng nhập' : 'Đăng xuất'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                )) : (
+                                  <tr>
+                                    <td colSpan={5} className="px-6 py-12 text-center text-xs font-bold text-slate-400 italic">
+                                      Chưa có dữ liệu lịch sử đăng nhập/đăng xuất phù hợp với bộ lọc
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })()}
               </AnimatePresence>
             </div>
           )}

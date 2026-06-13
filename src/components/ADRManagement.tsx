@@ -45,6 +45,7 @@ import {
 } from '../firebase';
 import { ADRReport, Drug, ADRCatalogItem } from '../types';
 import ConfirmModal from './ConfirmModal';
+import DrugDetailModal from './DrugDetailModal';
 
 interface ADRManagementProps {
   canManage: boolean;
@@ -116,6 +117,44 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [confirmData, setConfirmData] = useState<{ id: string, type: 'report' | 'catalog', name?: string } | null>(null);
+
+  // States for viewing related drugs containing a selected ADR
+  const [selectedAdrCatalogItem, setSelectedAdrCatalogItem] = useState<ADRCatalogItem | null>(null);
+  const [isRelatedDrugsModalOpen, setIsRelatedDrugsModalOpen] = useState(false);
+  const [selectedDrugForView, setSelectedDrugForView] = useState<Drug | null>(null);
+  const [isDrugDetailModalOpen, setIsDrugDetailModalOpen] = useState(false);
+
+  const matchDrugForADR = (drug: Drug, adrName: string): boolean => {
+    if (!drug.sideEffects) return false;
+    
+    const formattedAdrName = adrName.trim().toLowerCase();
+    
+    if (Array.isArray(drug.sideEffects)) {
+      return drug.sideEffects.some((se: any) => {
+        let text = "";
+        if (typeof se === "string") {
+          text = se;
+        } else if (se && typeof se === "object") {
+          text = se.content || "";
+        }
+        
+        const textLower = text.toLowerCase();
+        // Try exact split match first
+        const names = textLower
+          .split(",")
+          .map((n: string) => n.trim())
+          .filter(Boolean);
+          
+        if (names.some(name => name === formattedAdrName)) {
+          return true;
+        }
+        
+        // Fallback: word boundaries or direct substring inclusion
+        return textLower.includes(formattedAdrName);
+      });
+    }
+    return false;
+  };
 
   const [categoryObjects, setCategoryObjects] = useState<{ id: string, name: string, createdAt?: string }[]>([]);
   const adrCategories = categoryObjects.length > 0 ? categoryObjects.map(c => c.name) : ADR_CATEGORIES;
@@ -216,6 +255,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   // Form state for Catalog Item
   const [catalogFormData, setCatalogFormData] = useState<Partial<ADRCatalogItem>>({
     reactionName: '',
+    alternativeName: '',
+    alternativeNames: [],
     description: '',
     commonDrugs: [],
     severityLevel: 'Trung bình',
@@ -339,6 +380,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
       setEditingCatalogItem(null);
       setCatalogFormData({
         reactionName: '',
+        alternativeName: '',
+        alternativeNames: [],
         description: '',
         commonDrugs: [],
         severityLevel: 'Trung bình',
@@ -439,8 +482,13 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
   });
 
   const filteredCatalog = catalogItems.filter(item => {
+    const matchesAlternativeNames = (item.alternativeNames || []).some(name => 
+      (name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+    );
     const matchesSearch = 
       (item.reactionName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (item.alternativeName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      matchesAlternativeNames ||
       (item.description || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
       (item.category || '').toLowerCase().includes((searchTerm || '').toLowerCase());
     
@@ -770,8 +818,12 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
+                      onClick={() => {
+                        setSelectedAdrCatalogItem(item);
+                        setIsRelatedDrugsModalOpen(true);
+                      }}
                       className={cn(
-                        "group relative p-4 lg:p-6 rounded-2xl lg:rounded-[32px] border transition-all duration-300 hover:shadow-xl hover:-translate-y-1",
+                        "group relative p-4 lg:p-6 rounded-2xl lg:rounded-[32px] border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer",
                         isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 hover:border-emerald-100 shadow-sm"
                       )}
                     >
@@ -785,7 +837,10 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                         <div className="flex items-center gap-1">
                           {isPharmacist && (
                             <button 
-                              onClick={() => handleOpenCatalogModal(item)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenCatalogModal(item);
+                              }}
                               className={cn(
                                 "p-1.5 lg:p-2 rounded-xl text-slate-400 hover:text-emerald-600 transition-colors",
                                 isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
@@ -802,8 +857,22 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                           <Activity size={20} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h3 className={cn("font-black text-base truncate mb-1", isDarkMode ? "text-white" : "text-black")}>
-                            {item.reactionName}
+                          <h3 className={cn("font-black text-sm sm:text-base leading-snug mb-1", isDarkMode ? "text-white" : "text-black")} title={item.reactionName}>
+                            <span className="block truncate">{item.reactionName}</span>
+                            {(() => {
+                              const altNames = Array.from(new Set(
+                                (item.alternativeNames || [])
+                                  .concat(item.alternativeName ? [item.alternativeName] : [])
+                                  .map((n: string) => n.trim())
+                                  .filter(Boolean)
+                              ));
+                              if (altNames.length === 0) return null;
+                              return (
+                                <span className={cn("block text-[10px] font-bold mt-0.5 truncate", isDarkMode ? "text-slate-400" : "text-slate-500")} title={altNames.join(", ")}>
+                                  Tên khác: {altNames.join(", ")}
+                                </span>
+                              );
+                            })()}
                           </h3>
                         </div>
                       </div>
@@ -833,7 +902,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                         isDarkMode ? "border-slate-800" : "border-slate-100"
                       )}>
                         <button 
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setFormData({
                               ...formData,
                               reactionDescription: item.description
@@ -1157,6 +1227,81 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">
+                          Tên phản ứng khác
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentList = catalogFormData.alternativeNames && catalogFormData.alternativeNames.length > 0
+                              ? [...catalogFormData.alternativeNames]
+                              : (catalogFormData.alternativeName ? [catalogFormData.alternativeName] : [""]);
+                            const newList = [...currentList, ""];
+                            setCatalogFormData({
+                              ...catalogFormData,
+                              alternativeNames: newList,
+                              alternativeName: newList[0] || ""
+                            });
+                          }}
+                          className="text-[10px] font-black text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1 active:scale-95 transition-transform"
+                        >
+                          ＋ Thêm tên khác
+                        </button>
+                      </div>
+
+                      {(() => {
+                        const listToRender = catalogFormData.alternativeNames && catalogFormData.alternativeNames.length > 0
+                          ? catalogFormData.alternativeNames
+                          : (catalogFormData.alternativeName ? [catalogFormData.alternativeName] : [""]);
+                        return (
+                          <div className="space-y-2.5">
+                            {listToRender.map((name, idx) => (
+                              <div key={idx} className="flex gap-2">
+                                <input
+                                  type="text"
+                                  className={cn(
+                                    "flex-1 px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold",
+                                    isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                                  )}
+                                  value={name}
+                                  onChange={(e) => {
+                                    const newList = [...listToRender];
+                                    newList[idx] = e.target.value;
+                                    setCatalogFormData({
+                                      ...catalogFormData,
+                                      alternativeNames: newList,
+                                      alternativeName: newList[0] || ""
+                                    });
+                                  }}
+                                  placeholder={idx === 0 ? "VD: Stevens-Johnson Syndrome (SJS)" : `Tên khác thứ ${idx + 1}`}
+                                />
+                                {(listToRender.length > 1 || (listToRender.length === 1 && name !== "")) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newList = listToRender.filter((_, i) => i !== idx);
+                                      setCatalogFormData({
+                                        ...catalogFormData,
+                                        alternativeNames: newList,
+                                        alternativeName: newList[0] || ""
+                                      });
+                                    }}
+                                    className={cn(
+                                      "px-4 rounded-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer",
+                                      isDarkMode ? "bg-red-500/10 text-red-400 hover:bg-red-500/20" : "bg-red-50 text-red-600 hover:bg-red-100"
+                                    )}
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Phân loại</label>
                         <button
                           type="button"
@@ -1396,6 +1541,217 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
           ? 'Bạn có chắc chắn muốn xóa báo cáo ADR này? Hành động này không thể hoàn tác.' 
           : `Bạn có chắc chắn muốn xóa mục "${confirmData?.name}" khỏi danh mục ADR?`}
         confirmText="Xác nhận xóa"
+        isDarkMode={isDarkMode}
+      />
+
+      {/* Related Drugs Modal */}
+      <AnimatePresence>
+        {isRelatedDrugsModalOpen && selectedAdrCatalogItem && (
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setIsRelatedDrugsModalOpen(false)}
+          >
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={cn(
+                "w-full max-w-4xl max-h-[85vh] flex flex-col rounded-[32px] sm:rounded-[40px] shadow-2xl overflow-hidden border transition-colors",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+              )}
+            >
+              {/* Header */}
+              <div className={cn(
+                "p-6 sm:p-8 border-b flex items-center justify-between transition-colors shrink-0",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+              )}>
+                <div className="flex items-center gap-4">
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white transition-all",
+                    isDarkMode ? "shadow-none" : "shadow-lg shadow-emerald-200"
+                  )}>
+                    <Pill size={24} />
+                  </div>
+                  <div>
+                    <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                      Thuốc chứa ADR: {selectedAdrCatalogItem.reactionName}
+                    </h3>
+                    <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-widest flex items-center flex-wrap gap-1.5 mt-0.5">
+                      <span>Phân loại: {selectedAdrCatalogItem.category}</span>
+                      {selectedAdrCatalogItem.alternativeName && (
+                        <>
+                          <span className="opacity-40">•</span>
+                          <span className={isDarkMode ? "text-slate-400" : "text-slate-600"}>Tên khác: {selectedAdrCatalogItem.alternativeName}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsRelatedDrugsModalOpen(false)}
+                  className={cn(
+                    "p-2.5 sm:p-3 rounded-2xl transition-colors text-slate-400",
+                    isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
+                  )}
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 custom-scrollbar">
+                {/* ADR description / guide card */}
+                <div className={cn(
+                  "p-5 rounded-2xl border transition-colors",
+                  isDarkMode ? "bg-slate-950/40 border-slate-800/80" : "bg-slate-50 border-slate-100"
+                )}>
+                  <h4 className="text-xs font-black text-emerald-600 uppercase tracking-widest mb-2">Thông tin phản ứng (ADR)</h4>
+                  <p className={cn("text-sm leading-relaxed font-semibold mb-3", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                    {selectedAdrCatalogItem.description || "Chưa có mô tả chi tiết."}
+                  </p>
+                  {selectedAdrCatalogItem.management && (
+                    <div className="mt-2 pt-2 border-t border-dashed border-slate-250/20">
+                      <span className="text-[11px] font-black uppercase text-rose-500 tracking-wider block mb-1">Hướng dẫn xử trí</span>
+                      <p className={cn("text-xs leading-relaxed", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                        {selectedAdrCatalogItem.management}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Drugs list */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-[0.2em]">
+                      Danh sách thuốc chứa ADR này ({drugs.filter(drug => matchDrugForADR(drug, selectedAdrCatalogItem.reactionName)).length})
+                    </h4>
+                  </div>
+
+                  {(() => {
+                    const matchingDrugs = drugs.filter(drug => matchDrugForADR(drug, selectedAdrCatalogItem.reactionName));
+                    if (matchingDrugs.length === 0) {
+                      return (
+                        <div className={cn(
+                          "p-10 rounded-2xl border border-dashed flex flex-col items-center justify-center text-center",
+                          isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-200 text-slate-400"
+                        )}>
+                          <Pill size={32} className="mb-2 opacity-50" />
+                          <p className="font-bold text-sm">Chưa có thuốc nào chứa ghi nhận ADR này</p>
+                          <p className="text-xs mt-1">Dữ liệu tác dụng không mong muốn của các thuốc đang cập nhật.</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {matchingDrugs.map((drug) => {
+                          const sideEffectForDrug = drug.sideEffects && Array.isArray(drug.sideEffects)
+                            ? drug.sideEffects.find((se: any) => {
+                                let text = "";
+                                if (typeof se === "string") text = se;
+                                else if (se && typeof se === "object") text = se.content || "";
+                                return text.toLowerCase().includes(selectedAdrCatalogItem.reactionName.toLowerCase());
+                              })
+                            : null;
+
+                          const sideEffectText = typeof sideEffectForDrug === "string"
+                            ? sideEffectForDrug
+                            : sideEffectForDrug && typeof sideEffectForDrug === "object"
+                              ? `${sideEffectForDrug.frequency ? `[${sideEffectForDrug.frequency}] ` : ''}${sideEffectForDrug.content}`
+                              : "";
+
+                          return (
+                            <div 
+                              key={drug.id}
+                              className={cn(
+                                "p-4 rounded-2xl border transition-all hover:shadow-md flex flex-col justify-between",
+                                isDarkMode ? "bg-slate-950/20 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 hover:border-blue-100"
+                              )}
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <h5 className={cn("font-bold text-sm", isDarkMode ? "text-white" : "text-slate-950")}>
+                                    {drug.name}
+                                  </h5>
+                                  {drug.isRx && (
+                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-500/10 text-rose-505 shrink-0">
+                                      Rx
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Active Ingredients */}
+                                <div className="mb-3">
+                                  <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-wider mb-1">Hoạt chất</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {drug.activeIngredients.map((ing, i) => (
+                                      <span key={i} className={cn(
+                                        "px-1.5 py-0.5 rounded text-[9px] font-bold",
+                                        isDarkMode ? "bg-slate-800 text-slate-300" : "bg-slate-50 text-slate-600"
+                                      )}>
+                                        {ing.name} ({ing.amount} {ing.unit})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Frequency or details context if available */}
+                                {sideEffectText && (
+                                  <div className={cn(
+                                    "p-2.5 rounded-xl text-[11px] mb-3 border",
+                                    isDarkMode ? "bg-slate-900/40 border-slate-800 text-slate-400" : "bg-slate-50 border-slate-100 text-slate-500"
+                                  )}>
+                                    <span className="font-bold text-slate-400 block mb-0.5">Ghi nhận ADR tại thuốc này:</span>
+                                    <span className="italic">"{sideEffectText}"</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-100/10 dark:border-slate-800/20 flex justify-end">
+                                <button
+                                  onClick={() => {
+                                    setSelectedDrugForView(drug);
+                                    setIsDrugDetailModalOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold transition-all shadow-sm"
+                                >
+                                  Xem chi tiết thuốc
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className={cn(
+                "p-4 sm:p-6 border-t flex justify-end transition-colors shrink-0",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-101"
+              )}>
+                <button 
+                  onClick={() => setIsRelatedDrugsModalOpen(false)}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl font-bold text-xs transition-all",
+                    isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  )}
+                >
+                  Đóng
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Drug Detail Modal */}
+      <DrugDetailModal
+        isOpen={isDrugDetailModalOpen}
+        onClose={() => setIsDrugDetailModalOpen(false)}
+        drug={selectedDrugForView}
         isDarkMode={isDarkMode}
       />
     </div>
