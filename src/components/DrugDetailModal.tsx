@@ -2856,58 +2856,36 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                             </div>
                                           )}
 
-                                        {/* Gợi ý Thuốc chống chỉ định (Chỉ người có điểm quyền lực mới xem được) */}
                                         {item.type === "Drug" && item.drugs && item.drugs.length > 0 && (
-                                          <div className="mt-3">
-                                            <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1.5">
-                                              Thuốc &amp; Nhóm thuốc chống chỉ định:
-                                            </div>
-                                            {userPowerPoints > 0 ? (
-                                              <div className="flex flex-wrap gap-2">
-                                                {item.drugs.map((drugName, idx) => {
-                                                  const isCypSpecial = drugName === "CYP3A4";
-                                                  return (
-                                                    <div
-                                                      key={idx}
-                                                      className={cn(
-                                                        "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
-                                                        isCypSpecial
-                                                          ? isDarkMode
-                                                            ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
-                                                            : "bg-amber-50 border-amber-100 text-amber-700"
-                                                          : isDarkMode
-                                                            ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
-                                                            : "bg-rose-50 border border-rose-100 text-rose-750",
-                                                      )}
-                                                    >
-                                                      <span>💊</span>
-                                                      <span>{drugName}</span>
-                                                    </div>
-                                                  );
-                                                })}
-                                              </div>
-                                            ) : (
-                                              <div
-                                                className={cn(
-                                                  "p-2.5 rounded-xl border flex items-start gap-2.5 shadow-2xs transition-all",
-                                                  isDarkMode
-                                                    ? "bg-amber-950/20 border-amber-900/30 text-amber-400"
-                                                    : "bg-amber-50 border border-amber-100 text-amber-700",
-                                                )}
-                                              >
-                                                <Lock size={12} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
-                                                <div className="flex-1 space-y-0.5">
-                                                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-500">
-                                                    Nội dung bị khóa
-                                                  </div>
-                                                  <p className="text-[10px] leading-relaxed font-semibold opacity-80">
-                                                    Yêu cầu Điểm quyền lực &gt; 0 để xem danh sách thuốc chống chỉ định.
-                                                  </p>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
+                                           <div className="mt-3">
+                                             <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1.5">
+                                               Thuốc &amp; Nhóm thuốc chống chỉ định:
+                                             </div>
+                                             <div className="flex flex-wrap gap-2">
+                                               {item.drugs.map((drugName, idx) => {
+                                                 const isCypSpecial = drugName === "CYP3A4";
+                                                 return (
+                                                   <div
+                                                     key={idx}
+                                                     className={cn(
+                                                       "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
+                                                       isCypSpecial
+                                                         ? isDarkMode
+                                                           ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
+                                                           : "bg-amber-50 border-amber-100 text-amber-700"
+                                                         : isDarkMode
+                                                           ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
+                                                           : "bg-rose-50 border border-rose-100 text-rose-750",
+                                                     )}
+                                                   >
+                                                     <span>💊</span>
+                                                     <span>{drugName}</span>
+                                                   </div>
+                                                 );
+                                               })}
+                                             </div>
+                                           </div>
+                                         )}
                                       </div>
                                     </div>
                                   ))

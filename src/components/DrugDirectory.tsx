@@ -3414,7 +3414,11 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {!onExternalViewModeChange && <div className="hidden lg:block">{viewModeToggle}</div>}
+          {!onExternalViewModeChange && (
+            <div className={cn(!getPortalNode() ? "w-full overflow-x-auto no-scrollbar py-1" : "hidden lg:block")}>
+              {viewModeToggle}
+            </div>
+          )}
           {viewMode === "groups" && !isMobile && (
             <div className={cn(
               "flex items-center gap-1 p-1 rounded-2xl shadow-sm border",
@@ -3466,7 +3470,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
               isDarkMode
                 ? "bg-slate-900 border-slate-800"
                 : "bg-white border-slate-100",
-              isMobile && "hidden",
+              (isMobile && getPortalNode()) && "hidden",
             )}
           >
             {isMobile ? (
