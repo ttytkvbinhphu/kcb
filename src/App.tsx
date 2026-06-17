@@ -122,6 +122,15 @@ export default function App() {
     return saved || 'dashboard';
   });
 
+  const [drugDirectoryViewMode, setDrugDirectoryViewMode] = useState<'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies'>(() => {
+    const saved = localStorage.getItem('drugDirectoryViewMode');
+    return (saved as any) || 'drugs';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('drugDirectoryViewMode', drugDirectoryViewMode);
+  }, [drugDirectoryViewMode]);
+
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
 
@@ -1718,6 +1727,8 @@ export default function App() {
             setExternalSelectedDrugId(null);
           }}
           currentUserName={userProfile.displayName}
+          externalViewMode={drugDirectoryViewMode}
+          onExternalViewModeChange={setDrugDirectoryViewMode}
         />;
       case 'interaction':
       case 'view_interaction':
@@ -1911,9 +1922,11 @@ export default function App() {
         <Suspense fallback={<div className="h-[100dvh] flex items-center justify-center bg-slate-950"><Loader2 className="animate-spin text-primary" /></div>}>
           <Sidebar
             activeTab={activeTab}
-            setActiveTab={(tab) => {
+            setActiveTab={(tab, keepSidebarOpen) => {
               setActiveTab(tab);
-              setIsSidebarOpen(false);
+              if (!keepSidebarOpen) {
+                setIsSidebarOpen(false);
+              }
               // Force browser repaint after sidebar closes (fixes GPU compositing issue on mobile)
               setTimeout(() => window.dispatchEvent(new Event('resize')), 320);
             }}
@@ -1936,6 +1949,8 @@ export default function App() {
             featureSettings={featureSettings}
             uid={user?.uid || ''}
             isApproved={userProfile.isApproved}
+            drugDirectoryViewMode={drugDirectoryViewMode}
+            setDrugDirectoryViewMode={setDrugDirectoryViewMode}
           />
 
           <main 

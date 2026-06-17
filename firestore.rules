@@ -481,9 +481,9 @@ service cloud.firestore {
       allow delete: if isOperator();
     }
 
-    // ADR Catalog: Publicly readable for authenticated users, writable only by operators/admins
+    // ADR Catalog: Publicly readable, writable only by operators/admins
     match /adr_catalog/{itemId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update: if isOperator() && isValidADRCatalogItem(request.resource.data);
       allow delete: if isOperator();
     }

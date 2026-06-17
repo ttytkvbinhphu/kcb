@@ -10,6 +10,7 @@ export interface Drug {
   tabletWeight?: string;
   manufacturer: string;
   mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
+  mechanismOfActionLabel?: string; // Tùy chỉnh tiêu đề của cơ chế tác dụng
   pharmacology?: string; // Thông tin dược lý chi tiết
   indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[] }[];
   contraindications: { 
@@ -50,6 +51,7 @@ export interface Drug {
   expiryDate?: string;
   expiryAlertMonths?: number;
   generalAdministration?: string; // Common usage instructions (e.g., before/after food)
+  generalAdministrationTime?: string; // Time of intake for general usage (all subjects)
   administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
     category: string; 
@@ -89,6 +91,16 @@ export interface Drug {
       dosageAfternoon?: string;
       dosageNight?: string;
       dosageTotalDay?: string;
+
+      // Tab 3: Số kg (Liều theo kg)
+      weightUnit?: string;
+      weightDoseType?: 'per_dose' | 'per_day';
+      weightMorning?: string;
+      weightNoon?: string;
+      weightAfternoon?: string;
+      weightNight?: string;
+      weightTotalDay?: string;
+      weightMaxDose?: string;
     }[];
   }[];
   precautions?: string | { 

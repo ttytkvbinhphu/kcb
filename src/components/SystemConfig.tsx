@@ -2997,7 +2997,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             {historySearchQuery && (
                               <button
                                 onClick={() => setHistorySearchQuery('')}
-                                className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-black"
+                                className={cn(
+                                  "absolute right-3.5 top-3 text-[11px] font-black tracking-widest text-slate-400 transition-colors",
+                                  isDarkMode ? "hover:text-slate-200" : "hover:text-slate-650"
+                                )}
                               >
                                 ✕
                               </button>
@@ -3005,7 +3008,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           </div>
 
                           {/* Bộ lọc Hành động */}
-                          <div className="flex bg-slate-200/40 dark:bg-slate-800/80 p-1 rounded-2xl w-full md:w-auto">
+                          <div className={cn(
+                            "flex p-1 rounded-2xl w-full md:w-auto",
+                            isDarkMode ? "bg-slate-800/80" : "bg-slate-200/40"
+                          )}>
                             <button
                               type="button"
                               onClick={() => setHistoryActionFilter('all')}
@@ -3013,7 +3019,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                 "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
                                 historyActionFilter === 'all'
                                   ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
-                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                  : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
                               Tất cả ({authLogs.length})
@@ -3025,7 +3031,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                 "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
                                 historyActionFilter === 'login'
                                   ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
-                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                  : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
                               Đăng nhập ({authLogs.filter(l => l.type === 'login').length})
@@ -3037,7 +3043,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                 "flex-1 md:flex-initial px-4 py-2 rounded-xl text-xs font-black transition-all",
                                 historyActionFilter === 'logout'
                                   ? (isDarkMode ? "bg-slate-700 text-white" : "bg-white text-slate-950 shadow-sm")
-                                  : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                  : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
                               Đăng xuất ({authLogs.filter(l => l.type === 'logout').length})

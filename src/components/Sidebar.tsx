@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ChevronDown, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch, FolderTree, Database } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
-import { Reorder } from 'motion/react';
+import { Reorder, motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, where, orderBy, limit, onSnapshot } from '../firebase';
 import { VersionLog } from '../types';
 
 interface SidebarProps {
   activeTab: string;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: string, keepSidebarOpen?: boolean) => void;
   userRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member' | 'unapproved';
   displayName: string;
   title?: string;
@@ -28,6 +28,8 @@ interface SidebarProps {
   featureSettings?: Record<string, any>;
   uid?: string;
   isApproved?: boolean;
+  drugDirectoryViewMode?: 'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies';
+  setDrugDirectoryViewMode?: (mode: 'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies') => void;
 }
 
 interface SidebarItem {
@@ -59,14 +61,27 @@ const Sidebar: React.FC<SidebarProps> = ({
   featureStates = {},
   featureSettings = {},
   uid,
-  isApproved = true
+  isApproved = true,
+  drugDirectoryViewMode = 'drugs',
+  setDrugDirectoryViewMode
 }) => {
   const [items, setItems] = useState<SidebarItem[]>([]);
   const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
   const [latestVersion, setLatestVersion] = useState<VersionLog | null>(null);
   const [tooltip, setTooltip] = useState<{ label: string; y: number; isMaintenance?: boolean; isClosed?: boolean } | null>(null);
   const [viewedProfileUid, setViewedProfileUid] = useState<string | null>(null);
+  const [isViewDirectoryExpanded, setIsViewDirectoryExpanded] = useState(activeTab === 'view_directory');
+  const [isManageDirectoryExpanded, setIsManageDirectoryExpanded] = useState(activeTab === 'manage_directory');
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (activeTab === 'view_directory') {
+      setIsViewDirectoryExpanded(true);
+    }
+    if (activeTab === 'manage_directory') {
+      setIsManageDirectoryExpanded(true);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!uid) return;
@@ -261,6 +276,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         key={item.id}
         value={item}
         drag={isEditMode ? "y" : false}
+        layout="position"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setTooltip(null)}
         className={cn(
@@ -269,7 +285,15 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       >
         <button
-          onClick={() => !isEditMode && setActiveTab(item.id)}
+          onClick={() => {
+            if (isEditMode) return;
+            setActiveTab(item.id, item.id === 'view_directory' || item.id === 'manage_directory');
+            if (item.id === 'view_directory') {
+              setIsViewDirectoryExpanded(!isViewDirectoryExpanded);
+            } else if (item.id === 'manage_directory') {
+              setIsManageDirectoryExpanded(!isManageDirectoryExpanded);
+            }
+          }}
           className={cn(
             "w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all duration-200",
             isCollapsed ? "justify-center" : "px-2",
@@ -307,7 +331,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {!isCollapsed && (
-            <>
+            <div className="flex items-center gap-1.5 shrink-0 ml-auto">
               {isMaintenance && !isAdminMode && (
                 <div className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tighter">
                   Bảo trì
@@ -323,9 +347,108 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <GripVertical size={14} className="text-primary" />
                 </div>
               )}
-            </>
+              {(item.id === 'view_directory' || item.id === 'manage_directory') && (
+                <div className="transition-transform duration-200">
+                  {item.id === 'view_directory' ? (
+                    isViewDirectoryExpanded ? <ChevronDown size={14} className="opacity-80" /> : <ChevronRight size={14} className="opacity-80" />
+                  ) : (
+                    isManageDirectoryExpanded ? <ChevronDown size={14} className="opacity-80" /> : <ChevronRight size={14} className="opacity-80" />
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </button>
+
+        <AnimatePresence initial={false}>
+          {!isCollapsed && item.id === 'view_directory' && isViewDirectoryExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden pl-6 mt-1 mb-2 space-y-1 border-l-2 border-primary/20 dark:border-primary/30 ml-4"
+            >
+              {[
+                { id: 'drugs', label: 'Biệt dược', icon: Pill },
+                { id: 'groups', label: 'Nhóm thuốc', icon: FolderTree },
+                { id: 'ingredients', label: 'Hoạt chất', icon: Activity }
+              ].map((subItem) => {
+                const isSubActive = activeTab === 'view_directory' && drugDirectoryViewMode === subItem.id;
+                const SubIcon = subItem.icon;
+                return (
+                  <button
+                    key={subItem.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('view_directory');
+                      if (setDrugDirectoryViewMode) {
+                        setDrugDirectoryViewMode(subItem.id as any);
+                      }
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150",
+                      isSubActive
+                        ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-400 font-extrabold"
+                        : isDarkMode
+                          ? "text-slate-400 hover:bg-slate-800/60 hover:text-white"
+                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                    )}
+                  >
+                    <SubIcon size={12} className={isSubActive ? "text-primary dark:text-blue-400" : "text-slate-400"} />
+                    <span>{subItem.label}</span>
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {!isCollapsed && item.id === 'manage_directory' && isManageDirectoryExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden pl-6 mt-1 mb-2 space-y-1 border-l-2 border-primary/20 dark:border-primary/30 ml-4"
+            >
+              {[
+                { id: 'drugs', label: 'Biệt dược', icon: Pill },
+                { id: 'groups', label: 'Nhóm thuốc', icon: FolderTree },
+                { id: 'ingredients', label: 'Hoạt chất', icon: Activity },
+                { id: 'excipients', label: 'Tá dược', icon: Database },
+                { id: 'companies', label: 'Công ty', icon: Briefcase }
+              ].map((subItem) => {
+                const isSubActive = activeTab === 'manage_directory' && drugDirectoryViewMode === subItem.id;
+                const SubIcon = subItem.icon;
+                return (
+                  <button
+                    key={subItem.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('manage_directory');
+                      if (setDrugDirectoryViewMode) {
+                        setDrugDirectoryViewMode(subItem.id as any);
+                      }
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150",
+                      isSubActive
+                        ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-400 font-extrabold"
+                        : isDarkMode
+                          ? "text-slate-400 hover:bg-slate-800/60 hover:text-white"
+                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                    )}
+                  >
+                    <SubIcon size={12} className={isSubActive ? "text-primary dark:text-blue-400" : "text-slate-400"} />
+                    <span>{subItem.label}</span>
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Reorder.Item>
     );
   };
