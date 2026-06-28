@@ -497,7 +497,14 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
     return matchesSearch && matchesFilter;
   });
 
-  const groupedCatalog = adrCategories.reduce((acc, cat) => {
+  const orphanCategories = Array.from(new Set(
+    catalogItems
+      .map(item => item.category)
+      .filter((cat): cat is string => !!cat && !adrCategories.includes(cat))
+  ));
+  const allCategoriesList = [...adrCategories, ...orphanCategories];
+
+  const groupedCatalog = allCategoriesList.reduce((acc, cat) => {
     const items = filteredCatalog.filter(item => item.category === cat);
     if (items.length > 0) {
       acc.push({ category: cat, items });
@@ -505,7 +512,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
     return acc;
   }, [] as { category: string, items: ADRCatalogItem[] }[]);
 
-  const categories = ['Tất cả', ...adrCategories];
+  const categories = ['Tất cả', ...allCategoriesList];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -1321,7 +1328,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                         value={catalogFormData.category || ''}
                         onChange={(e) => setCatalogFormData({...catalogFormData, category: e.target.value})}
                       >
-                        {adrCategories.map(cat => (
+                        {Array.from(new Set([...adrCategories, catalogFormData.category].filter(Boolean))).map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
                       </select>

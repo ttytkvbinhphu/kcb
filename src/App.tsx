@@ -19,8 +19,9 @@ import SocialWall from './components/SocialWall';
 import PatientManagement from './components/PatientManagement';
 import StaffManagement from './components/StaffManagement';
 import UpdateNotification from './components/UpdateNotification';
+import DrugDetailModal from './components/DrugDetailModal';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
@@ -105,6 +106,7 @@ const ALL_TABS = [
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
   // AdminCP Specific Tabs
   { id: 'admin_home', label: 'Công cụ', icon: LayoutDashboard },
+  { id: 'admin_notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare },
   { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
@@ -122,7 +124,7 @@ export default function App() {
     return saved || 'dashboard';
   });
 
-  const [drugDirectoryViewMode, setDrugDirectoryViewMode] = useState<'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies'>(() => {
+  const [drugDirectoryViewMode, setDrugDirectoryViewMode] = useState<'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies'>(() => {
     const saved = localStorage.getItem('drugDirectoryViewMode');
     return (saved as any) || 'drugs';
   });
@@ -164,6 +166,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [showSupportContact, setShowSupportContact] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,6 +175,24 @@ export default function App() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notificationTab, setNotificationTab] = useState<'all' | 'unread' | 'read' | 'announcements'>('unread');
+  const [globalSelectedDrug, setGlobalSelectedDrug] = useState<any | null>(null);
+  const [isGlobalDrugModalOpen, setIsGlobalDrugModalOpen] = useState(false);
+
+  const handleOpenGlobalDrugModal = async (drugName: string) => {
+    try {
+      const q = query(collection(db, 'drugs'), where('name', '==', drugName));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        const drugData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as any;
+        setGlobalSelectedDrug(drugData);
+        setIsGlobalDrugModalOpen(true);
+      } else {
+        alert(`Không tìm thấy thông tin cho thuốc: ${drugName}`);
+      }
+    } catch (error) {
+      console.error("Error fetching drug details in global modal:", error);
+    }
+  };
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileEditData, setProfileEditData] = useState({
     hideEmail: false,
@@ -330,6 +351,7 @@ export default function App() {
   const mobileSearchMenuRef = useRef<HTMLDivElement>(null);
   const desktopSearchMenuRef = useRef<HTMLDivElement>(null);
   const notificationsMenuRef = useRef<HTMLDivElement>(null);
+  const mobileNotificationsMenuRef = useRef<HTMLDivElement>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
 
   // Force browser layout reflow on tab change (fixes GPU compositing / sticky hitmap bug on mobile)
@@ -409,7 +431,9 @@ export default function App() {
       }
 
       // Notifications
-      if (notificationsMenuRef.current && !notificationsMenuRef.current.contains(target)) {
+      const isInsideDesktopNotif = notificationsMenuRef.current?.contains(target);
+      const isInsideMobileNotif = mobileNotificationsMenuRef.current?.contains(target);
+      if (!isInsideDesktopNotif && !isInsideMobileNotif) {
         setIsNotificationsOpen(false);
       }
     };
@@ -1700,6 +1724,7 @@ export default function App() {
           setIsEditMode={setIsEditMode}
           userProfile={userProfile}
           notifications={notifications}
+          announcements={announcements}
           onMarkAsRead={markAsRead}
           featureStates={featureStates}
           featureSettings={featureSettings}
@@ -1904,6 +1929,9 @@ export default function App() {
           featureSettings={featureSettings}
           userProfile={userProfile}
           uid={user?.uid}
+          notifications={notifications}
+          announcements={announcements}
+          onMarkAsRead={markAsRead}
           onLogout={handleLogout}
         />;
     }
@@ -2183,7 +2211,7 @@ export default function App() {
                     </AnimatePresence>
                   </div>
                 )}
-                <div className="relative">
+                <div className="relative" ref={mobileNotificationsMenuRef}>
                   <button
                     onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                     className={cn(
@@ -2263,7 +2291,7 @@ export default function App() {
                           <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-2">
                             {(() => {
                               if (notificationTab === 'unread') {
-                                const recentAnnouncements = announcements.filter(a => (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
+                                const recentAnnouncements = announcements.filter(a => a.showInHeader !== false && (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
                                 const unreadNotifs = notifications.filter(n => !n.isRead);
 
                                 if (recentAnnouncements.length === 0 && unreadNotifs.length === 0) {
@@ -2276,24 +2304,40 @@ export default function App() {
 
                                 return (
                                   <>
-                                    {recentAnnouncements.map(announcement => (
-                                      <div key={`mob-ann-${announcement.id}`} className="p-3 rounded-xl border transition-all relative group bg-indigo-500/5 border-indigo-500/20 shadow-sm mb-2">
-                                        <div className="flex gap-3">
-                                          <div className="p-2 rounded-lg shrink-0 bg-indigo-500/10 text-indigo-500">
-                                            <Sparkles size={16} />
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-2 mb-1">
-                                              <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>Hệ thống</h4>
-                                              <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                    {recentAnnouncements.map(announcement => {
+                                      const isDrugUpdate = announcement.type === 'drug_update';
+                                      const IconComponent = isDrugUpdate ? Pill : Sparkles;
+                                      const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
+                                      const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
+                                      const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
+
+                                      return (
+                                        <div key={`mob-ann-${announcement.id}`} className={cn("p-3 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
+                                          <div className="flex gap-3">
+                                            <div className={cn("p-2 rounded-lg shrink-0", iconBgColor)}>
+                                              <IconComponent size={16} />
                                             </div>
-                                            <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                              <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center justify-between gap-2 mb-1">
+                                                <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
+                                                <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                              </div>
+                                              <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
+                                                <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                              </div>
+                                              {isDrugUpdate && announcement.drugName && (
+                                                <button
+                                                  onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
+                                                  className="mt-2 text-[9px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-md w-fit cursor-pointer"
+                                                >
+                                                  <Pill size={11} /> Xem chi tiết thuốc
+                                                </button>
+                                              )}
                                             </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                     {unreadNotifs.map(notification => renderNotificationItem(notification))}
                                   </>
                                 );
@@ -2308,27 +2352,44 @@ export default function App() {
                               }
 
                               if (notificationTab === 'announcements') {
-                                if (announcements.length === 0) {
+                                const visibleAnnouncements = announcements.filter(a => a.showInHeader !== false);
+                                if (visibleAnnouncements.length === 0) {
                                   return <div className="py-8 text-center text-slate-500 font-bold text-[10px]">Chưa có thông báo hệ thống</div>;
                                 }
-                                return announcements.map(announcement => (
-                                  <div key={`mob-ann-all-${announcement.id}`} className="p-3 rounded-xl border transition-all relative group bg-indigo-500/5 border-indigo-500/20 shadow-sm mb-2">
-                                    <div className="flex gap-3">
-                                      <div className="p-2 rounded-lg shrink-0 bg-indigo-500/10 text-indigo-500">
-                                        <Sparkles size={16} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-2 mb-1">
-                                          <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>Hệ thống</h4>
-                                          <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                return visibleAnnouncements.map(announcement => {
+                                  const isDrugUpdate = announcement.type === 'drug_update';
+                                  const IconComponent = isDrugUpdate ? Pill : Sparkles;
+                                  const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
+                                  const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
+                                  const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
+
+                                  return (
+                                    <div key={`mob-ann-all-${announcement.id}`} className={cn("p-3 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
+                                      <div className="flex gap-3">
+                                        <div className={cn("p-2 rounded-lg shrink-0", iconBgColor)}>
+                                          <IconComponent size={16} />
                                         </div>
-                                        <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                          <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center justify-between gap-2 mb-1">
+                                            <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
+                                            <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                          </div>
+                                          <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
+                                            <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                          </div>
+                                          {isDrugUpdate && announcement.drugName && (
+                                            <button
+                                              onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
+                                              className="mt-2 text-[9px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-md w-fit cursor-pointer"
+                                            >
+                                              <Pill size={11} /> Xem chi tiết thuốc
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ));
+                                  );
+                                });
                               }
                             })()}
                           </div>
@@ -2338,7 +2399,10 @@ export default function App() {
                   </AnimatePresence>
                 </div>
                 <button
-                  onClick={() => setIsProfileModalOpen(true)}
+                  onClick={() => {
+                    setIsProfileModalOpen(true);
+                    setShowSupportContact(false);
+                  }}
                   className={cn(
                     "p-2 rounded-xl transition-all relative group",
                     isProfileModalOpen
@@ -2597,7 +2661,7 @@ export default function App() {
                         <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-2">
                           {(() => {
                             if (notificationTab === 'unread') {
-                              const recentAnnouncements = announcements.filter(a => (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
+                              const recentAnnouncements = announcements.filter(a => a.showInHeader !== false && (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
                               const unreadNotifs = notifications.filter(n => !n.isRead);
                               
                               if (recentAnnouncements.length === 0 && unreadNotifs.length === 0) {
@@ -2611,24 +2675,40 @@ export default function App() {
 
                               return (
                                 <>
-                                  {recentAnnouncements.map(announcement => (
-                                    <div key={`ann-${announcement.id}`} className="p-2.5 rounded-xl border transition-all relative group bg-indigo-500/5 border-indigo-500/20 shadow-sm">
-                                      <div className="flex gap-2">
-                                        <div className="p-1.5 rounded-lg shrink-0 h-fit bg-indigo-500/10 text-indigo-500">
-                                          <Sparkles size={14} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center justify-between gap-2 mb-0.5">
-                                            <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>Hệ thống</h4>
-                                            <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                  {recentAnnouncements.map(announcement => {
+                                    const isDrugUpdate = announcement.type === 'drug_update';
+                                    const IconComponent = isDrugUpdate ? Pill : Sparkles;
+                                    const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
+                                    const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
+                                    const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
+
+                                    return (
+                                      <div key={`ann-${announcement.id}`} className={cn("p-2.5 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
+                                        <div className="flex gap-2">
+                                          <div className={cn("p-1.5 rounded-lg shrink-0 h-fit", iconBgColor)}>
+                                            <IconComponent size={14} />
                                           </div>
-                                          <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                            <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                                              <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
+                                              <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                            </div>
+                                            <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
+                                              <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                            </div>
+                                            {isDrugUpdate && announcement.drugName && (
+                                              <button
+                                                onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
+                                                className="mt-1.5 text-[8px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded-md w-fit cursor-pointer"
+                                              >
+                                                <Pill size={10} /> Xem chi tiết thuốc
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                   {unreadNotifs.map(notification => renderNotificationItem(notification, true))}
                                 </>
                               );
@@ -2648,7 +2728,8 @@ export default function App() {
                             }
 
                             if (notificationTab === 'announcements') {
-                              if (announcements.length === 0) {
+                              const visibleAnnouncements = announcements.filter(a => a.showInHeader !== false);
+                              if (visibleAnnouncements.length === 0) {
                                 return (
                                   <div className="py-8 text-center">
                                     <Sparkles className="mx-auto text-slate-300 mb-2" size={24} />
@@ -2656,24 +2737,40 @@ export default function App() {
                                   </div>
                                 );
                               }
-                              return announcements.map(announcement => (
-                                <div key={`ann-all-${announcement.id}`} className="p-2.5 rounded-xl border transition-all relative group bg-indigo-500/5 border-indigo-500/20 shadow-sm mb-2">
-                                  <div className="flex gap-2">
-                                    <div className="p-1.5 rounded-lg shrink-0 h-fit bg-indigo-500/10 text-indigo-500">
-                                      <Sparkles size={14} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                                        <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>Hệ thống</h4>
-                                        <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                              return visibleAnnouncements.map(announcement => {
+                                const isDrugUpdate = announcement.type === 'drug_update';
+                                const IconComponent = isDrugUpdate ? Pill : Sparkles;
+                                const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
+                                const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
+                                const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
+
+                                return (
+                                  <div key={`ann-all-${announcement.id}`} className={cn("p-2.5 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
+                                    <div className="flex gap-2">
+                                      <div className={cn("p-1.5 rounded-lg shrink-0 h-fit", iconBgColor)}>
+                                        <IconComponent size={14} />
                                       </div>
-                                      <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                        <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                                          <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
+                                          <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
+                                        </div>
+                                        <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
+                                          <ReactMarkdown>{announcement.content}</ReactMarkdown>
+                                        </div>
+                                        {isDrugUpdate && announcement.drugName && (
+                                          <button
+                                            onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
+                                            className="mt-1.5 text-[8px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded-md w-fit cursor-pointer"
+                                          >
+                                            <Pill size={10} /> Xem chi tiết thuốc
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              ));
+                                );
+                              });
                             }
                           })()}
                         </div>
@@ -2684,6 +2781,7 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setIsProfileModalOpen(true);
+                    setShowSupportContact(false);
                   }}
                   className={cn(
                     "p-2.5 rounded-xl transition-all relative group",
@@ -2798,242 +2896,358 @@ export default function App() {
             isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
           )}
         >
-          <div className={cn(
-            "p-4 sm:p-6 border-b flex items-center justify-between",
-            isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
-          )}>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-xl">
-                <Settings size={20} className="text-primary" />
-              </div>
-              <h3 className="text-lg font-black tracking-tight">Cài đặt</h3>
-            </div>
-            <button
-              onClick={() => {
-                setIsProfileModalOpen(false);
-                if (guestView === 'terms') setGuestView('none');
-              }}
-              className={cn(
-                "p-2 rounded-xl transition-colors",
-                isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-200"
-              )}
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar">
-            {/* Account Info */}
-            <div className={cn(
-              "p-4 rounded-2xl border flex items-center gap-4 transition-colors",
-              isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50 border-slate-100"
-            )}>
+          <div 
+            className="flex w-[200%] transition-transform duration-500 ease-in-out" 
+            style={{ transform: showSupportContact ? 'translateX(-50%)' : 'translateX(0)' }}
+          >
+            {/* PANEL 1: SETTINGS */}
+            <div className="w-1/2 shrink-0 flex flex-col">
               <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
-                isDarkMode ? "bg-slate-700" : "bg-primary"
+                "p-4 sm:p-6 border-b flex items-center justify-between",
+                isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
-                <Users size={20} />
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-xl">
+                    <Settings size={20} className="text-primary" />
+                  </div>
+                  <h3 className="text-lg font-black tracking-tight">Cài đặt</h3>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowSupportContact(true)}
+                    title="Hỗ trợ liên hệ"
+                    className={cn(
+                      "p-2 rounded-xl transition-colors",
+                      isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
+                    )}
+                  >
+                    <Phone size={18} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      if (guestView === 'terms') setGuestView('none');
+                    }}
+                    className={cn(
+                      "p-2 rounded-xl transition-colors",
+                      isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
+                    )}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className={cn("text-[10px] font-black uppercase tracking-[0.2em] mb-0.5", isDarkMode ? "text-slate-500" : "text-slate-400")}>Tài khoản đang đăng nhập</p>
-                <p className={cn("text-sm font-bold truncate", isDarkMode ? "text-white" : "text-slate-900")}>{userProfile.email}</p>
-              </div>
-            </div>
 
-            {/* Personal Info Edit Section - REMOVED AS REQUESTED (ALREADY IN PROFILE PAGE) */}
-            <div className="space-y-6">
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar max-h-[60vh]">
+                {/* Account Info */}
+                <div className={cn(
+                  "p-4 rounded-2xl border flex items-center gap-4 transition-colors",
+                  isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50 border-slate-100"
+                )}>
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
+                    isDarkMode ? "bg-slate-700" : "bg-primary"
+                  )}>
+                    <Users size={20} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-[10px] font-black uppercase tracking-[0.2em] mb-0.5", isDarkMode ? "text-slate-500" : "text-slate-400")}>Tài khoản đang đăng nhập</p>
+                    <p className={cn("text-sm font-bold truncate", isDarkMode ? "text-white" : "text-slate-900")}>{userProfile.email}</p>
+                  </div>
+                </div>
 
-              <div className="space-y-4">
-                <label className={cn(
-                  "block text-xs font-black uppercase tracking-widest transition-colors",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Quyền riêng tư</label>
+                {/* Personal Info Edit Section - REMOVED AS REQUESTED (ALREADY IN PROFILE PAGE) */}
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <label className={cn(
+                      "block text-xs font-black uppercase tracking-widest transition-colors",
+                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                    )}>Quyền riêng tư</label>
 
-                <div className="space-y-4">
-                  <div className="space-y-3">
-                    <div className={cn(
-                      "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
-                      isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
-                    )}>
-                      <div className="flex items-center gap-3">
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
-                          <ShieldCheck size={14} className="text-primary" />
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <div className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                              <ShieldCheck size={14} className="text-primary" />
+                            </div>
+                            <div>
+                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Email</p>
+                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                {!profileEditData.hideEmail ? "Mọi người có thể thấy email của bạn" : "Email của bạn đang được ẩn"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const nextHideEmail = !profileEditData.hideEmail;
+                              if (!nextHideEmail) { // Turning ON public view (hideEmail becomes false)
+                                setPrivacyConfirmType('email');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
+                                handleSaveProfileField({ hideEmail: nextHideEmail });
+                              }
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors",
+                              !profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                              !profileEditData.hideEmail ? "left-6" : "left-1"
+                            )} />
+                          </button>
                         </div>
-                        <div>
-                          <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Email</p>
-                          <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                            {!profileEditData.hideEmail ? "Mọi người có thể thấy email của bạn" : "Email của bạn đang được ẩn"}
-                          </p>
+
+                        <div className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                              <MessageSquare size={14} className="text-primary" />
+                            </div>
+                            <div>
+                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
+                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const nextHideZalo = !profileEditData.hideZalo;
+                              if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
+                                setPrivacyConfirmType('zalo');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                                handleSaveProfileField({ hideZalo: nextHideZalo });
+                              }
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors",
+                              !profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                              !profileEditData.hideZalo ? "left-6" : "left-1"
+                            )} />
+                          </button>
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          const nextHideEmail = !profileEditData.hideEmail;
-                          if (!nextHideEmail) { // Turning ON public view (hideEmail becomes false)
-                            setPrivacyConfirmType('email');
-                            setIsPrivacyConfirmOpen(true);
-                          } else {
-                            setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
-                            handleSaveProfileField({ hideEmail: nextHideEmail });
-                          }
-                        }}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-colors",
-                          !profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
-                        )}
-                      >
-                        <div className={cn(
-                          "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
-                          !profileEditData.hideEmail ? "left-6" : "left-1"
-                        )} />
-                      </button>
                     </div>
+                  </div>
+                </div>
 
-                    <div className={cn(
-                      "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
-                      isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
-                    )}>
-                      <div className="flex items-center gap-3">
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
-                          <MessageSquare size={14} className="text-primary" />
-                        </div>
-                        <div>
-                          <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
-                          <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                            {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const nextHideZalo = !profileEditData.hideZalo;
-                          if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
-                            setPrivacyConfirmType('zalo');
-                            setIsPrivacyConfirmOpen(true);
-                          } else {
-                            setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
-                            handleSaveProfileField({ hideZalo: nextHideZalo });
-                          }
-                        }}
-                        className={cn(
-                          "w-10 h-5 rounded-full relative transition-colors",
-                          !profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
-                        )}
-                      >
-                        <div className={cn(
-                          "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
-                          !profileEditData.hideZalo ? "left-6" : "left-1"
-                        )} />
-                      </button>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className={cn(
+                      "block text-xs font-black uppercase tracking-widest mb-3 transition-colors",
+                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                    )}>Giao diện & Chủ đề</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[
+                        { id: 'light', label: 'Sáng', icon: Sun },
+                        { id: 'dark', label: 'Tối', icon: Moon },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleThemeChange(t.id)}
+                          className={cn(
+                            "flex items-center gap-3 p-4 rounded-2xl border-2 transition-all",
+                            theme === t.id
+                              ? "border-primary bg-primary/5 text-primary"
+                              : (isDarkMode
+                                ? "border-transparent bg-slate-800 hover:bg-slate-700 text-slate-500"
+                                : "border-transparent bg-slate-50 hover:bg-slate-100 text-slate-500")
+                          )}
+                        >
+                          <div className={cn(
+                            "p-2 rounded-lg text-white",
+                            t.id === 'light' ? "bg-blue-500" : "bg-slate-700"
+                          )}>
+                            <t.icon size={18} />
+                          </div>
+                          <span className="text-xs font-black uppercase tracking-widest">{t.label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
+                  {userProfile.role === 'admin' && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => {
+                          setIsAdminMode(true);
+                          setActiveTab('admin_general');
+                          setIsProfileModalOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group",
+                          isDarkMode ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-50/20" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20">
+                            <ShieldCheck size={16} />
+                          </div>
+                          <div className="text-left">
+                            <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>Quản trị hệ thống</p>
+                            <p className={cn("text-xs font-bold", isDarkMode ? "text-slate-300" : "text-slate-600")}>Cấu hình tên app, logo và các thiết lập chung</p>
+                          </div>
+                        </div>
+                        <Zap size={16} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <label className={cn(
-                  "block text-xs font-black uppercase tracking-widest mb-3 transition-colors",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Giao diện & Chủ đề</label>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { id: 'light', label: 'Sáng', icon: Sun },
-                    { id: 'dark', label: 'Tối', icon: Moon },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => handleThemeChange(t.id)}
-                      className={cn(
-                        "flex items-center gap-3 p-4 rounded-2xl border-2 transition-all",
-                        theme === t.id
-                          ? "border-primary bg-primary/5 text-primary"
-                          : (isDarkMode
-                            ? "border-transparent bg-slate-800 hover:bg-slate-700 text-slate-500"
-                            : "border-transparent bg-slate-50 hover:bg-slate-100 text-slate-500")
-                      )}
-                    >
-                      <div className={cn(
-                        "p-2 rounded-lg text-white",
-                        t.id === 'light' ? "bg-blue-500" : "bg-slate-700"
-                      )}>
-                        <t.icon size={18} />
-                      </div>
-                      <span className="text-xs font-black uppercase tracking-widest">{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {userProfile.role === 'admin' && (
-                <div className="pt-2">
+                <div className="mt-6 pt-6 border-t border-slate-800/10 dark:border-slate-800/50">
                   <button
-                    onClick={() => {
-                      setIsAdminMode(true);
-                      setActiveTab('admin_general');
-                      setIsProfileModalOpen(false);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setGuestView('terms');
                     }}
                     className={cn(
                       "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group",
-                      isDarkMode ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                      isDarkMode ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800" : "bg-white border-slate-100 hover:bg-slate-50"
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20">
-                        <ShieldCheck size={16} />
+                      <div className={cn(
+                        "p-2 rounded-lg",
+                        isDarkMode ? "bg-slate-700 text-slate-400" : "bg-slate-100 text-slate-500"
+                      )}>
+                        <FileText size={16} />
                       </div>
-                      <div className="text-left">
-                        <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>Quản trị hệ thống</p>
-                        <p className={cn("text-xs font-bold", isDarkMode ? "text-slate-300" : "text-slate-600")}>Cấu hình tên app, logo và các thiết lập chung</p>
-                      </div>
+                      <span className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-600")}>Điều khoản sử dụng</span>
                     </div>
-                    <Zap size={16} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                    <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
-              )}
+              </div>
+
+              <div className={cn(
+                "p-4 sm:p-6 border-t flex flex-col gap-3",
+                isDarkMode ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50/50"
+              )}>
+                <button
+                  onClick={handleLogout}
+                  className={cn(
+                    "w-full py-2.5 sm:py-3 bg-rose-500 text-white rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 hover:bg-rose-600",
+                    isDarkMode ? "shadow-none" : "shadow-lg shadow-rose-500/20"
+                  )}
+                >
+                  <LogOut size={16} />
+                  <span>Đăng xuất</span>
+                </button>
+              </div>
             </div>
 
-            <div className="mt-6 pt-6 border-t border-slate-800/10 dark:border-slate-800/50">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setGuestView('terms');
-                }}
-                className={cn(
-                  "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group",
-                  isDarkMode ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800" : "bg-white border-slate-100 hover:bg-slate-50"
-                )}
-              >
+            {/* PANEL 2: SUPPORT */}
+            <div className="w-1/2 shrink-0 flex flex-col">
+              <div className={cn(
+                "p-4 sm:p-6 border-b flex items-center justify-between",
+                isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
+              )}>
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "p-2 rounded-lg",
-                    isDarkMode ? "bg-slate-700 text-slate-400" : "bg-slate-100 text-slate-500"
-                  )}>
-                    <FileText size={16} />
+                  <div className="p-2 bg-primary/10 rounded-xl">
+                    <Phone size={20} className="text-primary" />
                   </div>
-                  <span className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-600")}>Điều khoản sử dụng</span>
+                  <h3 className="text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
                 </div>
-                <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-          </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowSupportContact(false)}
+                    title="Quay lại Cài đặt"
+                    className={cn(
+                      "p-2 rounded-xl transition-colors text-primary flex items-center justify-center",
+                      isDarkMode ? "bg-slate-800" : "bg-slate-200"
+                    )}
+                  >
+                    <ChevronRight size={18} className="rotate-180" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      if (guestView === 'terms') setGuestView('none');
+                    }}
+                    className={cn(
+                      "p-2 rounded-xl transition-colors",
+                      isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
+                    )}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
 
-          <div className={cn(
-            "p-4 sm:p-6 border-t",
-            isDarkMode ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50/50"
-          )}>
-            <button
-              onClick={handleLogout}
-              className={cn(
-                "w-full py-2.5 sm:py-3 bg-rose-500 text-white rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 hover:bg-rose-600",
-                isDarkMode ? "shadow-none" : "shadow-lg shadow-rose-500/20"
-              )}
-            >
-              <LogOut size={16} />
-              <span>Đăng xuất</span>
-            </button>
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar max-h-[60vh] flex-1">
+                <div className={cn(
+                  "p-5 rounded-2xl border relative overflow-hidden transition-all duration-300",
+                  isDarkMode
+                    ? "bg-slate-900/50 border-slate-800 text-white"
+                    : "bg-white text-slate-900 border-slate-100 shadow-md shadow-slate-200/40"
+                )}>
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/20 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                      <HelpCircle size={20} className="text-primary animate-spin-slow" />
+                    </div>
+                    <div className="flex-1">
+                      <p className={cn("text-[11px] font-bold leading-relaxed mb-4 transition-colors opacity-70", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                        Mọi thắc mắc hoặc yêu cầu hỗ trợ kỹ thuật liên quan đến ứng dụng, vui lòng liên hệ trực tiếp DS. Bảo qua Zalo để được giải quyết nhanh nhất.
+                      </p>
+                      <a
+                        href="https://zalo.me/0932621028"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={cn(
+                          "w-full py-2.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest",
+                          isDarkMode
+                            ? "bg-primary text-white hover:bg-primary/90"
+                            : "bg-primary text-white hover:bg-primary-dark shadow-lg shadow-primary/20"
+                        )}
+                      >
+                        Liên hệ qua Zalo (DS. Bảo)
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-4 rounded-2xl border space-y-3",
+                  isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50 border-slate-100"
+                )}>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Thời gian làm việc</p>
+                  <p className="text-xs font-bold">Thứ 2 - Chủ nhật: 8:00 - 22:00</p>
+                  <p className="text-[10px] font-medium opacity-60">Hỗ trợ kỹ thuật khẩn cấp 24/7 đối với các sự cố nghiêm trọng ảnh hưởng đến hoạt động khám chữa bệnh.</p>
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-4 sm:p-6 border-t flex flex-col gap-3",
+                isDarkMode ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50/50"
+              )}>
+                <button
+                  onClick={() => setShowSupportContact(false)}
+                  className={cn(
+                    "w-full py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2",
+                    isDarkMode 
+                      ? "bg-slate-800 hover:bg-slate-700 text-white" 
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200"
+                  )}
+                >
+                  Quay lại Cài đặt
+                </button>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -3238,6 +3452,13 @@ export default function App() {
             cancelText="Ở lại"
             type="warning"
             isDarkMode={isDarkMode}
+          />
+          <DrugDetailModal
+            drug={globalSelectedDrug}
+            isOpen={isGlobalDrugModalOpen}
+            onClose={() => setIsGlobalDrugModalOpen(false)}
+            isDarkMode={isDarkMode}
+            userPowerPoints={userProfile?.powerPoints || 0}
           />
       </main >
       </Suspense >

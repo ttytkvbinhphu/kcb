@@ -164,6 +164,13 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [newAnnouncement, setNewAnnouncement] = useState('');
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
   const [targetTitles, setTargetTitles] = useState<string[]>([]);
+  const [announcementType, setAnnouncementType] = useState<'general' | 'drug_update'>('general');
+  const [selectedDrugId, setSelectedDrugId] = useState('');
+  const [selectedDrugName, setSelectedDrugName] = useState('');
+  const [showInWorkspace, setShowInWorkspace] = useState(true);
+  const [showInHeader, setShowInHeader] = useState(true);
+  const [drugsList, setDrugsList] = useState<any[]>([]);
+  const [drugSearchQuery, setDrugSearchQuery] = useState('');
   const [isSavingReg, setIsSavingReg] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const [authLogs, setAuthLogs] = useState<AuthLog[]>([]);
@@ -250,12 +257,19 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       }
     );
 
+    const unsubDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
+      setDrugsList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a: any, b: any) => a.name.localeCompare(b.name)));
+    }, (error) => {
+      console.error("Error loading drugs inside SystemConfig:", error);
+    });
+
     return () => {
       unsubFeatures();
       unsubReg();
       unsubAnnouncements();
       unsubAuthLogs();
       unsubPendingUsers();
+      unsubDrugs();
     };
   }, []);
 
@@ -309,11 +323,22 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         content: newAnnouncement,
         createdAt: new Date().toISOString(),
         targetRoles: targetRoles.length > 0 ? targetRoles : null,
-        targetTitles: targetTitles.length > 0 ? targetTitles : null
+        targetTitles: targetTitles.length > 0 ? targetTitles : null,
+        type: announcementType,
+        drugId: announcementType === 'drug_update' ? selectedDrugId : null,
+        drugName: announcementType === 'drug_update' ? selectedDrugName : null,
+        showInWorkspace: showInWorkspace,
+        showInHeader: showInHeader
       });
       setNewAnnouncement('');
       setTargetRoles([]);
       setTargetTitles([]);
+      setAnnouncementType('general');
+      setSelectedDrugId('');
+      setSelectedDrugName('');
+      setShowInWorkspace(true);
+      setShowInHeader(true);
+      setDrugSearchQuery('');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'announcements');
     } finally {
@@ -579,6 +604,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'general', label: 'Cài đặt chung', icon: Globe, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
     { id: 'registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { id: 'home', label: 'Công cụ', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+    { id: 'notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, color: 'text-rose-500', bg: 'bg-rose-500/10' },
     { id: 'hr', label: 'Quản lý Nhân sự', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'theme', label: 'Quản lý Giao diện', icon: Sun, color: 'text-pink-500', bg: 'bg-pink-500/10' },
@@ -600,6 +626,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       desc: 'Trung tâm điều khiển & Thông báo',
       longDesc: 'Giám sát toàn diện trạng thái vận hành, quản trị hệ thống tính năng cốt lõi và kênh truyền thông nội bộ chuyên nghiệp.',
       gradient: 'from-indigo-600 to-blue-500'
+    },
+    notifications: {
+      desc: 'Hệ thống thông báo & tin nhắn',
+      longDesc: 'Quản lý, tạo mới và theo dõi lịch sử các thông báo nội bộ gửi tới các nhóm đối tượng nhân sự trong bệnh viện.',
+      gradient: 'from-rose-600 to-orange-500'
     },
     registration: {
       desc: 'Kiểm soát truy cập & Phê duyệt',
@@ -1953,7 +1984,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     <>
     <div className="space-y-6">
       <div className={cn(
-        "relative overflow-hidden rounded-[2.5rem] p-8 lg:p-12 mb-10 transition-all",
+        "hidden lg:block relative overflow-hidden rounded-[2.5rem] p-8 lg:p-12 mb-10 transition-all",
         isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/50"
       )}>
         {/* Abstract Background Elements */}
@@ -2096,8 +2127,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               )}>
                 {[
                   { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
-                  { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid },
-                  { id: 'notifications', label: 'Thông báo viện', icon: MessageSquare }
+                  { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid }
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -2115,246 +2145,358 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 ))}
               </div>
 
-              { (homeSubTab === 'features_main' || homeSubTab === 'utilities') ? (
-                <AnimatePresence mode="wait">
-                  {selectedFeatureForDetail ? (
-                    <div key="detail">
-                      {renderFeatureDetailContent()}
-                    </div>
-                  ) : (
-                    <motion.div
-                      key="list"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className={cn(
-                        "p-4 sm:p-8 rounded-[32px] border transition-all",
-                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                      )}
-                    >
-                      <div className="space-y-6">
-                        {featureStateGroups.map(group => {
-                          const featuresInGroup = sortedFeatures.filter(feature => {
-                            const isInCorrectTab = homeSubTab === 'features_main'
-                              ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
-                              : ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo'].includes(feature.id);
+              <AnimatePresence mode="wait">
+                {selectedFeatureForDetail ? (
+                  <div key="detail">
+                    {renderFeatureDetailContent()}
+                  </div>
+                ) : (
+                  <motion.div
+                    key="list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className={cn(
+                      "p-4 sm:p-8 rounded-[32px] border transition-all",
+                      isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                    )}
+                  >
+                    <div className="space-y-6">
+                      {featureStateGroups.map(group => {
+                        const featuresInGroup = sortedFeatures.filter(feature => {
+                          const isInCorrectTab = homeSubTab === 'features_main'
+                            ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
+                            : ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo'].includes(feature.id);
 
-                            return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
-                          });
-                          return (
-                            <div key={group.id} className="space-y-3">
-                              <div className="flex items-center justify-between px-1">
-                                <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                                  {group.label}
-                                </h4>
-                                <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                                  {featuresInGroup.length} {homeSubTab === 'features_main' ? 'tính năng' : 'tiện ích'}
-                                </span>
-                              </div>
-                              {featuresInGroup.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                                  {featuresInGroup.map(renderFeatureCard)}
-                                </div>
-                              ) : (
-                                <div className={cn(
-                                  "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
-                                  isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
-                                )}>
-                                  {group.emptyText}
-                                </div>
-                              )}
+                          return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
+                        });
+                        return (
+                          <div key={group.id} className="space-y-3">
+                            <div className="flex items-center justify-between px-1">
+                              <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                {group.label}
+                              </h4>
+                              <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                {featuresInGroup.length} {homeSubTab === 'features_main' ? 'tính năng' : 'tiện ích'}
+                              </span>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              ) : homeSubTab === 'notifications' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className={cn(
-                    "lg:col-span-1 p-8 rounded-[32px] border-2 transition-all h-fit",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                  )}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
-                      <MessageSquare size={18} /> Tạo thông báo mới
-                    </h3>
-                    <div className="space-y-4">
-                      <textarea
-                        value={newAnnouncement}
-                        onChange={(e) => setNewAnnouncement(e.target.value)}
-                        placeholder="Nhập nội dung thông báo cho toàn bộ nhân viên..."
-                        className={cn(
-                          "w-full px-5 py-4 rounded-2xl border-2 min-h-[150px] outline-none font-medium text-sm resize-none transition-all",
-                          isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-indigo-500 shadow-inner"
-                        )}
-                      />
+                            {featuresInGroup.length > 0 ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
+                                {featuresInGroup.map(renderFeatureCard)}
+                              </div>
+                            ) : (
+                              <div className={cn(
+                                "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
+                                isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
+                              )}>
+                                {group.emptyText}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
-                          <ShieldCheck size={12} /> Đối tượng theo vai trò
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map(roleId => {
-                            const role = roles.find(r => r.id === roleId);
-                            const isSelected = targetRoles.includes(roleId);
-                            return (
-                              <button
-                                key={roleId}
-                                onClick={() => setTargetRoles(prev => isSelected ? prev.filter(r => r !== roleId) : [...prev, roleId])}
-                                className={cn(
-                                  "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
-                                  isSelected
-                                    ? "bg-indigo-500 text-white border-indigo-500"
-                                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
-                                )}
-                              >
-                                {role?.name || roleId}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
-                          <Award size={12} /> Đối tượng theo chức danh
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {titles.map(title => {
-                            const isSelected = targetTitles.includes(title.name);
-                            return (
-                              <button
-                                key={title.id}
-                                onClick={() => setTargetTitles(prev => isSelected ? prev.filter(t => t !== title.name) : [...prev, title.name])}
-                                className={cn(
-                                  "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
-                                  isSelected
-                                    ? "bg-indigo-500 text-white border-indigo-500"
-                                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
-                                )}
-                              >
-                                {title.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
+          {activeCategory === 'notifications' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className={cn(
+                "lg:col-span-1 p-8 rounded-[32px] border-2 transition-all h-fit",
+                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+              )}>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
+                  <MessageSquare size={18} /> Tạo thông báo mới
+                </h3>
+                <div className="space-y-4">
+                  {/* Loại thông báo */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <LayoutTemplate size={12} /> Loại thông báo
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={addAnnouncement}
-                        disabled={isSavingAnnouncement || !newAnnouncement.trim()}
-                        className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-500/20"
+                        type="button"
+                        onClick={() => {
+                          setAnnouncementType('general');
+                          setSelectedDrugId('');
+                          setSelectedDrugName('');
+                        }}
+                        className={cn(
+                          "py-2.5 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-2",
+                          announcementType === 'general'
+                            ? "bg-indigo-500 text-white border-indigo-500 shadow-md"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
+                        )}
                       >
-                        {isSavingAnnouncement ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                        Gửi thông báo
+                        <MessageSquare size={14} /> Thường
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAnnouncementType('drug_update');
+                        }}
+                        className={cn(
+                          "py-2.5 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-2",
+                          announcementType === 'drug_update'
+                            ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
+                        )}
+                      >
+                        <Pill size={14} /> Cập nhật thuốc
                       </button>
                     </div>
                   </div>
 
-                  <div className={cn(
-                    "lg:col-span-2 p-8 rounded-[32px] border-2 transition-all",
-                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                  )}>
-                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Lịch sử thông báo</h3>
-                    <div className="space-y-4">
-                      {announcements.length > 0 ? (
-                        announcements.map((ann) => (
-                          <div key={ann.id} className={cn(
-                            "p-5 rounded-2xl border-2 group transition-all",
-                            isDarkMode ? "bg-slate-800 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-50 hover:border-indigo-100"
-                          )}>
-                            <div className="flex justify-between items-start gap-4">
-                              <p className={cn("text-xs font-semibold leading-relaxed flex-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                                {ann.content}
-                              </p>
+                  {/* Chọn thuốc (nếu là cập nhật thuốc) */}
+                  {announcementType === 'drug_update' && (
+                    <div className="space-y-3 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                        <Search size={12} /> Chọn thuốc đã cập nhật
+                      </label>
+                      
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={drugSearchQuery}
+                          onChange={(e) => setDrugSearchQuery(e.target.value)}
+                          placeholder="Tìm thuốc theo tên..."
+                          className={cn(
+                            "w-full px-4 py-2.5 pl-10 rounded-xl border-2 outline-none font-medium text-xs transition-all",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-emerald-500" : "bg-white border-slate-200 text-slate-900 focus:border-emerald-500"
+                          )}
+                        />
+                        <Search size={14} className="absolute left-3.5 top-3.5 text-slate-400" />
+                      </div>
+
+                      {/* Hiển thị thuốc đã chọn */}
+                      {selectedDrugId && (
+                        <div className="flex items-center justify-between px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-xl text-xs font-bold gap-2">
+                          <span className="truncate">Đã chọn: {selectedDrugName}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDrugId('');
+                              setSelectedDrugName('');
+                            }}
+                            className="p-1 hover:bg-emerald-500/20 rounded-lg shrink-0"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Danh sách kết quả tìm kiếm thuốc */}
+                      {drugSearchQuery.trim() && (
+                        <div className={cn(
+                          "max-h-[150px] overflow-y-auto custom-scrollbar rounded-xl border divide-y text-xs font-bold",
+                          isDarkMode ? "bg-slate-800 border-slate-700 divide-slate-700" : "bg-white border-slate-200 divide-slate-100"
+                        )}>
+                          {drugsList
+                            .filter(d => d.name?.toLowerCase().includes(drugSearchQuery.toLowerCase()))
+                            .slice(0, 5)
+                            .map(drug => (
                               <button
-                                onClick={() => deleteAnnouncement(ann.id)}
-                                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                key={drug.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDrugId(drug.id);
+                                  setSelectedDrugName(drug.name);
+                                  setDrugSearchQuery('');
+                                  setNewAnnouncement(
+                                    `Đã cập nhật thông tin mới (về liều dùng, hướng dẫn, cảnh báo tương tác, ADR...) cho thuốc **${drug.name}**. Kính mời các đồng nghiệp cập nhật thông tin để ứng dụng an toàn.`
+                                  );
+                                }}
+                                className={cn(
+                                  "w-full px-4 py-2.5 text-left hover:bg-emerald-500/5 transition-colors block text-[11px]",
+                                  isDarkMode ? "text-slate-200" : "text-slate-700"
+                                )}
                               >
-                                <Trash2 size={16} />
+                                {drug.name}
                               </button>
+                            ))}
+                          {drugsList.filter(d => d.name?.toLowerCase().includes(drugSearchQuery.toLowerCase())).length === 0 && (
+                            <div className="px-4 py-3 text-slate-500 text-center text-[10px]">
+                              Không tìm thấy thuốc khớp
                             </div>
-
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {ann.targetRoles && ann.targetRoles.map((r: string) => (
-                                <span key={r} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase tracking-widest">{roles.find(role => role.id === r)?.name || r}</span>
-                              ))}
-                              {ann.targetTitles && ann.targetTitles.map((t: string) => (
-                                <span key={t} className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-widest">{t}</span>
-                              ))}
-                              {!ann.targetRoles && !ann.targetTitles && (
-                                <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-500 text-[8px] font-black uppercase tracking-widest">Tất cả mọi người</span>
-                              )}
-                            </div>
-
-                            <div className="mt-4 flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-slate-400">
-                              <Calendar size={10} />
-                              {new Date(ann.createdAt).toLocaleString('vi-VN')}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="py-20 text-center">
-                          <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
-                            <Info size={24} className="text-slate-400" />
-                          </div>
-                          <p className="text-slate-500 font-bold">Chưa có thông báo nào được gửi.</p>
+                          )}
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
-              ) : (
-                <AnimatePresence mode="wait">
-                  {selectedFeatureForDetail ? (
-                    <div key="detail">
-                      {renderFeatureDetailContent()}
-                    </div>
-                  ) : (
-                    <motion.div
-                      key="list"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className={cn(
-                        "p-4 sm:p-8 rounded-[32px] border transition-all",
-                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
-                      )}
-                    >
-                      <div className="space-y-6">
-                        {featureStateGroups.map(group => {
-                          const featuresInGroup = sortedFeatures.filter(feature => (featureStates[feature.id] || 'open') === group.id);
-                          return (
-                            <div key={group.id} className="space-y-3">
-                              <div className="flex items-center justify-between px-1">
-                                <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                                  {group.label}
-                                </h4>
-                                <span className={cn("text-[10px] font-bold", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                                  {featuresInGroup.length} tiện ích
-                                </span>
-                              </div>
-                              {featuresInGroup.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                                  {featuresInGroup.map(renderFeatureCard)}
-                                </div>
-                              ) : (
-                                <div className={cn(
-                                  "rounded-2xl border px-4 py-6 text-center text-xs font-bold",
-                                  isDarkMode ? "border-slate-800 text-slate-500" : "border-slate-100 text-slate-400"
-                                )}>
-                                  {group.emptyText}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
                   )}
-                </AnimatePresence>
-              )}
+
+                  <textarea
+                    value={newAnnouncement}
+                    onChange={(e) => setNewAnnouncement(e.target.value)}
+                    placeholder="Nhập nội dung thông báo cho toàn bộ nhân viên..."
+                    className={cn(
+                      "w-full px-5 py-4 rounded-2xl border-2 min-h-[150px] outline-none font-medium text-sm resize-none transition-all",
+                      isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-indigo-500 shadow-inner"
+                    )}
+                  />
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <ShieldCheck size={12} /> Đối tượng theo vai trò
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map(roleId => {
+                        const role = roles.find(r => r.id === roleId);
+                        const isSelected = targetRoles.includes(roleId);
+                        return (
+                          <button
+                            key={roleId}
+                            onClick={() => setTargetRoles(prev => isSelected ? prev.filter(r => r !== roleId) : [...prev, roleId])}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                              isSelected
+                                ? "bg-indigo-500 text-white border-indigo-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
+                            )}
+                          >
+                            {role?.name || roleId}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <Award size={12} /> Đối tượng theo chức danh
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {titles.map(title => {
+                        const isSelected = targetTitles.includes(title.name);
+                        return (
+                          <button
+                            key={title.id}
+                            onClick={() => setTargetTitles(prev => isSelected ? prev.filter(t => t !== title.name) : [...prev, title.name])}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                              isSelected
+                                ? "bg-indigo-500 text-white border-indigo-500"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-200 text-slate-500")
+                            )}
+                          >
+                            {title.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Nơi hiển thị */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <Layout size={12} /> Nơi xuất hiện thông báo
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowInWorkspace(prev => !prev)}
+                        className={cn(
+                          "py-2.5 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-2 relative overflow-hidden",
+                          showInWorkspace
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20 font-black scale-[1.01]"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-400" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600")
+                        )}
+                      >
+                        <LayoutGrid size={14} />
+                        Workspace
+                        {showInWorkspace ? (
+                          <span className="px-1.5 py-0.5 text-[8px] bg-indigo-500 text-white rounded font-extrabold uppercase tracking-wider">Bật</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[8px] bg-slate-500/20 text-slate-400 dark:text-slate-600 rounded font-extrabold uppercase tracking-wider">Tắt</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowInHeader(prev => !prev)}
+                        className={cn(
+                          "py-2.5 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-2 relative overflow-hidden",
+                          showInHeader
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20 font-black scale-[1.01]"
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-400" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600")
+                        )}
+                      >
+                        <MessageSquare size={14} />
+                        Hộp thông báo
+                        {showInHeader ? (
+                          <span className="px-1.5 py-0.5 text-[8px] bg-indigo-500 text-white rounded font-extrabold uppercase tracking-wider">Bật</span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[8px] bg-slate-500/20 text-slate-400 dark:text-slate-600 rounded font-extrabold uppercase tracking-wider">Tắt</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={addAnnouncement}
+                    disabled={isSavingAnnouncement || !newAnnouncement.trim() || (announcementType === 'drug_update' && !selectedDrugId)}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-500/20"
+                  >
+                    {isSavingAnnouncement ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                    Gửi thông báo
+                  </button>
+                </div>
+              </div>
+
+              <div className={cn(
+                "lg:col-span-2 p-8 rounded-[32px] border-2 transition-all",
+                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+              )}>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Lịch sử thông báo</h3>
+                <div className="space-y-4">
+                  {announcements.length > 0 ? (
+                    announcements.map((ann) => (
+                      <div key={ann.id} className={cn(
+                        "p-5 rounded-2xl border-2 group transition-all",
+                        isDarkMode ? "bg-slate-800 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-50 hover:border-indigo-100"
+                      )}>
+                        <div className="flex justify-between items-start gap-4">
+                          <p className={cn("text-xs font-semibold leading-relaxed flex-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                            {ann.content}
+                          </p>
+                          <button
+                            onClick={() => deleteAnnouncement(ann.id)}
+                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {ann.targetRoles && ann.targetRoles.map((r: string) => (
+                            <span key={r} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase tracking-widest">{roles.find(role => role.id === r)?.name || r}</span>
+                          ))}
+                          {ann.targetTitles && ann.targetTitles.map((t: string) => (
+                            <span key={t} className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-widest">{t}</span>
+                          ))}
+                          {!ann.targetRoles && !ann.targetTitles && (
+                            <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-500 text-[8px] font-black uppercase tracking-widest">Tất cả mọi người</span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-slate-400">
+                          <Calendar size={10} />
+                          {new Date(ann.createdAt).toLocaleString('vi-VN')}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-20 text-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
+                        <Info size={24} className="text-slate-400" />
+                      </div>
+                      <p className="text-slate-500 font-bold">Chưa có thông báo nào được gửi.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -2724,7 +2866,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             <div className="space-y-6">
               {/* Registration Sub-tabs */}
               <div className={cn(
-                "flex items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md mb-8",
+                "flex items-center overflow-x-auto no-scrollbar gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl w-full sm:w-fit border backdrop-blur-md mb-8 max-w-full",
                 isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
               )}>
                 {[
@@ -2736,16 +2878,16 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     key={tab.id}
                     onClick={() => setRegSubTab(tab.id as any)}
                     className={cn(
-                      "flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0",
+                      "flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all shrink-0 sm:shrink",
                       regSubTab === tab.id
                         ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
                         : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
                     )}
                   >
-                    <tab.icon size={16} />
+                    <tab.icon size={14} className="sm:w-4 sm:h-4 shrink-0" />
                     <span>{tab.label}</span>
                     {tab.id === 'pending' && pendingUsers.length > 0 && (
-                      <span className="bg-rose-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] shadow-lg shadow-rose-500/20">
+                      <span className="bg-rose-500 text-white w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-bold shadow-lg shadow-rose-500/20 shrink-0">
                         {pendingUsers.length}
                       </span>
                     )}

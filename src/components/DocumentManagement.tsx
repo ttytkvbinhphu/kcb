@@ -550,23 +550,15 @@ Yêu cầu tóm tắt:
 Văn bản gốc:
 "${extractedText.substring(0, 15000)}"`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: [{ parts: [{ text: prompt }] }],
-          config: { temperature: 0.25 }
-        })
-      });
+      const { generateGeminiContent } = await import("../lib/gemini");
+      const text = await generateGeminiContent(
+        'gemini-3.5-flash',
+        [{ parts: [{ text: prompt }] }],
+        { temperature: 0.25 }
+      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Mạng bận hoặc máy chủ Gemini tạm thời quá tải, vui lòng thử lại.");
-      }
-      const data = await response.json();
-      if (data.text) {
-        setDocText(data.text);
+      if (text) {
+        setDocText(text);
         showNotification('success', "AI đã đọc nội dung tài liệu và tạo tóm tắt thành công!");
       } else {
         throw new Error("Không thể tạo tóm tắt tự động từ dữ liệu.");
@@ -684,29 +676,20 @@ Bảo đảm định dạng JSON là tuyệt đối hợp lệ và không bị l
 Văn bản gốc:
 "${rawText.substring(0, 15000)}"`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: [{ parts: [{ text: prompt }] }],
-          config: { responseMimeType: 'application/json', temperature: 0.15 }
-        })
-      });
+      const { generateGeminiContent } = await import("../lib/gemini");
+      const text = await generateGeminiContent(
+        'gemini-3.5-flash',
+        [{ parts: [{ text: prompt }] }],
+        { responseMimeType: 'application/json', temperature: 0.15 }
+      );
 
       clearInterval(logTimer);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Mạng bận hoặc máy chủ AI bận phản hồi, vui lòng kích hoạt lại.");
-      }
-      const data = await response.json();
-      
-      if (!data.text) throw new Error("AI không thể chiết xuất thông tin. Hãy kiểm tra văn bản.");
+      if (!text) throw new Error("AI không thể chiết xuất thông tin. Hãy kiểm tra văn bản.");
 
       let parsedData;
       try {
-        let cleanText = data.text.trim();
+        let cleanText = text.trim();
         if (cleanText.includes('```')) {
           const match = cleanText.match(/```(?:json)?([\s\S]*?)```/);
           if (match && match[1]) cleanText = match[1].trim();
@@ -789,7 +772,7 @@ Văn bản gốc:
 
         parsedData = robustParse(cleanText);
       } catch (err) {
-        console.error("Parse JSON failed on content:", data.text, err);
+        console.error("Parse JSON failed on content:", text, err);
         throw new Error("Không thể diễn giải cấu trúc JSON trả về từ AI. Vui lòng thử lại!");
       }
 

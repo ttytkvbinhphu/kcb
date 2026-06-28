@@ -51,6 +51,12 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
   const [currentGrade, setCurrentGrade] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedDetailExcipient, setSelectedDetailExcipient] = useState<any | null>(null);
+  const [isSubCategoryModalOpen, setIsSubCategoryModalOpen] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  
+  useEffect(() => {
+    setSelectedCategoryId('all');
+  }, [type]);
   
   const [formData, setFormData] = useState<any>({
     name: '',
@@ -220,8 +226,13 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
 
       if (type === 'company') {
         if (formData.address) saveData.address = formData.address.trim();
+        if (formData.factoryAddress) saveData.factoryAddress = formData.factoryAddress.trim();
         if (formData.phone) saveData.phone = formData.phone.trim();
         if (formData.fax) saveData.fax = formData.fax.trim();
+        if (formData.factoryPhone) saveData.factoryPhone = formData.factoryPhone.trim();
+        if (formData.factoryFax) saveData.factoryFax = formData.factoryFax.trim();
+        if (formData.email) saveData.email = formData.email.trim();
+        if (formData.website) saveData.website = formData.website.trim();
       }
       
       if ((type === 'ingredient' || type === 'excipient')) {
@@ -275,9 +286,19 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     }
   };
 
-  const filteredItems = items.filter(item => 
-    (item.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredItems = items.filter(item => {
+    const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    if (type === 'ingredient') {
+      if (selectedCategoryId === 'all') return matchesSearch;
+      if (selectedCategoryId === 'none') {
+        const hasCategory = (item.categoryIds && item.categoryIds.length > 0) || item.categoryId;
+        return matchesSearch && !hasCategory;
+      }
+      const itemCategoryIds = Array.isArray(item.categoryIds) ? item.categoryIds : (item.categoryId ? [item.categoryId] : []);
+      return matchesSearch && itemCategoryIds.includes(selectedCategoryId);
+    }
+    return matchesSearch;
+  });
 
   const content = (
     <motion.div 
@@ -314,15 +335,17 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
             >
               <Plus size={16} /> Thêm mới
             </button>
-            <button 
-              onClick={onClose}
-              className={cn(
-                "p-2 rounded-lg sm:rounded-xl transition-colors",
-                isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-              )}
-            >
-              <X size={20} />
-            </button>
+            {onClose && (
+              <button 
+                onClick={onClose}
+                className={cn(
+                  "p-2 rounded-lg sm:rounded-xl transition-colors",
+                  isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                )}
+              >
+                <X size={20} />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -331,29 +354,52 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
         "p-4 border-b",
         isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-200 bg-white/50"
       )}>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input 
-            type="text"
-            placeholder={type === 'company' ? "Tìm kiếm tên công ty..." : `Tìm kiếm ${label.toLowerCase()}...`}
-            className={cn(
-              "w-full pl-10 pr-10 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
-              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
-            )}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input 
+              type="text"
+              placeholder={type === 'company' ? "Tìm kiếm tên công ty..." : `Tìm kiếm ${label.toLowerCase()}...`}
               className={cn(
-                "absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all text-slate-400 hover:text-rose-500",
-                isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-200"
+                "w-full pl-10 pr-10 py-2.5 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm font-medium",
+                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
               )}
-            >
-              <X size={16} />
-            </button>
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className={cn(
+                  "absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all text-slate-400 hover:text-rose-500",
+                  isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-200"
+                )}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {type === 'ingredient' && categories.length > 0 && (
+            <div className="w-full sm:w-64">
+              <select
+                value={selectedCategoryId}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                className={cn(
+                  "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm font-bold cursor-pointer",
+                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-100 border-slate-200 text-slate-900"
+                )}
+              >
+                <option value="all">Tất cả Phân loại ({categories.length})</option>
+                <option value="none">Chưa phân loại</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </div>
@@ -473,170 +519,368 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                        </div>
                      )}
 
-                     {type === 'company' && (item.address || item.phone || item.fax) && (
-                       <div className="flex flex-col gap-0.5 mb-1">
-                         {item.address && (
-                           <p className="text-[10px] text-slate-500 italic truncate">Đ/c: {item.address}</p>
-                         )}
-                         <div className="flex flex-wrap gap-x-2 text-[10px]">
-                           {item.phone && (
-                             <p className="font-black text-indigo-500">SĐT: {item.phone}</p>
-                           )}
-                           {item.fax && (
-                             <p className="font-bold text-slate-400">Fax: {item.fax}</p>
-                           )}
-                         </div>
-                       </div>
-                     )}
-                    {item.description && (
-                      <p className="text-[10px] text-slate-500 line-clamp-2">{item.description}</p>
-                    )}
-                  </div>
-                  <div className="absolute right-3 top-3 flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                     <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenModal(item);
-                      }}
-                      className={cn(
-                        "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
-                        isDarkMode ? "text-slate-400 hover:text-indigo-400 hover:bg-indigo-900/30" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                      )}
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(item.id, item.name);
-                      }}
-                      className={cn(
-                        "p-1.5 rounded-lg transition-colors bg-white/10 sm:bg-transparent",
-                        isDarkMode ? "text-slate-400 hover:text-rose-400 hover:bg-rose-900/30" : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                      )}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20">
-            <Database size={48} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 font-bold">Không tìm thấy {label.toLowerCase()} nào</p>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
+                                                                 {type === 'company' && (item.address || item.factoryAddress || item.phone || item.fax || item.factoryPhone || item.factoryFax || item.email || item.website) && (
+                        <div className="flex flex-col gap-1 mb-1">
+                          {(item.address || item.phone || item.fax) && (
+                            <div className="text-[10px] text-slate-500 italic flex flex-wrap gap-x-2 items-center">
+                              <span>📍 VP: {item.address || 'Chưa cập nhật'}</span>
+                              {item.phone && <span className="font-bold text-indigo-500">📞 SĐT: {item.phone}</span>}
+                              {item.fax && <span className="font-bold text-slate-400">📠 Fax: {item.fax}</span>}
+                            </div>
+                          )}
+                          
+                          {(item.factoryAddress || item.factoryPhone || item.factoryFax) && (
+                            <div className="text-[10px] text-slate-500 italic flex flex-wrap gap-x-2 items-center">
+                              <span>🏭 Nhà máy: {item.factoryAddress || 'Chưa cập nhật'}</span>
+                              {item.factoryPhone && <span className="font-bold text-indigo-500">📞 SĐT: {item.factoryPhone}</span>}
+                              {item.factoryFax && <span className="font-bold text-slate-400">📠 Fax: {item.factoryFax}</span>}
+                            </div>
+                          )}
 
-  return (
-    <>
-      {inline ? (
-        content
-      ) : (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
-          {content}
+                          {(item.email || item.website) && (
+                            <div className="flex flex-wrap gap-x-2 text-[10px] mt-0.5">
+                              {item.email && (
+                                <p className="font-semibold text-teal-600 dark:text-teal-400">✉️ Email: {item.email}</p>
+                              )}
+                              {item.website && (
+                                <a 
+                                  href={item.website.startsWith('http') ? item.website : `https://${item.website}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="font-semibold text-blue-500 hover:underline"
+                                >
+                                  🌐 Web: {item.website}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {item.description && (
+                        <p className={cn(
+                          "text-[10px] leading-relaxed mt-1 font-medium",
+                          isDarkMode ? "text-slate-400" : "text-slate-500"
+                        )}>
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                    {/* Action buttons */}
+                    <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenModal(item);
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-lg transition-colors",
+                          isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-indigo-400" : "hover:bg-slate-100 text-slate-500 hover:text-indigo-600"
+                        )}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.id, item.name);
+                        }}
+                        className={cn(
+                          "p-1.5 rounded-lg transition-colors",
+                          isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-rose-400" : "hover:bg-slate-100 text-slate-500 hover:text-rose-600"
+                        )}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <Database className="w-12 h-12 mb-3 stroke-1" />
+              <p className="text-sm font-semibold">Chưa có {label.toLowerCase()} nào được lưu.</p>
+              <p className="text-xs">Hãy nhấn nút "Thêm mới" để bắt đầu.</p>
+            </div>
+          )}
         </div>
-      )}
 
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+        <div className={cn(
+          "p-4 border-t flex justify-end gap-3",
+          isDarkMode ? "border-slate-800 bg-slate-900/30" : "border-slate-200 bg-white"
+        )}>
+          {inline && type === 'company' && (
+            <button 
+              type="button"
+              onClick={onClose}
               className={cn(
-                "w-full h-full sm:h-auto sm:max-w-md sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col",
-                isDarkMode ? "bg-slate-900 border border-slate-800" : "bg-white"
+                "px-4 py-2 rounded-xl text-xs font-bold transition-all border",
+                isDarkMode ? "bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-800" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
               )}
             >
-              <form onSubmit={handleSave} className="flex flex-col h-full">
+              Đóng
+            </button>
+          )}
+        </div>
+      </motion.div>
+    );
+
+    return (
+      <>
+        {inline ? content : (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+            <div className="absolute inset-0" onClick={onClose} />
+            {content}
+          </div>
+        )}
+
+        <AnimatePresence>
+          {isModalOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={cn(
+                  "w-full h-full sm:h-auto sm:max-w-xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-full sm:max-h-[90vh]",
+                  isDarkMode ? "bg-slate-900 border border-slate-800" : "bg-white"
+                )}
+              >
                 <div className={cn(
                   "p-4 sm:p-6 border-b flex items-center justify-between",
-                  isDarkMode ? "border-slate-800" : "border-slate-100"
+                  isDarkMode ? "border-slate-800 bg-slate-900" : "border-slate-100 bg-white"
                 )}>
-                  <h4 className={cn("font-black text-sm sm:text-base", isDarkMode ? "text-white" : "text-slate-900")}>
-                    {editingItem ? `Chỉnh sửa ${label.toLowerCase()}` : `Thêm ${label.toLowerCase()} mới`}
-                  </h4>
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl">
+                      <Database size={20} />
+                    </div>
+                    <div>
+                      <h4 className={cn("font-black text-base sm:text-lg", isDarkMode ? "text-white" : "text-slate-900")}>
+                        {editingItem ? `Chỉnh sửa ${label}` : `Thêm ${label} mới`}
+                      </h4>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Thông tin danh mục hệ thống</span>
+                    </div>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsModalOpen(false)} 
+                    className={cn(
+                      "p-2 rounded-xl transition-colors",
+                      isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"
+                    )}
+                  >
                     <X size={20} />
                   </button>
                 </div>
-                
-                <div className="flex-1 p-4 sm:p-6 space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên {label.toLowerCase()}</label>
-                    <input
-                      autoFocus
-                      type="text"
-                      required
-                      className={cn(
-                        "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
-                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                      )}
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder={`Ví dụ: ${type === 'ingredient' ? 'Paracetamol' : type === 'excipient' ? 'Lactose' : type === 'company' ? 'Agimexpharm' : 'Kháng sinh'}...`}
-                    />
-                  </div>
 
-                  {type !== 'company' && (
+                <form onSubmit={handleSave} className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
                     <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi khác (Aliases)</label>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          <AnimatePresence mode="popLayout">
-                            {(formData.aliases || []).map((alias: string, idx: number) => (
-                              <motion.div
-                                layout
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                key={`${alias}-${idx}`}
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tên gọi / Nhãn hiệu</label>
+                      <input
+                        type="text"
+                        required
+                        className={cn(
+                          "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                        )}
+                        value={formData.name || ''}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder={`Nhập tên ${label.toLowerCase()}...`}
+                      />
+                    </div>
+
+                    {type === 'company' && (
+                      <>
+                        <div className="space-y-4">
+                          {/* Office Address Group */}
+                          <div className={cn(
+                            "p-4 rounded-xl border space-y-4",
+                            isDarkMode ? "bg-slate-800/20 border-slate-700/60" : "bg-slate-50/50 border-slate-200/60"
+                          )}>
+                            <h4 className="text-xs font-bold text-indigo-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <span>📍</span> Văn phòng đại diện / Trụ sở chính
+                            </h4>
+                            <div>
+                              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Địa chỉ văn phòng</label>
+                              <input
+                                type="text"
                                 className={cn(
-                                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
-                                  isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
+                                  "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                                 )}
-                              >
-                                <span>{alias}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const nextAliases = [...formData.aliases];
-                                    nextAliases.splice(idx, 1);
-                                    setFormData({ ...formData, aliases: nextAliases });
-                                  }}
-                                  className="hover:text-rose-500 transition-colors"
-                                >
-                                  <X size={12} />
-                                </button>
-                              </motion.div>
-                            ))}
-                          </AnimatePresence>
+                                value={formData.address || ''}
+                                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                placeholder="Địa chỉ văn phòng..."
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại văn phòng</label>
+                                <input
+                                  type="text"
+                                  className={cn(
+                                    "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                  )}
+                                  value={formData.phone || ''}
+                                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                  placeholder="Số điện thoại văn phòng..."
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số Fax văn phòng</label>
+                                <input
+                                  type="text"
+                                  className={cn(
+                                    "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                  )}
+                                  value={formData.fax || ''}
+                                  onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
+                                  placeholder="Số Fax văn phòng..."
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Factory Address Group */}
+                          <div className={cn(
+                            "p-4 rounded-xl border space-y-4",
+                            isDarkMode ? "bg-slate-800/20 border-slate-700/60" : "bg-slate-50/50 border-slate-200/60"
+                          )}>
+                            <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <span>🏭</span> Nhà máy sản xuất
+                            </h4>
+                            <div>
+                              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Địa chỉ nhà máy</label>
+                              <input
+                                type="text"
+                                className={cn(
+                                  "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                )}
+                                value={formData.factoryAddress || ''}
+                                onChange={(e) => setFormData({ ...formData, factoryAddress: e.target.value })}
+                                placeholder="Địa chỉ nhà máy..."
+                              />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại nhà máy</label>
+                                <input
+                                  type="text"
+                                  className={cn(
+                                    "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                  )}
+                                  value={formData.factoryPhone || ''}
+                                  onChange={(e) => setFormData({ ...formData, factoryPhone: e.target.value })}
+                                  placeholder="Số điện thoại nhà máy..."
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số Fax nhà máy</label>
+                                <input
+                                  type="text"
+                                  className={cn(
+                                    "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                    isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                  )}
+                                  value={formData.factoryFax || ''}
+                                  onChange={(e) => setFormData({ ...formData, factoryFax: e.target.value })}
+                                  placeholder="Số Fax nhà máy..."
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* General Contact Info */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Email</label>
+                              <input
+                                type="email"
+                                className={cn(
+                                  "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                )}
+                                value={formData.email || ''}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                placeholder="Email liên hệ..."
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Website</label>
+                              <input
+                                type="text"
+                                className={cn(
+                                  "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                                )}
+                                value={formData.website || ''}
+                                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                                placeholder="Ví dụ: www.company.com..."
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="relative">
+                      </>
+                    )}
+
+                    {(type === 'ingredient' || type === 'excipient') && categories.length > 0 && (
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                          Phân loại danh mục
+                        </label>
+                        <select
+                          className={cn(
+                            "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                          )}
+                          value={formData.categoryId || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData({ 
+                              ...formData, 
+                              categoryId: val,
+                              categoryIds: val ? [val] : []
+                            });
+                          }}
+                        >
+                          <option value="">-- Chọn phân loại --</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {(type === 'ingredient' || type === 'excipient') && (
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                          Tên gọi khác / Biến thể (Aliases)
+                        </label>
+                        <div className="flex gap-2 mb-2">
                           <input
                             type="text"
                             className={cn(
-                              "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
+                              "flex-1 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                             )}
-                            placeholder="Nhấn Enter hoặc nút + để thêm..."
                             value={currentAlias}
                             onChange={(e) => setCurrentAlias(e.target.value)}
+                            placeholder="Thêm tên gọi khác..."
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
-                                const value = currentAlias.trim();
-                                if (value && !(formData.aliases || []).includes(value)) {
-                                  setFormData({
-                                    ...formData,
-                                    aliases: [...(formData.aliases || []), value]
-                                  });
+                                const val = currentAlias.trim();
+                                if (val && !formData.aliases.includes(val)) {
+                                  setFormData({ ...formData, aliases: [...formData.aliases, val] });
                                   setCurrentAlias('');
                                 }
                               }
@@ -645,135 +889,68 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              const value = currentAlias.trim();
-                              if (value && !(formData.aliases || []).includes(value)) {
-                                setFormData({
-                                  ...formData,
-                                  aliases: [...(formData.aliases || []), value]
-                                });
+                              const val = currentAlias.trim();
+                              if (val && !formData.aliases.includes(val)) {
+                                setFormData({ ...formData, aliases: [...formData.aliases, val] });
                                 setCurrentAlias('');
                               }
                             }}
-                            className={cn(
-                              "absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all",
-                              currentAlias.trim() 
-                                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/30" 
-                                : "text-slate-400"
-                            )}
+                            className="px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs sm:text-sm border border-slate-700"
                           >
-                            <Plus size={16} />
+                            Thêm
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {(type === 'ingredient' || type === 'excipient') && (
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Phân loại {type === 'ingredient' ? 'hoạt chất' : 'tá dược'}</label>
-                      <div className={cn(
-                        "grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-xl border max-h-40 overflow-y-auto custom-scrollbar",
-                        isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
-                      )}>
-                        {categories.map(cat => {
-                          const isSelected = (formData.categoryIds || []).includes(cat.id) || formData.categoryId === cat.id;
-                          return (
-                            <label 
-                              key={cat.id} 
-                              className={cn(
-                                "flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all border",
-                                isSelected 
-                                  ? (isDarkMode ? "bg-indigo-900/30 border-indigo-500/50 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700")
-                                  : (isDarkMode ? "hover:bg-slate-700 border-transparent text-slate-400" : "hover:bg-white border-transparent text-slate-600")
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                className="sr-only"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const currentIds = Array.isArray(formData.categoryIds) ? formData.categoryIds : (formData.categoryId ? [formData.categoryId] : []);
-                                  let nextIds;
-                                  if (e.target.checked) {
-                                    nextIds = [...new Set([...currentIds, cat.id])];
-                                  } else {
-                                    nextIds = currentIds.filter(id => id !== cat.id);
-                                  }
-                                  setFormData({ ...formData, categoryIds: nextIds, categoryId: nextIds[0] || '' });
-                                }}
-                              />
-                              <div className={cn(
-                                "w-4 h-4 rounded border flex items-center justify-center transition-all",
-                                isSelected
-                                  ? (isDarkMode ? "bg-indigo-600 border-indigo-500" : "bg-indigo-600 border-indigo-600")
-                                  : (isDarkMode ? "bg-slate-900 border-slate-700" : "bg-white border-slate-300")
-                              )}>
-                                {isSelected && <Check size={10} className="text-white" strokeWidth={4} />}
-                              </div>
-                              <span className="text-[11px] font-bold truncate">{cat.name}</span>
-                            </label>
-                          );
-                        })}
-                        {categories.length === 0 && (
-                          <p className="col-span-full text-[10px] text-slate-500 text-center py-2 italic">Chưa có phân loại nào</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {type === 'excipient' && (
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Tầng / Mác / Cấp độ (Grade)</label>
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          <AnimatePresence mode="popLayout">
-                            {(formData.grades || []).map((gr: string, idx: number) => (
-                              <motion.div
-                                layout
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                key={`${gr}-${idx}`}
+                        {formData.aliases && formData.aliases.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {formData.aliases.map((alias, idx) => (
+                              <span 
+                                key={idx}
                                 className={cn(
-                                  "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border",
-                                  isDarkMode ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700"
+                                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
                                 )}
                               >
-                                <span>{gr}</span>
+                                {alias}
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const nextGrades = [...formData.grades];
-                                    nextGrades.splice(idx, 1);
-                                    setFormData({ ...formData, grades: nextGrades });
+                                    setFormData({
+                                      ...formData,
+                                      aliases: formData.aliases.filter((a) => a !== alias)
+                                    });
                                   }}
-                                  className="hover:text-rose-500 transition-colors"
+                                  className="text-slate-400 hover:text-rose-500 ml-1 font-bold"
                                 >
-                                  <X size={12} />
+                                  &times;
                                 </button>
-                              </motion.div>
+                              </span>
                             ))}
-                          </AnimatePresence>
-                        </div>
-                        <div className="relative">
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {type === 'excipient' && (
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                          Tầng / Mác / Cấp độ (Grades)
+                        </label>
+                        <div className="flex gap-2 mb-2">
                           <input
                             type="text"
                             className={cn(
-                              "w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm pr-12",
+                              "flex-1 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
                             )}
-                            placeholder="Nhập mác/grade rồi nhấn Enter hoặc + để thêm..."
                             value={currentGrade}
                             onChange={(e) => setCurrentGrade(e.target.value)}
+                            placeholder="Ví dụ: USP, EP, Food Grade..."
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 e.preventDefault();
-                                const value = currentGrade.trim();
-                                if (value && !(formData.grades || []).includes(value)) {
-                                  setFormData({
-                                    ...formData,
-                                    grades: [...(formData.grades || []), value]
-                                  });
+                                const val = currentGrade.trim();
+                                if (val && !formData.grades.includes(val)) {
+                                  setFormData({ ...formData, grades: [...formData.grades, val] });
                                   setCurrentGrade('');
                                 }
                               }
@@ -782,131 +959,103 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              const value = currentGrade.trim();
-                              if (value && !(formData.grades || []).includes(value)) {
-                                setFormData({
-                                  ...formData,
-                                  grades: [...(formData.grades || []), value]
-                                });
+                              const val = currentGrade.trim();
+                              if (val && !formData.grades.includes(val)) {
+                                setFormData({ ...formData, grades: [...formData.grades, val] });
                                 setCurrentGrade('');
                               }
                             }}
-                            className={cn(
-                              "absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all",
-                              currentGrade.trim()
-                                ? (isDarkMode ? "bg-indigo-600 text-white hover:bg-indigo-500" : "bg-indigo-600 text-white hover:bg-indigo-700")
-                                : "text-slate-400"
-                            )}
+                            className="px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs sm:text-sm border border-slate-700"
                           >
-                            <Plus size={16} />
+                            Thêm
                           </button>
                         </div>
+                        {formData.grades && formData.grades.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {formData.grades.map((grade, idx) => (
+                              <span 
+                                key={idx}
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border",
+                                  isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-600"
+                                )}
+                              >
+                                {grade}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      grades: formData.grades.filter((g) => g !== grade)
+                                    });
+                                  }}
+                                  className="text-slate-400 hover:text-rose-500 ml-1 font-bold"
+                                >
+                                  &times;
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Mô tả / Ghi chú</label>
+                      <textarea
+                        rows={3}
+                        className={cn(
+                          "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm resize-none",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
+                        )}
+                        value={formData.description || ''}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                        placeholder="Thông tin bổ sung..."
+                      />
                     </div>
-                  )}
-
-                  {type === 'company' && (
-                    <>
-                      <div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Địa chỉ</label>
-                        <input
-                          type="text"
-                          className={cn(
-                            "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
-                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                          )}
-                          value={formData.address || ''}
-                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          placeholder="Địa chỉ công ty..."
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số điện thoại</label>
-                          <input
-                            type="text"
-                            className={cn(
-                              "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                            value={formData.phone || ''}
-                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                            placeholder="Số điện thoại liên hệ..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Số Fax</label>
-                          <input
-                            type="text"
-                            className={cn(
-                              "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm",
-                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                            )}
-                            value={formData.fax || ''}
-                            onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
-                            placeholder="Số Fax..."
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Mô tả / Ghi chú</label>
-                    <textarea
-                      rows={3}
-                      className={cn(
-                        "w-full px-4 py-2.5 sm:py-3 rounded-xl border focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm resize-none",
-                        isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-100 text-slate-900"
-                      )}
-                      value={formData.description || ''}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Thông tin bổ sung..."
-                    />
                   </div>
-                </div>
 
-                <div className={cn(
-                  "p-4 sm:p-6 flex gap-2 sm:gap-3",
-                  isDarkMode ? "bg-slate-800/50" : "bg-slate-50"
-                )}>
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className={cn(
-                      "flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm transition-all",
-                      isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700" : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
-                    )}
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className={cn(
-                      "flex-1 py-2.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2",
-                      (isDarkMode ? "shadow-none" : "shadow-indigo-200"),
-                      isSaving && "opacity-70 cursor-not-allowed"
-                    )}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Đang lưu...
-                      </>
-                    ) : (
-                      <>
-                        <Save size={16} />
-                        Lưu lại
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-        {selectedDetailExcipient && (
+                  <div className={cn(
+                    "p-4 sm:p-6 flex gap-2 sm:gap-3",
+                    isDarkMode ? "bg-slate-800/50" : "bg-slate-50"
+                  )}>
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className={cn(
+                        "flex-1 py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm transition-all",
+                        isDarkMode ? "bg-slate-800 text-slate-400 hover:bg-slate-700" : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
+                      )}
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className={cn(
+                        "flex-1 py-2.5 sm:py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2",
+                        (isDarkMode ? "shadow-none" : "shadow-indigo-200"),
+                        isSaving && "opacity-70 cursor-not-allowed"
+                      )}
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Đang lưu...
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          Lưu lại
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+{selectedDetailExcipient && (
           <div 
             onClick={() => setSelectedDetailExcipient(null)}
             className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
@@ -1097,6 +1246,19 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
                 </button>
               </div>
             </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isSubCategoryModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
+            <CatalogManagement
+              type={type === 'ingredient' ? 'ingredient_category' : 'excipient_category'}
+              isDarkMode={isDarkMode}
+              onClose={() => setIsSubCategoryModalOpen(false)}
+              inline={false}
+            />
           </div>
         )}
       </AnimatePresence>

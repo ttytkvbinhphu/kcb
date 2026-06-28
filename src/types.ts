@@ -44,7 +44,7 @@ export interface Drug {
   isClosed?: boolean;
   isRx?: boolean;
   isNew?: boolean;
-  isUpdated?: boolean;
+  isUpdated?: boolean | string;
   status?: 'active' | 'suspended';
   stockStatus?: 'available' | 'low' | 'out' | string;
   expiryStatus?: 'valid' | 'expiring' | 'expired' | string;
@@ -54,6 +54,7 @@ export interface Drug {
   generalAdministrationTime?: string; // Time of intake for general usage (all subjects)
   administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
+    groupTitle?: string; // Tiêu đề nhóm đối tượng (Ví dụ: Điều trị bệnh A)
     category: string; 
     content: string;
     patientGroups?: string[];
@@ -101,6 +102,10 @@ export interface Drug {
       weightNight?: string;
       weightTotalDay?: string;
       weightMaxDose?: string;
+      note?: string; // Ghi chú thêm cho lộ trình này
+      intervalValue?: string; // Số của khoảng cách uống (e.g., "4")
+      intervalUnit?: string;   // Đơn vị của khoảng cách: "giờ", "ngày", "tuần" (e.g., "giờ")
+      timesPerDay?: string;    // Số lần trong ngày (e.g., "3")
     }[];
   }[];
   precautions?: string | { 
@@ -138,6 +143,7 @@ export interface Drug {
   driving?: string;
   interactions?: string;
   incompatibilities?: string;
+  sideEffectsNote?: string;
   specificInteractions?: { target: string; content: string; severity?: string; title?: string; selfIngredient?: string; partnerType?: 'ingredient' | 'group' }[];
   pharmacodynamics?: string | { category: string; content: string }[];
   pharmacokinetics?: string | { category: string; content: string }[];
@@ -245,6 +251,7 @@ export interface UserProfile {
   workspacePatientIds?: string[];
   createdAt?: string;
   updatedAt?: string;
+  powerPoints?: number;
 }
 
 export interface ICD10 {
@@ -276,6 +283,10 @@ export interface Company {
   description?: string;
   address?: string;
   phone?: string;
+  fax?: string;
+  factoryAddress?: string;
+  factoryPhone?: string;
+  factoryFax?: string;
   email?: string;
   website?: string;
 }
@@ -603,6 +614,11 @@ export interface Announcement {
   authorId?: string;
   targetRoles?: string[];
   targetTitles?: string[];
+  type?: 'general' | 'drug_update';
+  drugId?: string;
+  drugName?: string;
+  showInWorkspace?: boolean;
+  showInHeader?: boolean;
 }
 
 export interface AuthLog {

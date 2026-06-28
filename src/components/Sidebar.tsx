@@ -28,8 +28,8 @@ interface SidebarProps {
   featureSettings?: Record<string, any>;
   uid?: string;
   isApproved?: boolean;
-  drugDirectoryViewMode?: 'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies';
-  setDrugDirectoryViewMode?: (mode: 'drugs' | 'groups' | 'ingredients' | 'excipients' | 'companies') => void;
+  drugDirectoryViewMode?: 'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies';
+  setDrugDirectoryViewMode?: (mode: 'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies') => void;
 }
 
 interface SidebarItem {
@@ -130,6 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'admin_general', label: 'Cài đặt chung', icon: Globe, section: 'admin', group: 'admin' },
       { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
       { id: 'admin_home', label: 'Công cụ', icon: LayoutGrid, section: 'admin', group: 'admin' },
+      { id: 'admin_notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, section: 'admin', group: 'admin' },
       { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
       { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users, section: 'admin', group: 'admin' },
       

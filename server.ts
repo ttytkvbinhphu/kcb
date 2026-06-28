@@ -132,7 +132,7 @@ async function startServer() {
 
   app.post("/api/gemini/generate", async (req, res) => {
     if (!ai) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
+      return res.json({ error: "GEMINI_API_KEY is not configured" });
     }
 
     const { model, contents, config } = req.body;
@@ -143,8 +143,8 @@ async function startServer() {
       selectedModel = "gemini-3.5-flash";
     }
 
-    // Prioritized list of models to try
-    const candidates = [selectedModel, "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.1-pro-preview"];
+    // Prioritized list of models to try (prioritize gemini-flash-latest as first fallback)
+    const candidates = [selectedModel, "gemini-flash-latest", "gemini-3.1-flash-lite", "gemini-3.1-pro-preview"];
     // Deduplicate candidate list
     const modelPool = Array.from(new Set(candidates));
 
@@ -217,13 +217,18 @@ async function startServer() {
           return res.json({ text: response.text });
         } catch (error: any) {
           lastError = error;
-          const errMsg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+          let errMsg = "";
+          try {
+            errMsg = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+          } catch (_) {
+            errMsg = error?.message || String(error);
+          }
           console.log(`Gemini API call failed with model ${currentModel} on attempt ${attempt}/${maxAttempts}: ${errMsg}`);
           
           const isTransient = isErrorTransient(error);
           // If it is transient and we have more attempts for this model, wait and retry
           if (isTransient && attempt < maxAttempts) {
-            const delay = Math.pow(1.8, attempt) * 400 + Math.floor(Math.random() * 200);
+            const delay = Math.pow(1.5, attempt) * 300 + Math.floor(Math.random() * 100);
             console.log(`Transient error detected on ${currentModel}. Retrying in ${Math.round(delay)}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           } else {
@@ -245,7 +250,7 @@ async function startServer() {
       }
     }
     
-    res.status(503).json({ error: readableErrorMsg });
+    return res.json({ error: readableErrorMsg });
   });
 
   // Vite middleware for development

@@ -71,6 +71,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     setIsIcdDetailModalOpen(true);
   };
   const [loading, setLoading] = useState(true);
+  const [loadingPercentage, setLoadingPercentage] = useState(0);
   const [drugSearchTerm, setDrugSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
@@ -199,6 +200,23 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       unsubscribeDrugs();
     };
   }, []);
+
+  useEffect(() => {
+    if (icdList.length === 0) {
+      setLoadingPercentage(0);
+      const interval = setInterval(() => {
+        setLoadingPercentage(prev => {
+          if (prev < 30) return prev + Math.floor(Math.random() * 5) + 3;
+          if (prev < 70) return prev + Math.floor(Math.random() * 3) + 1;
+          if (prev < 98) return prev + (Math.random() > 0.45 ? 1 : 0);
+          return prev;
+        });
+      }, 100);
+      return () => clearInterval(interval);
+    } else {
+      setLoadingPercentage(100);
+    }
+  }, [icdList.length]);
 
   const filteredList = useMemo(() => {
     const list = icdList.filter(icd => {
@@ -1795,8 +1813,20 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               </div>
             ))
           ) : (
-            <div className="p-8 text-center">
-              <p className="text-slate-400 text-sm font-medium">Không tìm thấy mã ICD-10 nào.</p>
+            <div className="p-12 text-center flex flex-col items-center justify-center">
+              {icdList.length === 0 ? (
+                <>
+                  <Loader2 size={36} className="text-emerald-500 animate-spin mb-4" />
+                  <p className={cn("font-bold text-sm text-slate-400", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                    Đang tải và đồng bộ danh mục mã ICD-10 từ máy chủ ({loadingPercentage}%)...
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-1.5 opacity-80 font-medium">
+                    Hệ thống đang thiết lập cơ sở dữ liệu cho lần đầu truy cập, vui lòng đợi trong giây lát.
+                  </p>
+                </>
+              ) : (
+                <p className="text-slate-400 text-sm font-medium">Không tìm thấy mã ICD-10 nào.</p>
+              )}
             </div>
           )}
         </div>
@@ -1809,7 +1839,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 "transition-colors border-b",
                 isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
-                <th className={cn("w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mã ICD-10</th>
+                <th className={cn("w-20 min-w-[80px] max-w-[80px] sm:w-24 sm:min-w-[96px] sm:max-w-[96px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mã bệnh</th>
                 <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Mô tả bệnh</th>
                 {canSeeAppendixA2 && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors text-center", isDarkMode ? "text-slate-500" : "text-slate-400")}>Nguyên tắc</th>}
                 <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors text-center", isDarkMode ? "text-slate-500" : "text-slate-400")}>
@@ -1831,11 +1861,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   </div>
                 </th>
                 {isDrugSuggestionsAllowed && (
-                  <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Gợi ý thuốc</th>
+                  <th className={cn("w-56 min-w-[224px] max-w-[224px] lg:w-64 lg:min-w-[256px] lg:max-w-[256px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Gợi ý thuốc</th>
                 )}
                 {canSeeNotes && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Ghi chú</th>}
-                {!canManage && canSeeShortcuts && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Phím tắt</th>}
-                {canManage && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest text-right transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Quản lý</th>}
+                {!canManage && canSeeShortcuts && <th className={cn("w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Phím tắt</th>}
+                {canManage && <th className={cn("w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest text-right transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Quản lý</th>}
               </tr>
             </thead>
             <tbody className={cn(
@@ -1853,7 +1883,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       : (isDarkMode ? "hover:bg-slate-800/50" : "hover:bg-slate-50/80")
                   )}
                 >
-                  <td className="w-24 sm:w-32 lg:w-40 px-4 sm:px-6 lg:px-8 py-5">
+                  <td className="w-20 min-w-[80px] max-w-[80px] sm:w-24 sm:min-w-[96px] sm:max-w-[96px] px-4 sm:px-6 lg:px-8 py-5">
                     <span className={cn(
                       "px-2.5 lg:px-3 py-1 rounded-md font-mono font-bold text-[10px] lg:text-xs tracking-tight transition-colors border shadow-sm",
                       isDarkMode ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30" : "bg-emerald-50/50 text-emerald-700 border-emerald-100"
@@ -1995,7 +2025,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </div>
                   </td>
                   {isDrugSuggestionsAllowed && (
-                    <td className="px-4 sm:px-6 lg:px-8 py-4">
+                    <td className="w-56 min-w-[224px] max-w-[224px] lg:w-64 lg:min-w-[256px] lg:max-w-[256px] px-4 sm:px-6 lg:px-8 py-4">
                       <div className="flex flex-wrap gap-1.5">
                         {drugsByIcd[(icd.code || '').trim().toUpperCase()] && drugsByIcd[(icd.code || '').trim().toUpperCase()].length > 0 ? (
                           drugsByIcd[(icd.code || '').trim().toUpperCase()].map((drugName, idx) => (
@@ -2035,8 +2065,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </td>
                   )}
                   {!canManage && canSeeShortcuts && (
-                    <td className="px-4 sm:px-6 lg:px-8 py-4">
-                      <div className="grid grid-cols-2 gap-1.5 w-fit">
+                    <td className="w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4">
+                      <div className="flex flex-col gap-1.5 items-center justify-center">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleTogglePin(icd); }}
                           className={cn(
@@ -2065,7 +2095,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </td>
                   )}
                   {canManage && (
-                    <td className="px-4 sm:px-6 lg:px-8 py-4 text-right">
+                    <td className="w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-right">
                       <div className="flex justify-end gap-1 lg:gap-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleOpenModal(icd); }}
@@ -2099,23 +2129,37 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               {filteredList.length === 0 && (
                 <tr key="empty-results-row">
                   <td colSpan={3 + (canSeeAppendixA2 ? 1 : 0) + (isDrugSuggestionsAllowed ? 1 : 0) + (canSeeNotes ? 1 : 0) + (!canManage && canSeeShortcuts ? 1 : 0) + (canManage ? 1 : 0)} className="px-8 py-20 text-center">
-                    <div className={cn(
-                      "w-16 lg:w-20 h-16 lg:h-20 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors",
-                      isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                    )}>
-                      <Search size={32} className={isDarkMode ? "text-slate-600" : "text-slate-300"} />
-                    </div>
-                    <p className={cn("font-bold text-base lg:text-lg transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>Không tìm thấy mã bệnh nào phù hợp.</p>
-                    {searchTerm && (
-                      <button 
-                        onClick={() => setSearchTerm('')}
-                        className={cn(
-                          "mt-4 font-bold text-sm hover:underline transition-colors",
-                          isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                    {icdList.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6">
+                        <Loader2 size={40} className="text-emerald-500 animate-spin mb-4" />
+                        <p className={cn("font-bold text-base lg:text-lg transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          Đang tải và đồng bộ danh mục mã ICD-10 từ máy chủ ({loadingPercentage}%)...
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1.5 opacity-80 font-medium">
+                          Hệ thống đang thiết lập cơ sở dữ liệu cho lần đầu truy cập, vui lòng đợi trong giây lát.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={cn(
+                          "w-16 lg:w-20 h-16 lg:h-20 rounded-full flex items-center justify-center mx-auto mb-4 transition-colors",
+                          isDarkMode ? "bg-slate-800" : "bg-slate-50"
+                        )}>
+                          <Search size={32} className={isDarkMode ? "text-slate-600" : "text-slate-300"} />
+                        </div>
+                        <p className={cn("font-bold text-base lg:text-lg transition-colors", isDarkMode ? "text-slate-400" : "text-slate-500")}>Không tìm thấy mã bệnh nào phù hợp.</p>
+                        {searchTerm && (
+                          <button 
+                            onClick={() => setSearchTerm('')}
+                            className={cn(
+                              "mt-4 font-bold text-sm hover:underline transition-colors",
+                              isDarkMode ? "text-emerald-400" : "text-emerald-600"
+                            )}
+                          >
+                            Xóa tìm kiếm
+                          </button>
                         )}
-                      >
-                        Xóa tìm kiếm
-                      </button>
+                      </>
                     )}
                   </td>
                 </tr>
