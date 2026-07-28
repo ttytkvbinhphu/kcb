@@ -37,6 +37,7 @@ import {
   ChevronUp,
   ChevronDown,
   Star,
+  ThumbsUp,
   Database,
   AlertCircle,
   Calendar,
@@ -45,9 +46,12 @@ import {
   FileSearch,
   Lightbulb,
   Link,
+  Link2,
   Pause,
   MoreVertical,
   Lock,
+  ClipboardList,
+  CheckCircle2,
 } from "lucide-react";
 import { Drug, DrugGroup, Ingredient, ManualInteraction } from "../types";
 import { subscribeICD10 } from "../lib/icdStore";
@@ -1288,6 +1292,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     overdoseManagement: "",
     adrManagement: "",
     isWHOGMP: false,
+    isEUGMP: false,
     isTCCS: false,
     isCYP3A4: false,
     storageCondition: "",
@@ -1353,6 +1358,121 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
   const [selectedInteractionIngredient, setSelectedInteractionIngredient] =
     useState<string>("all");
 
+  // States for Báo cáo số lượng (Quantity Report)
+  const [selectedReportLotIndex, setSelectedReportLotIndex] = useState<string>("0");
+  const [reportLotNumber, setReportLotNumber] = useState<string>("");
+  const [reportExpiryDate, setReportExpiryDate] = useState<string>("");
+  const [reportQuantity, setReportQuantity] = useState<string>("");
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [reportSuccessMsg, setReportSuccessMsg] = useState<string | null>(null);
+
+  // Sync quantity report input fields when formData.lots or selected lot changes
+  useEffect(() => {
+    if (formData.lots && formData.lots.length > 0) {
+      const idxNum = Number(selectedReportLotIndex);
+      const targetLot = formData.lots[idxNum] || formData.lots[0];
+      if (targetLot && selectedReportLotIndex !== "new") {
+        setReportLotNumber(targetLot.lotNumber || "");
+        setReportExpiryDate(targetLot.expiryDate || "");
+        setReportQuantity(targetLot.quantity !== undefined && targetLot.quantity !== null ? String(targetLot.quantity) : "");
+        if (targetLot.reportDate) {
+          setReportDate(targetLot.reportDate);
+        }
+      }
+    } else {
+      if (selectedReportLotIndex !== "new") {
+        setReportLotNumber(formData.lotNumber || "");
+        setReportExpiryDate(formData.expiryDate || "");
+        setReportQuantity(formData.stockQuantity !== undefined && formData.stockQuantity !== null ? String(formData.stockQuantity) : "");
+        if (formData.lastReportDate) {
+          setReportDate(formData.lastReportDate);
+        }
+      }
+    }
+  }, [formData.lots, selectedReportLotIndex]);
+
+  const handleSaveQuantityReport = () => {
+    const currentLots = [...(formData.lots || [])];
+    const qVal = reportQuantity !== "" ? Number(reportQuantity) : 0;
+    const repDate = reportDate || new Date().toISOString().split("T")[0];
+
+    let updatedLots = [...currentLots];
+
+    if (selectedReportLotIndex !== "" && selectedReportLotIndex !== "new") {
+      const idx = Number(selectedReportLotIndex);
+      if (updatedLots[idx]) {
+        updatedLots[idx] = {
+          ...updatedLots[idx],
+          lotNumber: reportLotNumber.trim() || updatedLots[idx].lotNumber,
+          expiryDate: reportExpiryDate || updatedLots[idx].expiryDate,
+          quantity: qVal,
+          reportDate: repDate,
+        };
+      }
+    } else {
+      const existingIdx = updatedLots.findIndex(
+        (l) => l.lotNumber.trim().toLowerCase() === reportLotNumber.trim().toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        updatedLots[existingIdx] = {
+          ...updatedLots[existingIdx],
+          lotNumber: reportLotNumber.trim() || updatedLots[existingIdx].lotNumber,
+          expiryDate: reportExpiryDate || updatedLots[existingIdx].expiryDate,
+          quantity: qVal,
+          reportDate: repDate,
+        };
+        setSelectedReportLotIndex(String(existingIdx));
+      } else {
+        const newLotObj = {
+          lotNumber: reportLotNumber.trim() || "Lô mới",
+          expiryDate: reportExpiryDate || "",
+          quantity: qVal,
+          reportDate: repDate,
+        };
+        updatedLots.push(newLotObj);
+        setSelectedReportLotIndex(String(updatedLots.length - 1));
+      }
+    }
+
+    const totalQty = updatedLots.reduce((acc, l) => acc + (Number(l.quantity) || 0), 0);
+
+    let suggestedStockStatus = formData.stockStatus;
+    if (totalQty === 0) {
+      suggestedStockStatus = "out";
+    } else if (totalQty <= 50) {
+      suggestedStockStatus = "low";
+    } else {
+      suggestedStockStatus = "available";
+    }
+
+    const newReportLog = {
+      id: Math.random().toString(36).substring(2, 9),
+      lotNumber: reportLotNumber || (updatedLots[0]?.lotNumber ?? ""),
+      expiryDate: reportExpiryDate || (updatedLots[0]?.expiryDate ?? ""),
+      quantity: qVal,
+      reportDate: repDate,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedReports = [newReportLog, ...(formData.quantityReports || [])];
+
+    setFormData({
+      ...formData,
+      lots: updatedLots,
+      stockQuantity: totalQty,
+      lastReportDate: repDate,
+      stockStatus: suggestedStockStatus,
+      quantityReports: updatedReports,
+    });
+
+    const displayLotName = reportLotNumber || (updatedLots[0]?.lotNumber ? updatedLots[0].lotNumber : "Lô");
+    const displayDateStr = repDate.split("-").reverse().join("/");
+    setReportSuccessMsg(`Đã cập nhật báo cáo số lượng (${qVal}) cho ${displayLotName} (Ngày BC: ${displayDateStr})`);
+    setTimeout(() => {
+      setReportSuccessMsg(null);
+    }, 3500);
+  };
+
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
   >({
@@ -1398,6 +1518,23 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
       }
     }
   }, [formData.expiryDate, formData.expiryAlertMonths, formData.expiryStatus]);
+
+  // Prevent accidentally closing or reloading the page while adding/editing a drug
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const message = "Bạn đang thêm hoặc chỉnh sửa thông tin thuốc. Thay đổi của bạn có thể không được lưu nếu bạn rời khỏi trang.";
+      e.preventDefault();
+      e.returnValue = message;
+      return message;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isModalOpen]);
 
   // Lock scroll on outer container when a drug is selected (Mobile only)
   useEffect(() => {
@@ -1693,6 +1830,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     "all" | "suggested" | "not_suggested"
   >("all");
 
+  const [daggerSearchTerm, setDaggerSearchTerm] = useState("");
+  const [asteriskSearchTerm, setAsteriskSearchTerm] = useState("");
+  const [activeDoubleIcdIndex, setActiveDoubleIcdIndex] = useState<number | null>(null);
+  const [isDaggerFocused, setIsDaggerFocused] = useState(false);
+  const [isAsteriskFocused, setIsAsteriskFocused] = useState(false);
+
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
     new Set(),
   );
@@ -1964,17 +2107,19 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         );
       })
       .sort((a, b) => {
-        // Prioritize new drugs (isNew) to the top
-        const aNew = !!a.isNew;
-        const bNew = !!b.isNew;
-        if (aNew && !bNew) return -1;
-        if (!aNew && bNew) return 1;
+        if (!isGuestUser) {
+          // Prioritize new drugs (isNew) to the top
+          const aNew = !!a.isNew;
+          const bNew = !!b.isNew;
+          if (aNew && !bNew) return -1;
+          if (!aNew && bNew) return 1;
 
-        // Prioritize updated drugs (isUpdated) below new drugs, but above others
-        const aUpdated = !!a.isUpdated;
-        const bUpdated = !!b.isUpdated;
-        if (aUpdated && !bUpdated) return -1;
-        if (!aUpdated && bUpdated) return 1;
+          // Prioritize updated drugs (isUpdated) below new drugs, but above others
+          const aUpdated = !!a.isUpdated;
+          const bUpdated = !!b.isUpdated;
+          if (aUpdated && !bUpdated) return -1;
+          if (!aUpdated && bUpdated) return 1;
+        }
 
         // Sort "Hết hàng" (out of stock) to the bottom
         const aOut = a.stockStatus === "out";
@@ -1995,6 +2140,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     statusFilter,
     stockFilter,
     dosageFormFilter,
+    userRole,
   ]);
 
   useEffect(() => {
@@ -2107,7 +2253,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         administrationRoute: clonedDrug.administrationRoute || "",
         isRx: !!clonedDrug.isRx,
         isNew: !!clonedDrug.isNew,
-        isUpdated: !!clonedDrug.isUpdated,
+        isUpdated: clonedDrug.isUpdated !== undefined ? clonedDrug.isUpdated : false,
         stockStatus: clonedDrug.stockStatus || "available",
         expiryStatus: clonedDrug.expiryStatus || "valid",
         activeIngredients: (clonedDrug.activeIngredients || []).map(
@@ -2157,6 +2303,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           icd10s: i.icd10s || (i.icd10 ? [i.icd10] : []),
           defaultIcd10s:
             i.defaultIcd10s || (i.defaultIcd10 ? [i.defaultIcd10] : []),
+          betterAlternativeIcd10s: i.betterAlternativeIcd10s || [],
+          notRecommendedIcd10s: i.notRecommendedIcd10s || [],
         })),
         contraindications: (clonedDrug.contraindications || []).map((c: any) =>
           typeof c === "string" ? { content: c, type: "Other" } : c,
@@ -2248,6 +2396,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             : []),
         expiryAlertMonths: clonedDrug.expiryAlertMonths ?? 3,
         isWHOGMP: !!clonedDrug.isWHOGMP,
+        isEUGMP: !!clonedDrug.isEUGMP,
         isTCCS: !!clonedDrug.isTCCS,
         isCYP3A4: !!clonedDrug.isCYP3A4,
         storageCondition: clonedDrug.storageCondition || "",
@@ -2277,7 +2426,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         manufacturer: "",
         mechanismOfAction: "",
         mechanismOfActionLabel: "",
-        indications: [{ content: "", icd10s: [], defaultIcd10s: [] }],
+        indications: [{ content: "", icd10s: [], defaultIcd10s: [], betterAlternativeIcd10s: [], notRecommendedIcd10s: [] }],
         contraindications: [{ content: "", type: "Other" }],
         sideEffects: [],
         sideEffectsType: "general",
@@ -2311,6 +2460,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         overdoseManagement: "",
         adrManagement: "",
         isWHOGMP: false,
+        isEUGMP: false,
         isTCCS: false,
         isCYP3A4: false,
         storageCondition: "",
@@ -2513,8 +2663,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
               try {
                 uploadTask.cancel();
               } catch (_) {}
-              reject(new Error("Upload timeout (quá thời gian tải lên - 10 giây)"));
-            }, 10000)
+              reject(new Error("Upload timeout (quá thời gian tải lên - 90 giây)"));
+            }, 90000)
           );
 
           finalPdfUrl = await Promise.race([uploadPromise, timeoutPromise]);
@@ -3504,7 +3654,48 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3 lg:gap-4 lg:ml-auto">
+          {/* Thống kê thuốc float right */}
+          <div className="flex items-center gap-2 lg:gap-3">
+            {/* Tổng thuốc Card */}
+            <div className={cn(
+              "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border transition-all shadow-sm",
+              isDarkMode 
+                ? "bg-slate-900/60 border-slate-800 text-slate-100" 
+                : "bg-blue-50/50 border-blue-100/60 text-slate-800"
+            )}>
+              <div className={cn(
+                "p-1 rounded-lg",
+                isDarkMode ? "bg-blue-500/10 text-blue-400" : "bg-blue-100 text-blue-600"
+              )}>
+                <Pill size={12} className="text-blue-500" />
+              </div>
+              <div className="text-left">
+                <p className={cn("text-[9px] font-black uppercase tracking-wider leading-none", isDarkMode ? "text-slate-400" : "text-slate-500")}>Tổng thuốc</p>
+                <p className="text-xs font-black tracking-tight mt-0.5">{drugs.length}</p>
+              </div>
+            </div>
+
+            {/* Hoạt chất Card */}
+            <div className={cn(
+              "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl border transition-all shadow-sm",
+              isDarkMode 
+                ? "bg-slate-900/60 border-slate-800 text-slate-100" 
+                : "bg-emerald-50/50 border-emerald-100/60 text-slate-800"
+            )}>
+              <div className={cn(
+                "p-1 rounded-lg",
+                isDarkMode ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-100 text-emerald-600"
+              )}>
+                <Activity size={12} className="text-emerald-500" />
+              </div>
+              <div className="text-left">
+                <p className={cn("text-[9px] font-black uppercase tracking-wider leading-none", isDarkMode ? "text-slate-400" : "text-slate-500")}>Hoạt chất</p>
+                <p className="text-xs font-black tracking-tight mt-0.5">{availableIngredients.length}</p>
+              </div>
+            </div>
+          </div>
+
           {!onExternalViewModeChange && (
             <div className={cn(!getPortalNode() ? "w-full overflow-x-auto no-scrollbar py-1" : "hidden lg:block")}>
               {viewModeToggle}
@@ -3647,7 +3838,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                           : "Tìm theo hoạt chất..."
                     }
                     className={cn(
-                      "w-full pl-10 pr-28 lg:pl-12 lg:pr-32 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl focus:ring-0 transition-all text-xs lg:text-sm font-bold",
+                      "w-full pl-10 pr-28 lg:pl-12 lg:pr-32 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl focus:ring-0 transition-all text-xs font-bold",
                       isDarkMode
                         ? "bg-slate-800/50 text-white placeholder:text-slate-600"
                         : "bg-slate-50 text-slate-900 placeholder:text-slate-400",
@@ -3700,7 +3891,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                           />
                           <select
                             className={cn(
-                              "w-full sm:w-40 pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
+                              "w-full sm:w-40 pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs font-bold transition-all",
                               isDarkMode
                                 ? "bg-slate-800/50 text-slate-300"
                                 : "bg-slate-50 text-slate-600",
@@ -3762,7 +3953,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             )}
                             size={14}
                           />
-                          <span className="text-xs lg:text-sm font-bold truncate">
+                          <span className="text-xs font-bold truncate">
                             {groupFilter === "Tất cả"
                               ? "Tất cả nhóm thuốc"
                               : drugGroups.find((g) => g.id === groupFilter)
@@ -3895,38 +4086,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                         </AnimatePresence>
                       </div>
 
-                      {canSeeStatusColumn && (
-                        <div className="relative flex-1 sm:flex-none min-w-[140px] group">
-                          <Database
-                            className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"
-                            size={14}
-                          />
-                          <select
-                            className={cn(
-                              "w-full pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs lg:text-sm font-bold transition-all",
-                              stockFilter !== "all"
-                                ? isDarkMode
-                                  ? "bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/50"
-                                  : "bg-blue-50 text-blue-600 ring-1 ring-blue-200"
-                                : isDarkMode
-                                  ? "bg-slate-800/50 text-slate-300"
-                                  : "bg-slate-50 text-slate-600",
-                            )}
-                            value={stockFilter}
-                            onChange={(e) => setStockFilter(e.target.value)}
-                          >
-                            <option value="all">Tất cả tình trạng</option>
-                            <option value="available">Còn hàng</option>
-                            <option value="low">Sắp hết</option>
-                            <option value="out">Hết hàng</option>
-                          </select>
-                          <ChevronRight
-                            className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90"
-                            size={14}
-                          />
-                        </div>
-                      )}
-
                       <div
                         className="relative flex-1 sm:flex-none min-w-[140px] group"
                         ref={dosageFormFilterRef}
@@ -3966,7 +4125,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             )}
                             size={14}
                           />
-                          <span className="text-xs lg:text-sm font-bold truncate">
+                          <span className="text-xs font-bold truncate">
                             {dosageFormFilter === "all"
                               ? "Tất cả bào chế"
                               : dosageFormFilter}
@@ -4085,6 +4244,38 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                           )}
                         </AnimatePresence>
                       </div>
+
+                      {canSeeStatusColumn && (
+                        <div className="relative flex-1 sm:flex-none min-w-[140px] group">
+                          <Database
+                            className="absolute left-3 lg:left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors"
+                            size={14}
+                          />
+                          <select
+                            className={cn(
+                              "w-full pl-9 lg:pl-11 pr-8 lg:pr-10 py-2.5 lg:py-4 border-none rounded-xl lg:rounded-2xl appearance-none focus:ring-0 cursor-pointer text-xs font-bold transition-all",
+                              stockFilter !== "all"
+                                ? isDarkMode
+                                  ? "bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/50"
+                                  : "bg-blue-50 text-blue-600 ring-1 ring-blue-200"
+                                : isDarkMode
+                                  ? "bg-slate-800/50 text-slate-300"
+                                  : "bg-slate-50 text-slate-600",
+                            )}
+                            value={stockFilter}
+                            onChange={(e) => setStockFilter(e.target.value)}
+                          >
+                            <option value="all">Tất cả tình trạng</option>
+                            <option value="available">Còn hàng</option>
+                            <option value="low">Sắp hết</option>
+                            <option value="out">Hết hàng</option>
+                          </select>
+                          <ChevronRight
+                            className="absolute right-3 lg:right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none rotate-90"
+                            size={14}
+                          />
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -4295,11 +4486,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     disabled={ingredientPage === 1}
                     onClick={() => {
                       setIngredientPage((prev) => Math.max(1, prev - 1));
-                      const container = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (container)
-                        container.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-1.5 rounded-lg border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50",
@@ -4333,14 +4519,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             type="button"
                             onClick={() => {
                               setIngredientPage(page);
-                              const container = document.querySelector(
-                                ".drug-list-container",
-                              );
-                              if (container)
-                                container.scrollTo({
-                                  top: 0,
-                                  behavior: "smooth",
-                                });
                             }}
                             className={cn(
                               "w-8 h-8 rounded-lg text-[10px] font-black transition-all active:scale-90 flex items-center justify-center border",
@@ -4375,11 +4553,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       setIngredientPage((prev) =>
                         Math.min(totalIngredientPages, prev + 1),
                       );
-                      const container = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (container)
-                        container.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-1.5 rounded-lg border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50",
@@ -4807,11 +4980,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     disabled={currentPage === 1}
                     onClick={() => {
                       setCurrentPage((prev) => Math.max(1, prev - 1));
-                      const scrollElement = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (scrollElement)
-                        scrollElement.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-1.5 lg:p-2 rounded-lg lg:rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50",
@@ -4827,11 +4995,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     disabled={currentPage === totalPages}
                     onClick={() => {
                       setCurrentPage((prev) => Math.min(totalPages, prev + 1));
-                      const scrollElement = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (scrollElement)
-                        scrollElement.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-1.5 lg:p-2 rounded-lg lg:rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50",
@@ -5016,13 +5179,13 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             Rx
                           </span>
                         )}
-                        {drug.isNew && (
+                        {!isGuestUser && drug.isNew && (
                           <span className="shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 rounded-md font-black border border-emerald-500/20 flex items-center gap-0.5">
                             <Sparkles size={8} className="text-emerald-500" />
                             Mới
                           </span>
                         )}
-                        {drug.isUpdated && (
+                        {!isGuestUser && drug.isUpdated && (
                           <span className={cn(
                             "shrink-0 text-[7px] lg:text-[8px] px-1 lg:px-1.5 py-0.5 rounded-md font-black border flex items-center gap-0.5",
                             drug.isUpdated === 'updating'
@@ -5660,11 +5823,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     disabled={currentPage === 1}
                     onClick={() => {
                       setCurrentPage((prev) => Math.max(1, prev - 1));
-                      const scrollElement = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (scrollElement)
-                        scrollElement.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-1.5 lg:p-2 rounded-lg lg:rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
@@ -5697,14 +5855,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               type="button"
                               onClick={() => {
                                 setCurrentPage(page);
-                                const scrollElement = document.querySelector(
-                                  ".drug-list-container",
-                                );
-                                if (scrollElement)
-                                  scrollElement.scrollTo({
-                                    top: 0,
-                                    behavior: "smooth",
-                                  });
                               }}
                               className={cn(
                                 "w-8 h-8 lg:w-10 lg:h-10 rounded-lg lg:rounded-xl text-[10px] lg:text-sm font-black transition-all active:scale-90 flex items-center justify-center border",
@@ -5738,11 +5888,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                     disabled={currentPage === totalPages}
                     onClick={() => {
                       setCurrentPage((prev) => Math.min(totalPages, prev + 1));
-                      const scrollElement = document.querySelector(
-                        ".drug-list-container",
-                      );
-                      if (scrollElement)
-                        scrollElement.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className={cn(
                       "p-2 rounded-xl border flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100",
@@ -7557,6 +7702,26 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 onClick={() =>
                                   setFormData({
                                     ...formData,
+                                    isEUGMP: !formData.isEUGMP,
+                                  })
+                                }
+                                className={cn(
+                                  "flex-1 flex items-center justify-center gap-2 px-4 py-3 border rounded-xl text-xs sm:text-sm font-black transition-all shadow-sm active:scale-95",
+                                  formData.isEUGMP
+                                    ? "bg-purple-500 border-purple-400 text-white hover:bg-purple-600"
+                                    : isDarkMode
+                                      ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-755/20"
+                                      : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50",
+                                )}
+                              >
+                                {formData.isEUGMP && <Check size={16} />}
+                                Đạt GMP Châu Âu
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData({
+                                    ...formData,
                                     isTCCS: !formData.isTCCS,
                                   })
                                 }
@@ -8625,6 +8790,290 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 />
                               </button>
                             </div>
+
+                            {/* --- BÁO CÁO SỐ LƯỢNG (QUANTITY REPORT) --- */}
+                            <div className="mt-6 pt-5 border-t border-slate-200/80 dark:border-slate-700/80">
+                              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div
+                                    className={cn(
+                                      "p-2 rounded-xl",
+                                      isDarkMode
+                                        ? "bg-emerald-500/20 text-emerald-400"
+                                        : "bg-emerald-100 text-emerald-700",
+                                    )}
+                                  >
+                                    <ClipboardList size={18} />
+                                  </div>
+                                  <div>
+                                    <h5
+                                      className={cn(
+                                        "text-xs font-black uppercase tracking-wider",
+                                        isDarkMode
+                                          ? "text-slate-200"
+                                          : "text-slate-800",
+                                      )}
+                                    >
+                                      Báo cáo số lượng
+                                    </h5>
+                                    <p className="text-[10px] text-slate-500 font-bold">
+                                      Cập nhật số lượng và ngày báo cáo theo Số lô & Hạn dùng
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {formData.stockQuantity !== undefined && (
+                                  <div
+                                    className={cn(
+                                      "px-3 py-1 rounded-full text-xs font-black flex items-center gap-1.5 border",
+                                      isDarkMode
+                                        ? "bg-slate-900 border-slate-700 text-emerald-400"
+                                        : "bg-white border-slate-200 text-emerald-700 shadow-xs",
+                                    )}
+                                  >
+                                    <span>Tổng tồn kho:</span>
+                                    <span className="text-sm font-extrabold">
+                                      {formData.stockQuantity}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Grid Inputs */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                                {/* Selection: Số lô & Hạn dùng */}
+                                <div className="col-span-1 sm:col-span-2 lg:col-span-1">
+                                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                    Lựa Số lô & Hạn dùng
+                                  </label>
+                                  <select
+                                    value={selectedReportLotIndex}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setSelectedReportLotIndex(val);
+                                      if (val === "new") {
+                                        setReportLotNumber("");
+                                        setReportExpiryDate("");
+                                        setReportQuantity("");
+                                      } else if (
+                                        val !== "" &&
+                                        formData.lots &&
+                                        formData.lots[Number(val)]
+                                      ) {
+                                        const lot = formData.lots[Number(val)];
+                                        setReportLotNumber(lot.lotNumber || "");
+                                        setReportExpiryDate(lot.expiryDate || "");
+                                        setReportQuantity(
+                                          lot.quantity !== undefined && lot.quantity !== null
+                                            ? String(lot.quantity)
+                                            : "",
+                                        );
+                                        if (lot.reportDate) setReportDate(lot.reportDate);
+                                      }
+                                    }}
+                                    className={cn(
+                                      "w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 appearance-none pr-8 bg-no-repeat",
+                                      isDarkMode
+                                        ? "bg-slate-900 border-slate-700 text-white"
+                                        : "bg-white border-slate-200 text-slate-900",
+                                    )}
+                                    style={{
+                                      backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                                      backgroundSize: "1.25rem",
+                                      backgroundPosition: "right 0.75rem center",
+                                    }}
+                                  >
+                                    {formData.lots && formData.lots.length > 0 ? (
+                                      <>
+                                        {formData.lots.map((lot, idx) => {
+                                          const displayDate = lot.expiryDate
+                                            ? lot.expiryDate
+                                                .split("-")
+                                                .reverse()
+                                                .join("/")
+                                            : "Không có hạn";
+                                          const displayLot =
+                                            lot.lotNumber || `Lô #${idx + 1}`;
+                                          const currentQty =
+                                            lot.quantity !== undefined
+                                              ? ` (Tồn: ${lot.quantity})`
+                                              : "";
+                                          return (
+                                            <option key={idx} value={String(idx)}>
+                                              Lô: {displayLot} ({displayDate}){currentQty}
+                                            </option>
+                                          );
+                                        })}
+                                        <option value="new">
+                                          + Tự nhập Số lô & Hạn dùng mới
+                                        </option>
+                                      </>
+                                    ) : (
+                                      <option value="new">
+                                        Nhập Số lô & Hạn dùng trực tiếp
+                                      </option>
+                                    )}
+                                  </select>
+                                </div>
+
+                                {/* Custom input for Lot Number & Expiry Date if needed */}
+                                {(selectedReportLotIndex === "new" ||
+                                  !formData.lots ||
+                                  formData.lots.length === 0) && (
+                                  <>
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                        Số lô
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={reportLotNumber}
+                                        onChange={(e) =>
+                                          setReportLotNumber(e.target.value)
+                                        }
+                                        placeholder="Ví dụ: Lô A123"
+                                        className={cn(
+                                          "w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500",
+                                          isDarkMode
+                                            ? "bg-slate-900 border-slate-700 text-white"
+                                            : "bg-white border-slate-200 text-slate-900",
+                                        )}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                        Hạn dùng
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={reportExpiryDate}
+                                        onChange={(e) =>
+                                          setReportExpiryDate(e.target.value)
+                                        }
+                                        className={cn(
+                                          "w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500",
+                                          isDarkMode
+                                            ? "bg-slate-900 border-slate-700 text-white"
+                                            : "bg-white border-slate-200 text-slate-900",
+                                        )}
+                                      />
+                                    </div>
+                                  </>
+                                )}
+
+                                {/* Input: Số lượng */}
+                                <div>
+                                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                    Số lượng báo cáo
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={reportQuantity}
+                                    onChange={(e) =>
+                                      setReportQuantity(e.target.value)
+                                    }
+                                    placeholder="Nhập số lượng..."
+                                    className={cn(
+                                      "w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500",
+                                      isDarkMode
+                                        ? "bg-slate-900 border-slate-700 text-white"
+                                        : "bg-white border-slate-200 text-slate-900",
+                                    )}
+                                  />
+                                </div>
+
+                                {/* Input: Ngày báo cáo */}
+                                <div>
+                                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                    Ngày báo cáo
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={reportDate}
+                                    onChange={(e) => setReportDate(e.target.value)}
+                                    className={cn(
+                                      "w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold border outline-none transition-all focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500",
+                                      isDarkMode
+                                        ? "bg-slate-900 border-slate-700 text-white"
+                                        : "bg-white border-slate-200 text-slate-900",
+                                    )}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Action Button & Feedback */}
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={handleSaveQuantityReport}
+                                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                                >
+                                  <CheckCircle2 size={15} />
+                                  <span>Cập nhật báo cáo số lượng</span>
+                                </button>
+
+                                {reportSuccessMsg && (
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold animate-in fade-in slide-in-from-left-2 duration-200">
+                                    <Check size={14} />
+                                    <span>{reportSuccessMsg}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Table / List of current reported lot quantities */}
+                              {formData.lots && formData.lots.length > 0 && (
+                                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800/60">
+                                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                                    Danh sách số lượng theo lô đã báo cáo:
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                                    {formData.lots.map((lot, lIdx) => (
+                                      <div
+                                        key={lIdx}
+                                        className={cn(
+                                          "flex items-center justify-between gap-2 p-2.5 rounded-xl border text-xs transition-all",
+                                          isDarkMode
+                                            ? "bg-slate-900/60 border-slate-800"
+                                            : "bg-white border-slate-200 shadow-2xs",
+                                        )}
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                                            Lô: {lot.lotNumber || "Chưa có số lô"}
+                                          </div>
+                                          <div className="text-[10px] text-slate-500 font-medium">
+                                            HD:{" "}
+                                            {lot.expiryDate
+                                              ? lot.expiryDate
+                                                  .split("-")
+                                                  .reverse()
+                                                  .join("/")
+                                              : "N/A"}
+                                          </div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <div className="font-black text-emerald-600 dark:text-emerald-400">
+                                            {lot.quantity !== undefined && lot.quantity !== null
+                                              ? `${lot.quantity} đơn vị`
+                                              : "Chưa báo cáo"}
+                                          </div>
+                                          {lot.reportDate && (
+                                            <div className="text-[9px] text-slate-400 font-semibold">
+                                              BC:{" "}
+                                              {lot.reportDate
+                                                .split("-")
+                                                .reverse()
+                                                .join("/")}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div
                             className={cn(
@@ -9250,7 +9699,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         : "ring-2 ring-amber-500/50 bg-amber-50 border-amber-200"),
                                   )}
                                 >
-                                  <div className="flex flex-col gap-2 pt-2">
+                                  <div className="flex flex-col gap-2 pt-2 items-center">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -9284,6 +9733,86 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         size={18}
                                         fill={
                                           indication.isPrimary
+                                            ? "currentColor"
+                                            : "none"
+                                        }
+                                      />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newList = [
+                                          ...formData.indications,
+                                        ];
+                                        newList[index] = {
+                                          ...newList[index],
+                                          isRecommended: !newList[index].isRecommended,
+                                          isNotRecommended: false,
+                                        };
+                                        setFormData({
+                                          ...formData,
+                                          indications: newList,
+                                        });
+                                      }}
+                                      className={cn(
+                                        "p-2 rounded-xl transition-all hover:scale-110",
+                                        indication.isRecommended
+                                          ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                                          : isDarkMode
+                                            ? "bg-slate-900 text-slate-600 hover:text-emerald-400"
+                                            : "bg-white text-slate-300 hover:text-emerald-500 shadow-sm",
+                                      )}
+                                      title={
+                                        indication.isRecommended
+                                          ? "Chỉ định nên chọn"
+                                          : "Đánh dấu là Chỉ định nên chọn"
+                                      }
+                                    >
+                                      <ThumbsUp
+                                        size={16}
+                                        fill={
+                                          indication.isRecommended
+                                            ? "currentColor"
+                                            : "none"
+                                        }
+                                      />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newList = [
+                                          ...formData.indications,
+                                        ];
+                                        newList[index] = {
+                                          ...newList[index],
+                                          isNotRecommended: !newList[index].isNotRecommended,
+                                          isRecommended: false,
+                                        };
+                                        setFormData({
+                                          ...formData,
+                                          indications: newList,
+                                        });
+                                      }}
+                                      className={cn(
+                                        "p-2 rounded-xl transition-all hover:scale-110",
+                                        indication.isNotRecommended
+                                          ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
+                                          : isDarkMode
+                                            ? "bg-slate-900 text-slate-600 hover:text-rose-400"
+                                            : "bg-white text-slate-300 hover:text-rose-500 shadow-sm",
+                                      )}
+                                      title={
+                                        indication.isNotRecommended
+                                          ? "Chỉ định không khuyến khích chọn"
+                                          : "Đánh dấu là Chỉ định không khuyến khích chọn"
+                                      }
+                                    >
+                                      <AlertTriangle
+                                        size={16}
+                                        fill={
+                                          indication.isNotRecommended
                                             ? "currentColor"
                                             : "none"
                                         }
@@ -9391,24 +9920,46 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                 indication.defaultIcd10s || []
                                               ).includes(code) ||
                                               indication.defaultIcd10 === code;
+                                            const isAlternative =
+                                              (
+                                                indication.betterAlternativeIcd10s || []
+                                              ).includes(code);
+                                            const isNotRecommended =
+                                              (
+                                                indication.notRecommendedIcd10s || []
+                                              ).includes(code);
                                             return (
                                               <div
                                                 key={tagIdx}
                                                 className={cn(
-                                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border animate-in fade-in zoom-in duration-200 transition-all",
+                                                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border animate-in fade-in zoom-in duration-200 transition-all",
                                                   isDefault
-                                                    ? "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
-                                                    : isDarkMode
-                                                      ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                                                      : "bg-blue-50 text-blue-600 border-blue-100",
+                                                    ? isDarkMode
+                                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                      : "bg-emerald-500 text-white border-emerald-500 shadow-sm shadow-emerald-200"
+                                                    : isAlternative
+                                                      ? isDarkMode
+                                                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                                        : "bg-amber-500 text-white border-amber-500 shadow-sm shadow-amber-200"
+                                                      : isNotRecommended
+                                                        ? isDarkMode
+                                                          ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                                          : "bg-rose-500 text-white border-rose-500 shadow-sm shadow-rose-200"
+                                                        : isDarkMode
+                                                          ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                                                          : "bg-blue-50 text-blue-600 border-blue-100",
                                                 )}
                                               >
                                                 <button
                                                   type="button"
                                                   title={
                                                     isDefault
-                                                      ? "Đang là ICD-10 thường dùng"
-                                                      : "Chọn làm ICD-10 thường dùng"
+                                                      ? "Chuyển sang: Khuyến khích chọn mã khác tốt hơn"
+                                                      : isAlternative
+                                                        ? "Chuyển sang: Không khuyến khích sử dụng"
+                                                        : isNotRecommended
+                                                          ? "Bỏ phân loại gợi ý"
+                                                          : "Chuyển sang: Khuyến khích dùng"
                                                   }
                                                   onClick={() => {
                                                     const newList = [
@@ -9424,22 +9975,39 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                               .defaultIcd10,
                                                           ]
                                                         : []);
-                                                    let nextDefaults;
-                                                    if (
-                                                      currentDefaults.includes(
-                                                        code,
-                                                      )
-                                                    ) {
-                                                      nextDefaults =
-                                                        currentDefaults.filter(
-                                                          (c) => c !== code,
-                                                        );
+                                                    const currentAlternatives =
+                                                      newList[index]
+                                                        .betterAlternativeIcd10s || [];
+                                                    const currentNotRecs =
+                                                      newList[index]
+                                                        .notRecommendedIcd10s || [];
+
+                                                    let nextDefaults = [...currentDefaults];
+                                                    let nextAlternatives = [...currentAlternatives];
+                                                    let nextNotRecs = [...currentNotRecs];
+
+                                                    if (isDefault) {
+                                                      // Green -> Yellow
+                                                      nextDefaults = nextDefaults.filter((c) => c !== code);
+                                                      if (!nextAlternatives.includes(code)) {
+                                                        nextAlternatives.push(code);
+                                                      }
+                                                    } else if (isAlternative) {
+                                                      // Yellow -> Red
+                                                      nextAlternatives = nextAlternatives.filter((c) => c !== code);
+                                                      if (!nextNotRecs.includes(code)) {
+                                                        nextNotRecs.push(code);
+                                                      }
+                                                    } else if (isNotRecommended) {
+                                                      // Red -> Blue (Normal)
+                                                      nextNotRecs = nextNotRecs.filter((c) => c !== code);
                                                     } else {
-                                                      nextDefaults = [
-                                                        ...currentDefaults,
-                                                        code,
-                                                      ];
+                                                      // Blue -> Green
+                                                      if (!nextDefaults.includes(code)) {
+                                                        nextDefaults.push(code);
+                                                      }
                                                     }
+
                                                     newList[index] = {
                                                       ...newList[index],
                                                       defaultIcd10s:
@@ -9447,6 +10015,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                       defaultIcd10:
                                                         nextDefaults[0] ||
                                                         undefined,
+                                                      betterAlternativeIcd10s:
+                                                        nextAlternatives,
+                                                      notRecommendedIcd10s:
+                                                        nextNotRecs,
                                                     };
                                                     setFormData({
                                                       ...formData,
@@ -9455,23 +10027,24 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                   }}
                                                   className={cn(
                                                     "transition-colors shrink-0",
-                                                    isDefault
-                                                      ? "text-white"
+                                                    isDefault || isAlternative || isNotRecommended
+                                                      ? "text-white hover:opacity-80"
                                                       : isDarkMode
-                                                        ? "text-blue-500 hover:text-amber-400"
-                                                        : "text-blue-400 hover:text-amber-500",
+                                                        ? "text-blue-500 hover:text-emerald-400"
+                                                        : "text-blue-400 hover:text-emerald-500",
                                                   )}
                                                 >
-                                                  <Star
-                                                    size={9}
-                                                    fill={
-                                                      isDefault
-                                                        ? "currentColor"
-                                                        : "none"
-                                                    }
-                                                  />
+                                                  {isDefault ? (
+                                                    <ThumbsUp size={10} className="fill-current" />
+                                                  ) : isAlternative ? (
+                                                    <AlertCircle size={10} className="fill-current" />
+                                                  ) : isNotRecommended ? (
+                                                    <AlertTriangle size={10} className="fill-current" />
+                                                  ) : (
+                                                    <Plus size={10} />
+                                                  )}
                                                 </button>
-                                                {codeOnly}
+                                                <span className="font-extrabold">{codeOnly}</span>
                                                 <button
                                                   type="button"
                                                   onClick={() => {
@@ -9481,6 +10054,14 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                     const nextDefaults = (
                                                       newList[index]
                                                         .defaultIcd10s || []
+                                                    ).filter((c) => c !== code);
+                                                    const nextAlternatives = (
+                                                      newList[index]
+                                                        .betterAlternativeIcd10s || []
+                                                    ).filter((c) => c !== code);
+                                                    const nextNotRecs = (
+                                                      newList[index]
+                                                        .notRecommendedIcd10s || []
                                                     ).filter((c) => c !== code);
                                                     newList[index] = {
                                                       ...newList[index],
@@ -9495,6 +10076,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                       defaultIcd10:
                                                         nextDefaults[0] ||
                                                         undefined,
+                                                      betterAlternativeIcd10s:
+                                                        nextAlternatives,
+                                                      notRecommendedIcd10s:
+                                                        nextNotRecs,
                                                     };
                                                     setFormData({
                                                       ...formData,
@@ -9503,8 +10088,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                   }}
                                                   className={cn(
                                                     "transition-colors",
-                                                    isDefault
-                                                      ? "hover:text-amber-200"
+                                                    isDefault || isAlternative || isNotRecommended
+                                                      ? "hover:opacity-80"
                                                       : "hover:text-rose-500",
                                                   )}
                                                 >
@@ -9516,29 +10101,32 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                         )}
                                       </div>
                                       {(indication.icd10s || []).length > 0 && (
-                                        <div
-                                          className={cn(
-                                            "flex items-center gap-2 px-2 py-1 rounded-lg text-[9px] font-bold",
-                                            indication.defaultIcd10
-                                              ? isDarkMode
-                                                ? "text-amber-400"
-                                                : "text-amber-600"
-                                              : isDarkMode
-                                                ? "text-slate-500"
-                                                : "text-slate-400",
-                                          )}
-                                        >
-                                          <Star
-                                            size={9}
-                                            fill={
-                                              indication.defaultIcd10
-                                                ? "currentColor"
-                                                : "none"
-                                            }
-                                          />
-                                          {indication.defaultIcd10
-                                            ? `ICD-10 thường dùng: ${indication.defaultIcd10.split(" - ")[0]}`
-                                            : "Nhấn ☆ trên mã ICD-10 để chọn làm mặc định khi kê toa"}
+                                        <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-xl bg-slate-500/5 border border-slate-500/10 text-[10px] font-bold mt-1 mb-3">
+                                          <div className={cn(
+                                            "flex items-center gap-1.5",
+                                            isDarkMode ? "text-slate-400" : "text-slate-500"
+                                          )}>
+                                            <Info size={11} className="shrink-0" />
+                                            <span>Bấm vào biểu tượng ở đầu mỗi mã ICD-10 để phân loại gợi ý:</span>
+                                          </div>
+                                          <div className="flex flex-wrap gap-x-4 gap-y-2 mt-0.5">
+                                            <span className="flex items-center gap-1 text-emerald-500">
+                                              <ThumbsUp size={11} className="fill-current shrink-0" />
+                                              Khuyến khích dùng (Xanh lá)
+                                            </span>
+                                            <span className="flex items-center gap-1 text-amber-500">
+                                              <AlertCircle size={11} className="fill-current shrink-0" />
+                                              Khuyên chọn mã khác tốt hơn (Vàng)
+                                            </span>
+                                            <span className="flex items-center gap-1 text-rose-500">
+                                              <AlertTriangle size={11} className="fill-current shrink-0" />
+                                              Không khuyến khích sử dụng (Đỏ)
+                                            </span>
+                                            <span className="flex items-center gap-1 text-blue-500">
+                                              <Plus size={11} className="shrink-0" />
+                                              Mã thông thường (Xanh dương)
+                                            </span>
+                                          </div>
                                         </div>
                                       )}
                                       <div className="relative">
@@ -9708,6 +10296,220 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                               ))}
                                           </div>
                                         )}
+                                      </div>
+                                    </div>
+
+                                    {/* PHẦN THÊM MÃ KÉP (DẤU GĂM & DẤU SAO) */}
+                                    <div className="mt-4 pt-4 border-t border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                                      <div className="flex items-center gap-1.5 ml-1">
+                                        <label className={cn(
+                                          "text-[9px] font-black uppercase tracking-widest transition-colors",
+                                          isDarkMode ? "text-slate-400" : "text-slate-500"
+                                        )}>
+                                          Mã kép (Dấu găm † và Dấu sao *) gợi ý
+                                        </label>
+                                      </div>
+
+                                      {/* Danh sách các mã kép đã thêm */}
+                                      {indication.doubleIcd10s && indication.doubleIcd10s.length > 0 && (
+                                        <div className="flex flex-col gap-2 mb-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                          {indication.doubleIcd10s.map((pair, pIdx) => {
+                                            const dCode = (pair.dagger || "").split(" - ")[0];
+                                            const dDesc = (pair.dagger || "").split(" - ").slice(1).join(" - ");
+                                            const aCode = (pair.asterisk || "").split(" - ")[0];
+                                            const aDesc = (pair.asterisk || "").split(" - ").slice(1).join(" - ");
+                                            return (
+                                              <div
+                                                key={pIdx}
+                                                className={cn(
+                                                  "flex items-center justify-between p-2 rounded-xl border transition-all text-[11px] font-bold",
+                                                  isDarkMode
+                                                    ? "bg-slate-900/50 border-slate-800 text-slate-100 animate-in fade-in duration-250"
+                                                    : "bg-slate-50 border-slate-100 text-slate-800 animate-in fade-in duration-250"
+                                                )}
+                                              >
+                                                <div className="flex items-center gap-2 flex-wrap flex-1">
+                                                  <div className="flex items-center gap-1 bg-amber-500/10 text-amber-500 dark:text-amber-400 px-2 py-1 rounded-lg border border-amber-500/20" title={pair.dagger}>
+                                                    <span className="font-extrabold">{dCode}</span>
+                                                    <span className="text-[10px] opacity-85">†</span>
+                                                    {dDesc && <span className="opacity-75 font-medium truncate max-w-[120px]">- {dDesc}</span>}
+                                                  </div>
+                                                  
+                                                  <Link2 size={12} className="text-slate-400 shrink-0" />
+                                                  
+                                                  <div className="flex items-center gap-1 bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 px-2 py-1 rounded-lg border border-indigo-500/20" title={pair.asterisk}>
+                                                    <span className="font-extrabold">{aCode}</span>
+                                                    <span className="text-[10px] opacity-85">*</span>
+                                                    {aDesc && <span className="opacity-75 font-medium truncate max-w-[120px]">- {aDesc}</span>}
+                                                  </div>
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const newList = [...formData.indications];
+                                                    newList[index] = {
+                                                      ...newList[index],
+                                                      doubleIcd10s: (newList[index].doubleIcd10s || []).filter((_, i) => i !== pIdx)
+                                                    };
+                                                    setFormData({ ...formData, indications: newList });
+                                                  }}
+                                                  className="text-slate-400 hover:text-rose-500 transition-colors p-1 shrink-0"
+                                                >
+                                                  <X size={14} />
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+
+                                      {/* Form nhập/tìm kiếm mã kép */}
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {/* Ô nhập mã găm */}
+                                        <div className="relative">
+                                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 font-extrabold text-xs">†</div>
+                                          <input
+                                            type="text"
+                                            value={activeDoubleIcdIndex === index ? daggerSearchTerm : ""}
+                                            onChange={(e) => {
+                                              setActiveDoubleIcdIndex(index);
+                                              setDaggerSearchTerm(e.target.value);
+                                            }}
+                                            onFocus={() => {
+                                              setActiveDoubleIcdIndex(index);
+                                              setIsDaggerFocused(true);
+                                            }}
+                                            onBlur={() => {
+                                              setTimeout(() => setIsDaggerFocused(false), 250);
+                                            }}
+                                            placeholder="Mã găm † (Ví dụ: A18.0)"
+                                            className={cn(
+                                              "w-full pl-7 pr-3 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold",
+                                              isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200"
+                                            )}
+                                          />
+                                          {activeDoubleIcdIndex === index && isDaggerFocused && daggerSearchTerm && (
+                                            <div className={cn(
+                                              "absolute z-50 w-full mt-1 border rounded-xl shadow-xl max-h-48 overflow-y-auto transition-colors",
+                                              isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+                                            )}>
+                                              {icdList
+                                                .filter(icd => 
+                                                  (icd.code || "").toLowerCase().includes((daggerSearchTerm || "").toLowerCase()) ||
+                                                  (icd.description || "").toLowerCase().includes((daggerSearchTerm || "").toLowerCase())
+                                                )
+                                                .slice(0, 15)
+                                                .map((icd, icdIdx) => (
+                                                  <button
+                                                    key={icdIdx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setDaggerSearchTerm(`${icd.code} - ${icd.description}`);
+                                                    }}
+                                                    className={cn(
+                                                      "w-full text-left px-3 py-2 text-xs transition-colors border-b last:border-0",
+                                                      isDarkMode ? "hover:bg-slate-700 border-slate-700 text-white" : "hover:bg-blue-50 border-slate-50 text-slate-800"
+                                                    )}
+                                                  >
+                                                    <span className="font-bold text-blue-600">{icd.code}</span> - {icd.description}
+                                                  </button>
+                                                ))
+                                              }
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Ô nhập mã sao */}
+                                        <div className="relative">
+                                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500 font-extrabold text-xs">*</div>
+                                          <input
+                                            type="text"
+                                            value={activeDoubleIcdIndex === index ? asteriskSearchTerm : ""}
+                                            onChange={(e) => {
+                                              setActiveDoubleIcdIndex(index);
+                                              setAsteriskSearchTerm(e.target.value);
+                                            }}
+                                            onFocus={() => {
+                                              setActiveDoubleIcdIndex(index);
+                                              setIsAsteriskFocused(true);
+                                            }}
+                                            onBlur={() => {
+                                              setTimeout(() => setIsAsteriskFocused(false), 250);
+                                            }}
+                                            placeholder="Mã sao * (Ví dụ: M01.1)"
+                                            className={cn(
+                                              "w-full pl-7 pr-3 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold",
+                                              isDarkMode ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200"
+                                            )}
+                                          />
+                                          {activeDoubleIcdIndex === index && isAsteriskFocused && asteriskSearchTerm && (
+                                            <div className={cn(
+                                              "absolute z-50 w-full mt-1 border rounded-xl shadow-xl max-h-48 overflow-y-auto transition-colors",
+                                              isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+                                            )}>
+                                              {icdList
+                                                .filter(icd => 
+                                                  (icd.code || "").toLowerCase().includes((asteriskSearchTerm || "").toLowerCase()) ||
+                                                  (icd.description || "").toLowerCase().includes((asteriskSearchTerm || "").toLowerCase())
+                                                )
+                                                .slice(0, 15)
+                                                .map((icd, icdIdx) => (
+                                                  <button
+                                                    key={icdIdx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setAsteriskSearchTerm(`${icd.code} - ${icd.description}`);
+                                                    }}
+                                                    className={cn(
+                                                      "w-full text-left px-3 py-2 text-xs transition-colors border-b last:border-0",
+                                                      isDarkMode ? "hover:bg-slate-700 border-slate-700 text-white" : "hover:bg-blue-50 border-slate-50 text-slate-800"
+                                                    )}
+                                                  >
+                                                    <span className="font-bold text-blue-600">{icd.code}</span> - {icd.description}
+                                                  </button>
+                                                ))
+                                              }
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex justify-end mt-2">
+                                        <button
+                                          type="button"
+                                          disabled={!daggerSearchTerm || !asteriskSearchTerm}
+                                          onClick={() => {
+                                            const newList = [...formData.indications];
+                                            const currentPairs = newList[index].doubleIcd10s || [];
+                                            
+                                            let finalDagger = daggerSearchTerm;
+                                            if (!finalDagger.includes(" - ")) {
+                                              const found = icdList.find(i => i.code.toLowerCase() === finalDagger.trim().toLowerCase());
+                                              if (found) finalDagger = `${found.code} - ${found.description}`;
+                                            }
+                                            let finalAsterisk = asteriskSearchTerm;
+                                            if (!finalAsterisk.includes(" - ")) {
+                                              const found = icdList.find(i => i.code.toLowerCase() === finalAsterisk.trim().toLowerCase());
+                                              if (found) finalAsterisk = `${found.code} - ${found.description}`;
+                                            }
+
+                                            newList[index] = {
+                                              ...newList[index],
+                                              doubleIcd10s: [...currentPairs, { dagger: finalDagger, asterisk: finalAsterisk }]
+                                            };
+                                            setFormData({ ...formData, indications: newList });
+                                            setDaggerSearchTerm("");
+                                            setAsteriskSearchTerm("");
+                                          }}
+                                          className={cn(
+                                            "px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm",
+                                            daggerSearchTerm && asteriskSearchTerm
+                                              ? "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-500/10 hover:shadow-lg hover:scale-105 cursor-pointer"
+                                              : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed"
+                                          )}
+                                        >
+                                          <Plus size={14} /> Thêm Mã Kép
+                                        </button>
                                       </div>
                                     </div>
                                   </div>
@@ -11296,6 +12098,96 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                           />
                                                         </div>
 
+                                                        {activeSchTab === "quantity" && (
+                                                          <div className="flex items-center gap-1.5">
+                                                            <label className="text-[10px] font-bold text-slate-400 shrink-0">
+                                                              Liều tối đa:
+                                                            </label>
+                                                            <input
+                                                              type="text"
+                                                              placeholder="VD: 4 viên"
+                                                              value={schedule.quantityMaxDose || ""}
+                                                              onChange={(e) => {
+                                                                const newSchedules = [
+                                                                  ...currentSchedules,
+                                                                ];
+                                                                newSchedules[sIdx] = {
+                                                                  ...newSchedules[sIdx],
+                                                                  quantityMaxDose: e.target.value.replace(/,/g, "."),
+                                                                };
+                                                                const newList = (
+                                                                  formData.dosageAndAdministration ||
+                                                                  []
+                                                                ).map((di, idx) =>
+                                                                  idx === index
+                                                                    ? {
+                                                                        ...di,
+                                                                        schedules:
+                                                                          newSchedules,
+                                                                      }
+                                                                    : di,
+                                                                );
+                                                                setFormData({
+                                                                  ...formData,
+                                                                  dosageAndAdministration:
+                                                                    newList,
+                                                                });
+                                                              }}
+                                                              className={cn(
+                                                                "w-28 px-2 py-1 border rounded text-[10px] font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors",
+                                                                isDarkMode
+                                                                  ? "bg-slate-800 border-slate-700 text-slate-200"
+                                                                  : "bg-white border-slate-200 text-slate-700",
+                                                              )}
+                                                            />
+                                                          </div>
+                                                        )}
+
+                                                        {activeSchTab === "dosage" && (
+                                                          <div className="flex items-center gap-1.5">
+                                                            <label className="text-[10px] font-bold text-slate-400 shrink-0">
+                                                              Liều tối đa:
+                                                            </label>
+                                                            <input
+                                                              type="text"
+                                                              placeholder="VD: 1000 mg"
+                                                              value={schedule.dosageMaxDose || ""}
+                                                              onChange={(e) => {
+                                                                const newSchedules = [
+                                                                  ...currentSchedules,
+                                                                ];
+                                                                newSchedules[sIdx] = {
+                                                                  ...newSchedules[sIdx],
+                                                                  dosageMaxDose: e.target.value.replace(/,/g, "."),
+                                                                };
+                                                                const newList = (
+                                                                  formData.dosageAndAdministration ||
+                                                                  []
+                                                                ).map((di, idx) =>
+                                                                  idx === index
+                                                                    ? {
+                                                                        ...di,
+                                                                        schedules:
+                                                                          newSchedules,
+                                                                      }
+                                                                    : di,
+                                                                );
+                                                                setFormData({
+                                                                  ...formData,
+                                                                  dosageAndAdministration:
+                                                                    newList,
+                                                                });
+                                                              }}
+                                                              className={cn(
+                                                                "w-28 px-2 py-1 border rounded text-[10px] font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors",
+                                                                isDarkMode
+                                                                  ? "bg-slate-800 border-slate-700 text-slate-200"
+                                                                  : "bg-white border-slate-200 text-slate-700",
+                                                              )}
+                                                            />
+                                                          </div>
+                                                        )}
+
                                                         {activeSchTab === "weight" && (
                                                           <div className="flex items-center gap-1.5">
                                                             <label className="text-[10px] font-bold text-slate-400 shrink-0">
@@ -11729,40 +12621,116 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                                           </div>
                                                         </div>
 
-                                                        {/* Số lần trong ngày */}
-                                                        <div className="mt-3 pt-3 border-t border-dashed border-slate-200/60 dark:border-slate-800/60">
-                                                          <div className="flex items-center gap-1 mb-1.5 px-0.5">
-                                                            <span className="text-[10px] font-black uppercase text-blue-500 tracking-wider">
-                                                              Số lần / ngày
-                                                            </span>
+                                                        {/* Số lần / ngày & Mỗi lần dùng */}
+                                                        <div className="mt-3 pt-3 border-t border-dashed border-slate-200/60 dark:border-slate-800/60 grid grid-cols-2 gap-2">
+                                                          <div>
+                                                            <div className="flex items-center gap-1 mb-1.5 px-0.5">
+                                                              <span className="text-[10px] font-black uppercase text-blue-500 tracking-wider truncate" title="Số lần / ngày">
+                                                                Số lần / ngày
+                                                              </span>
+                                                            </div>
+                                                            <div className={cn(
+                                                              "flex gap-1 items-center border rounded-lg px-2 py-1.5 shadow-sm",
+                                                              isDarkMode
+                                                                ? "bg-slate-900 border-slate-700"
+                                                                : "bg-white border-slate-200"
+                                                            )}>
+                                                              <input
+                                                                type="text"
+                                                                placeholder="v.d. 3"
+                                                                value={schedule.timesPerDay || ""}
+                                                                onChange={(e) => {
+                                                                  const newSchedules = [...currentSchedules];
+                                                                  newSchedules[sIdx] = {
+                                                                    ...newSchedules[sIdx],
+                                                                    timesPerDay: e.target.value,
+                                                                  };
+                                                                  const newList = (formData.dosageAndAdministration || []).map((di, idx) =>
+                                                                    idx === index ? { ...di, schedules: newSchedules } : di
+                                                                  );
+                                                                  setFormData({ ...formData, dosageAndAdministration: newList });
+                                                                }}
+                                                                className={cn(
+                                                                  "w-full bg-transparent border-none text-xs font-bold font-mono focus:outline-none focus:ring-0 p-0 text-slate-700 dark:text-slate-200 text-center",
+                                                                )}
+                                                              />
+                                                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold pr-0.5 shrink-0">Lần</span>
+                                                            </div>
                                                           </div>
-                                                          <div className={cn(
-                                                            "flex gap-1 items-center border rounded-lg px-2 py-1.5 shadow-sm",
-                                                            isDarkMode
-                                                              ? "bg-slate-900 border-slate-700"
-                                                              : "bg-white border-slate-200"
-                                                          )}>
-                                                            <input
-                                                              type="text"
-                                                              placeholder="v.d. 3"
-                                                              value={schedule.timesPerDay || ""}
-                                                              onChange={(e) => {
-                                                                const newSchedules = [...currentSchedules];
-                                                                newSchedules[sIdx] = {
-                                                                  ...newSchedules[sIdx],
-                                                                  timesPerDay: e.target.value,
-                                                                };
-                                                                const newList = (formData.dosageAndAdministration || []).map((di, idx) =>
-                                                                  idx === index ? { ...di, schedules: newSchedules } : di
-                                                                );
-                                                                setFormData({ ...formData, dosageAndAdministration: newList });
-                                                              }}
-                                                              className={cn(
-                                                                "w-full bg-transparent border-none text-xs font-bold font-mono focus:outline-none focus:ring-0 p-0 text-slate-700 dark:text-slate-200 text-center",
-                                                              )}
-                                                            />
-                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold pr-0.5 shrink-0">Lần</span>
-                                                          </div>
+
+                                                          {(() => {
+                                                            const fieldName =
+                                                              activeSchTab === "quantity"
+                                                                ? "dosePerTime"
+                                                                : activeSchTab === "dosage"
+                                                                  ? "dosageDosePerTime"
+                                                                  : "weightDosePerTime";
+
+                                                            const currentUnit =
+                                                              activeSchTab === "quantity"
+                                                                ? schedule.quantityUnit || "viên"
+                                                                : activeSchTab === "dosage"
+                                                                  ? schedule.dosageUnit || "mg"
+                                                                  : schedule.weightUnit || "mg/kg";
+
+                                                            const fieldLabel =
+                                                              activeSchTab === "quantity"
+                                                                ? "Mỗi lần (Số lượng)"
+                                                                : activeSchTab === "dosage"
+                                                                  ? "Mỗi lần (Hàm lượng)"
+                                                                  : "Mỗi lần (Theo kg)";
+
+                                                            const placeholderText =
+                                                              activeSchTab === "quantity"
+                                                                ? `v.d. 1 ${currentUnit}`
+                                                                : activeSchTab === "dosage"
+                                                                  ? `v.d. 500 ${currentUnit}`
+                                                                  : `v.d. 10 ${currentUnit}`;
+
+                                                            const value = (schedule as any)[fieldName] || "";
+
+                                                            return (
+                                                              <div>
+                                                                <div className="flex items-center gap-1 mb-1.5 px-0.5">
+                                                                  <span className="text-[10px] font-black uppercase text-emerald-500 tracking-wider truncate" title={fieldLabel}>
+                                                                    {fieldLabel}
+                                                                  </span>
+                                                                </div>
+                                                                <div className={cn(
+                                                                  "flex gap-1 items-center border rounded-lg px-2 py-1.5 shadow-sm",
+                                                                  isDarkMode
+                                                                    ? "bg-slate-900 border-slate-700"
+                                                                    : "bg-white border-slate-200"
+                                                                )}>
+                                                                  <input
+                                                                    type="text"
+                                                                    placeholder={placeholderText}
+                                                                    value={value}
+                                                                    onChange={(e) => {
+                                                                      const newSchedules = [...currentSchedules];
+                                                                      newSchedules[sIdx] = {
+                                                                        ...newSchedules[sIdx],
+                                                                        [fieldName]: e.target.value,
+                                                                        ...(activeSchTab === "quantity" ? { dosePerTime: e.target.value } : {})
+                                                                      };
+                                                                      const newList = (formData.dosageAndAdministration || []).map((di, idx) =>
+                                                                        idx === index ? { ...di, schedules: newSchedules } : di
+                                                                      );
+                                                                      setFormData({ ...formData, dosageAndAdministration: newList });
+                                                                    }}
+                                                                    className={cn(
+                                                                      "w-full bg-transparent border-none text-xs font-bold font-mono focus:outline-none focus:ring-0 p-0 text-slate-700 dark:text-slate-200 text-center",
+                                                                    )}
+                                                                  />
+                                                                  {currentUnit && (
+                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold pr-0.5 shrink-0 whitespace-nowrap">
+                                                                      {currentUnit}
+                                                                    </span>
+                                                                  )}
+                                                                </div>
+                                                              </div>
+                                                            );
+                                                          })()}
                                                         </div>
                                                       </div>
                                                     </div>
@@ -14801,26 +15769,60 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                      )}
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const currentList = formData.warnings as any[];
-                                      const newList =
-                                        currentList.length > 1
-                                          ? currentList.filter((_, idx) => idx !== index)
-                                          : [{ title: "", content: "" }];
-                                      setFormData({ ...formData, warnings: newList });
-                                    }}
-                                    className={cn(
-                                      "p-2 rounded-xl border opacity-0 group-hover:opacity-100 transition-opacity self-start mt-5 cursor-pointer",
-                                      isDarkMode
-                                        ? "bg-slate-900 hover:bg-slate-800 text-rose-400 border-slate-700/50"
-                                        : "bg-white hover:bg-rose-50 text-rose-600 border-rose-100",
-                                    )}
-                                    title="Xóa cảnh báo"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <div className="flex flex-col gap-1 self-start mt-2 sm:mt-4 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveArrayItem("warnings" as any, index, "up")}
+                                      disabled={index === 0}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                        index === 0
+                                          ? "opacity-30 cursor-not-allowed"
+                                          : isDarkMode
+                                            ? "bg-slate-900 border-slate-700/60 text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                                            : "bg-white border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                                      )}
+                                      title="Di chuyển lên"
+                                    >
+                                      <ChevronUp size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveArrayItem("warnings" as any, index, "down")}
+                                      disabled={index === (Array.isArray(formData.warnings) ? formData.warnings : []).length - 1}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                        index === (Array.isArray(formData.warnings) ? formData.warnings : []).length - 1
+                                          ? "opacity-30 cursor-not-allowed"
+                                          : isDarkMode
+                                            ? "bg-slate-900 border-slate-700/60 text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                                            : "bg-white border-slate-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                                      )}
+                                      title="Di chuyển xuống"
+                                    >
+                                      <ChevronDown size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const currentList = formData.warnings as any[];
+                                        const newList =
+                                          currentList.length > 1
+                                            ? currentList.filter((_, idx) => idx !== index)
+                                            : [{ title: "", content: "" }];
+                                        setFormData({ ...formData, warnings: newList });
+                                      }}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer mt-0.5",
+                                        isDarkMode
+                                          ? "bg-slate-900 hover:bg-slate-800 text-rose-400 border-slate-700/50"
+                                          : "bg-white hover:bg-rose-50 text-rose-600 border-rose-100"
+                                      )}
+                                      title="Xóa cảnh báo"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -15757,39 +16759,73 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                     )}
                                   </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const currentList =
-                                        formData.precautions as any[];
-                                      const newList =
-                                        currentList.length > 1
-                                          ? currentList.filter(
-                                              (_, idx) => idx !== index,
-                                            )
-                                          : [
-                                              {
-                                                title: "",
-                                                content: "",
-                                                type: "Other",
-                                                severity: "",
-                                              },
-                                            ];
-                                      setFormData({
-                                        ...formData,
-                                        precautions: newList,
-                                      });
-                                    }}
-                                    className={cn(
-                                      "p-2 rounded-xl border opacity-0 group-hover:opacity-100 transition-opacity self-start mt-5 cursor-pointer",
-                                      isDarkMode
-                                        ? "bg-slate-900 hover:bg-slate-800 text-rose-400 border-slate-700/50"
-                                        : "bg-white hover:bg-rose-50 text-rose-600 border-rose-100",
-                                    )}
-                                    title="Xóa thận trọng"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                  <div className="flex flex-col gap-1 self-start mt-2 sm:mt-4 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => moveArrayItem("precautions" as any, index, "up")}
+                                      disabled={index === 0}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                        index === 0
+                                          ? "opacity-30 cursor-not-allowed"
+                                          : isDarkMode
+                                            ? "bg-slate-900 border-slate-700/60 text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+                                            : "bg-white border-slate-200 text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+                                      )}
+                                      title="Di chuyển lên"
+                                    >
+                                      <ChevronUp size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveArrayItem("precautions" as any, index, "down")}
+                                      disabled={index === (Array.isArray(formData.precautions) ? formData.precautions : []).length - 1}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                        index === (Array.isArray(formData.precautions) ? formData.precautions : []).length - 1
+                                          ? "opacity-30 cursor-not-allowed"
+                                          : isDarkMode
+                                            ? "bg-slate-900 border-slate-700/60 text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+                                            : "bg-white border-slate-200 text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+                                      )}
+                                      title="Di chuyển xuống"
+                                    >
+                                      <ChevronDown size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const currentList =
+                                          formData.precautions as any[];
+                                        const newList =
+                                          currentList.length > 1
+                                            ? currentList.filter(
+                                                (_, idx) => idx !== index,
+                                              )
+                                            : [
+                                                {
+                                                  title: "",
+                                                  content: "",
+                                                  type: "Other",
+                                                  severity: "",
+                                                },
+                                              ];
+                                        setFormData({
+                                          ...formData,
+                                          precautions: newList,
+                                        });
+                                      }}
+                                      className={cn(
+                                        "p-1.5 rounded-lg border transition-all cursor-pointer mt-0.5",
+                                        isDarkMode
+                                          ? "bg-slate-900 hover:bg-slate-800 text-rose-400 border-slate-700/50"
+                                          : "bg-white hover:bg-rose-50 text-rose-600 border-rose-100"
+                                      )}
+                                      title="Xóa thận trọng"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -19066,8 +20102,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                               },
                               { id: "O-Q", label: "Sản/Nhi/Dị tật (O-Q)" },
                               {
-                                id: "R-Z",
-                                label: "Triệu chứng/Chấn thương (R-Z)",
+                                id: "R-S",
+                                label: "Triệu chứng (R-S)",
+                              },
+                              {
+                                id: "U-Z",
+                                label: "Tình trạng (U-Z)",
                               },
                             ].map((filter) => (
                               <button
@@ -19141,7 +20181,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       "I-K": ["I", "J", "K"],
                       "L-N": ["L", "M", "N"],
                       "O-Q": ["O", "P", "Q"],
-                      "R-Z": ["R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
+                      "R-S": ["R", "S", "T"],
+                      "U-Z": ["U", "V", "W", "X", "Y", "Z"],
                     };
 
                     return filtersMap[icdChapterFilter]?.includes(firstChar);
@@ -19192,17 +20233,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                             "I-K": ["I", "J", "K"],
                             "L-N": ["L", "M", "N"],
                             "O-Q": ["O", "P", "Q"],
-                            "R-Z": [
-                              "R",
-                              "S",
-                              "T",
-                              "U",
-                              "V",
-                              "W",
-                              "X",
-                              "Y",
-                              "Z",
-                            ],
+                            "R-S": ["R", "S", "T"],
+                            "U-Z": ["U", "V", "W", "X", "Y", "Z"],
                           };
 
                           return filtersMap[icdChapterFilter]?.includes(

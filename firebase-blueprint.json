@@ -140,7 +140,9 @@
         "isAppendixA2": { "type": "boolean", "description": "Nằm trong phụ lục A2" },
         "isRestricted": { "type": "boolean", "description": "Mã hạn chế sử dụng" },
         "notes": { "type": "string", "description": "Ghi chú thêm" },
-        "chapter": { "type": "string", "description": "Chương bệnh" }
+        "chapter": { "type": "string", "description": "Chương bệnh" },
+        "chapterName": { "type": "string", "description": "Tên chương bệnh" },
+        "blockName": { "type": "string", "description": "Tên khối bệnh" }
       },
       "required": ["code", "description"]
     },
@@ -535,6 +537,20 @@
       },
       "required": ["id", "userId", "userEmail", "type", "timestamp"]
     },
+    "GuestLog": {
+      "title": "GuestLog",
+      "description": "Lịch sử truy cập của khách vãng lai.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ipAddress": { "type": "string" },
+        "macAddress": { "type": "string" },
+        "device": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ipAddress", "timestamp"]
+    },
     "Company": {
       "title": "Company",
       "description": "Danh sách các công ty dược phẩm.",
@@ -598,6 +614,26 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name"]
+    },
+    "Guide": {
+      "title": "Guide",
+      "description": "Cẩm nang hướng dẫn sử dụng các chức năng hệ thống.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Tiêu đề hướng dẫn" },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "paragraphs": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      },
+      "required": ["title", "tabs"]
     }
   },
   "firestore": {
@@ -716,6 +752,10 @@
     "/auth_logs/{logId}": {
       "schema": "AuthLog",
       "description": "Lịch sử đăng nhập và đăng xuất của người dùng."
+    },
+    "/guest_logs/{logId}": {
+      "schema": "GuestLog",
+      "description": "Lịch sử truy cập của khách vãng lai."
     },
     "/todos/{todoId}": {
       "schema": "Todo",

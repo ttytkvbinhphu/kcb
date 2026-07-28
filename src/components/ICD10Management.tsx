@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronsLeft, ChevronsRight, Pin, LayoutDashboard, Layers } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronsLeft, ChevronsRight, Pin, LayoutDashboard, Layers, HelpCircle, LayoutGrid, Network } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth, handleFirestoreError, OperationType } from '../firebase';
 import * as XLSX from 'xlsx';
 import { ICD10, Drug, UserProfile } from '../types';
@@ -60,6 +60,13 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   // ICD Detail Modal State
   const [selectedIcdForDetail, setSelectedIcdForDetail] = useState<ICD10 | null>(null);
   const [isIcdDetailModalOpen, setIsIcdDetailModalOpen] = useState(false);
+
+  // Help Guide Viewer State
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
+  const [guideData, setGuideData] = useState<{ title: string; tabs: Array<{ id: string; title: string; paragraphs: string[] }> } | null>(null);
+  const [activeGuideTabIdx, setActiveGuideTabIdx] = useState(0);
+  const [guideSearchTerm, setGuideSearchTerm] = useState('');
+  const [guideFontSize, setGuideFontSize] = useState<'sm' | 'base' | 'lg'>('base');
 
   const handleShowDrugDetail = (drug: Drug) => {
     setDetailDrug(drug);
@@ -130,7 +137,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     isAppendixA2: false,
     isNew: false,
     isExpired: false,
-    oldName: ''
+    oldName: '',
+    chapterName: '',
+    blockName: ''
   });
 
 
@@ -195,9 +204,37 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       console.error("Error fetching drugs for ICD-10:", error);
     });
 
+    const unsubscribeGuide = onSnapshot(doc(db, 'system_config', 'guide_icd10'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setGuideData({
+          title: data.title || 'Hướng dẫn Tra cứu ICD-10',
+          tabs: data.tabs || []
+        });
+      } else {
+        setGuideData({
+          title: 'Hướng dẫn Tra cứu ICD-10',
+          tabs: [
+            {
+              id: 'tab-1',
+              title: 'Tổng quan',
+              paragraphs: [
+                'Tra cứu ICD-10 là công cụ hỗ trợ tìm kiếm nhanh mã bệnh quốc tế ICD-10.',
+                'Nhập mã ICD-10 hoặc tên bệnh tiếng Việt không dấu/có dấu để tìm kiếm.',
+                'Bạn có thể click vào các nút triệu chứng hoặc tình trạng để lọc nhanh mã bệnh theo chương.'
+              ]
+            }
+          ]
+        });
+      }
+    }, (error) => {
+      console.error("Error loading guides inside ICD10Management:", error);
+    });
+
     return () => {
       unsubscribeICD();
       unsubscribeDrugs();
+      unsubscribeGuide();
     };
   }, []);
 
@@ -253,7 +290,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           'I-K': ['I', 'J', 'K'],
           'L-N': ['L', 'M', 'N'],
           'O-Q': ['O', 'P', 'Q'],
-          'R-Z': ['R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+          'R-S': ['R', 'S', 'T'],
+          'U-Z': ['U', 'V', 'W', 'X', 'Y', 'Z']
         };
 
         if (!filtersMap[icdChapterFilter]?.includes(firstChar)) return false;
@@ -336,7 +374,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const handleOpenModal = (icd?: ICD10) => {
     if (icd) {
       setEditingIcd(icd);
-      setFormData(icd);
+      setFormData({
+        ...icd,
+        chapterName: icd.chapterName || '',
+        blockName: icd.blockName || ''
+      });
     } else {
       setEditingIcd(null);
       setFormData({ 
@@ -348,7 +390,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       isRestricted: false,
       isNew: false,
       isExpired: false,
-      oldName: ''
+      oldName: '',
+      chapterName: '',
+      blockName: ''
     });
     }
     setIsModalOpen(true);
@@ -443,6 +487,18 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       await triggerIcd10Sync();
     } catch (error) {
       console.error("Error toggling Restricted status:", error);
+    }
+  };
+
+  const handleToggleTT26 = async (icd: ICD10) => {
+    try {
+      const docId = icd.id || icd.code;
+      await updateDoc(doc(db, 'icd10', docId), {
+        isTT26: !icd.isTT26
+      });
+      await triggerIcd10Sync();
+    } catch (error) {
+      console.error("Error toggling TT26 status:", error);
     }
   };
 
@@ -592,45 +648,73 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
         const portalTarget = getPortalTarget();
         return portalTarget ? createPortal(
           <div className="flex items-center gap-2 w-full lg:hidden pr-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input
-                type="text"
-                placeholder="Tìm ICD-10..."
-                className={cn(
-                  "w-full pl-8 pr-16 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
-                  isDarkMode 
-                    ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
-                    : "bg-white border-slate-200 text-slate-900 shadow-sm"
-                )}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {searchTerm && (
-                  <button 
-                    onClick={() => setSearchTerm('')}
-                    className="p-1 text-slate-400 hover:text-slate-600"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-                <button
-                  onClick={() => {
-                    setShowFilters(!showFilters);
-                    scrollToTop();
-                  }}
+            {!isGuideModalOpen ? (
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <input
+                  type="text"
+                  placeholder="Tìm ICD-10..."
                   className={cn(
-                    "p-1 rounded-md transition-all",
-                    showFilters 
-                      ? "bg-emerald-600 text-white shadow-sm" 
-                      : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
+                    "w-full pl-8 pr-16 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
+                    isDarkMode 
+                      ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
+                      : "bg-white border-slate-200 text-slate-900 shadow-sm"
                   )}
-                >
-                  <Filter size={14} />
-                </button>
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {searchTerm && (
+                    <button 
+                      onClick={() => setSearchTerm('')}
+                      className="p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setActiveGuideTabIdx(0);
+                      setIsGuideModalOpen(!isGuideModalOpen);
+                    }}
+                    className={cn(
+                      "p-1.5 rounded-md transition-all",
+                      isGuideModalOpen
+                        ? "bg-amber-500 text-white shadow-sm"
+                        : "text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                    )}
+                    title="Hướng dẫn & Trợ giúp"
+                  >
+                    <HelpCircle size={14} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowFilters(!showFilters);
+                      scrollToTop();
+                    }}
+                    className={cn(
+                      "p-1 rounded-md transition-all",
+                      showFilters 
+                        ? "bg-emerald-600 text-white shadow-sm" 
+                        : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
+                    )}
+                  >
+                    <Filter size={14} />
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <button
+                onClick={() => setIsGuideModalOpen(false)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border shadow-sm",
+                  isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-white border-slate-200 text-slate-700"
+                )}
+              >
+                <X size={12} />
+                <span>Quay lại Tra cứu</span>
+              </button>
+            )}
           </div>,
           portalTarget
         ) : null;
@@ -638,7 +722,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
       <div className="mb-2 lg:mb-10 space-y-6">
         {/* Guest Search Bar for Mobile (since portal subheader is missing in guest modal) */}
-        {!userRole && (
+        {!userRole && !isGuideModalOpen && (
           <div className="lg:hidden mb-4 space-y-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -666,6 +750,21 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               </div>
               <button
                 onClick={() => {
+                  setActiveGuideTabIdx(0);
+                  setIsGuideModalOpen(!isGuideModalOpen);
+                }}
+                className={cn(
+                  "p-3 rounded-2xl border transition-all",
+                  isGuideModalOpen
+                    ? "bg-amber-500 border-amber-500 text-white shadow-lg"
+                    : (isDarkMode ? "bg-slate-800 border-slate-700 text-amber-500 hover:bg-slate-700" : "bg-white border-slate-200 text-amber-500 hover:bg-amber-50/50")
+                )}
+                title="Hướng dẫn & Trợ giúp"
+              >
+                <HelpCircle size={20} />
+              </button>
+              <button
+                onClick={() => {
                   setShowFilters(!showFilters);
                   scrollToTop();
                 }}
@@ -684,7 +783,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
         {/* Mobile Filters UI - Appears below sub-header */}
         <AnimatePresence>
-          {showFilters && (
+          {showFilters && !isGuideModalOpen && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
@@ -1046,13 +1145,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 )}>
                   {[
                     { id: 'all', label: 'Tất cả chương' },
-                    { id: 'A-B', label: 'Nhiễm khuẩn (A-B)' },
+                    { id: 'A-B', label: 'Truyền nhiễm (A-B)' },
                     { id: 'C-D', label: 'Khối u (C-D)' },
                     { id: 'E-H', label: 'Nội tiết/Mắt/Tai (E-H)' },
                     { id: 'I-K', label: 'Tuần hoàn/Hô hấp/Tiêu hóa (I-K)' },
                     { id: 'L-N', label: 'Da/Cơ xương/Tiết niệu (L-N)' },
                     { id: 'O-Q', label: 'Sản/Nhi/Dị tật (O-Q)' },
-                    { id: 'R-Z', label: 'Triệu chứng/Chấn thương (R-Z)' }
+                    { id: 'R-S', label: 'Triệu chứng (R-S)' },
+                    { id: 'U-Z', label: 'Tình trạng (U-Z)' }
                   ].map(filter => (
                     <button
                       key={filter.id}
@@ -1101,203 +1201,523 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
             {/* Category Tabs move here with extra sub-label */}
             <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
+              {!isGuideModalOpen ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleCategoryFilter('all')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                        icdCategoryFilter === 'all'
+                          ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none"
+                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                      )}
+                    >
+                      Tất cả
+                    </button>
+                    {canSeeAppendixA2 && (
+                      <button
+                        onClick={() => toggleCategoryFilter('appendix_a2')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                          icdCategoryFilter === 'appendix_a2'
+                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none"
+                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                        )}
+                      >
+                        24
+                      </button>
+                    )}
+                    {canSeeAppendixA2 && (
+                      <button
+                        onClick={() => toggleCategoryFilter('appendix_a3')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                          icdCategoryFilter === 'appendix_a3'
+                            ? "bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none"
+                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                        )}
+                      >
+                        25
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleCategoryFilter('restricted')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                        icdCategoryFilter === 'restricted'
+                          ? "bg-rose-600 text-white shadow-lg shadow-rose-200 dark:shadow-none"
+                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                      )}
+                    >
+                      26
+                    </button>
+                    {canSeeAppendixA2 && (
+                      <button
+                        onClick={() => toggleCategoryFilter('appendix_a4')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                          icdCategoryFilter === 'appendix_a4'
+                            ? "bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none"
+                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                        )}
+                      >
+                        27
+                      </button>
+                    )}
+                    {canSeeAppendixA2 && (
+                      <button
+                        onClick={() => toggleCategoryFilter('appendix_a5')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                          icdCategoryFilter === 'appendix_a5'
+                            ? "bg-pink-600 text-white shadow-lg shadow-pink-200 dark:shadow-none"
+                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                        )}
+                      >
+                        28
+                      </button>
+                    )}
+                    {canSeeAppendixA2 && (
+                      <button
+                        onClick={() => toggleCategoryFilter('appendix_a6')}
+                        className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                          icdCategoryFilter === 'appendix_a6'
+                            ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200 dark:shadow-none"
+                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                        )}
+                      >
+                        29
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleCategoryFilter('tt26')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
+                        icdCategoryFilter === 'tt26'
+                          ? "bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-200 dark:shadow-none"
+                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                      )}
+                    >
+                      TT26
+                    </button>
+                  </div>
+                  <AnimatePresence>
+                    {icdCategoryFilter === 'appendix_a2' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-indigo-400" : "text-indigo-500"
+                        )}
+                      >
+                        24. Mã không được dùng là bệnh chính
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'appendix_a3' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-amber-400" : "text-amber-500"
+                        )}
+                      >
+                        25. MÃ KHÔNG KHUYẾN KHÍCH DÙNG LÀ BỆNH CHÍNH
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'appendix_a4' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-blue-400" : "text-blue-500"
+                        )}
+                      >
+                        27. CHỈ SỬ DỤNG MÃ HÓA NGUYÊN NHÂN TỬ VONG
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'appendix_a5' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-pink-400" : "text-pink-500"
+                        )}
+                      >
+                        28. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NỮ GIỚI
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'appendix_a6' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-cyan-400" : "text-cyan-500"
+                        )}
+                      >
+                        29. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NAM GIỚI
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'restricted' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-rose-400" : "text-rose-500"
+                        )}
+                      >
+                        26. Mã không được sử dụng vì có mã 4 hoặc 5 ký tự cụ thể hơn
+                      </motion.p>
+                    )}
+                    {icdCategoryFilter === 'tt26' && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-[0.2em] px-2",
+                          isDarkMode ? "text-fuchsia-400" : "text-fuchsia-500"
+                        )}
+                      >
+                        BỆNH, NHÓM BỆNH ĐƯỢC ÁP DỤNG KÊ ĐƠN THUỐC NGOẠI TRÚ TRÊN 30 NGÀY
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Guide Button */}
+                  <button
+                    onClick={() => {
+                      setActiveGuideTabIdx(0);
+                      setIsGuideModalOpen(true);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold transition-all active:scale-95 text-xs border whitespace-nowrap shadow-sm mt-1",
+                      isGuideModalOpen
+                        ? "bg-amber-500 border-amber-500 text-white"
+                        : (isDarkMode 
+                          ? "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-400" 
+                          : "bg-amber-50 border-amber-100 hover:bg-amber-100 text-amber-700 shadow-slate-200/50")
+                    )}
+                  >
+                    <HelpCircle size={16} />
+                    <span>Hướng dẫn & Trợ giúp</span>
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={() => toggleCategoryFilter('all')}
+                  onClick={() => setIsGuideModalOpen(false)}
                   className={cn(
-                    "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                    icdCategoryFilter === 'all'
-                      ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none"
-                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                    "flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase tracking-widest transition-all active:scale-95 text-xs border whitespace-nowrap shadow-md mt-1",
+                    isDarkMode
+                      ? "bg-amber-500 border-amber-500 text-white"
+                      : "bg-amber-50 border-amber-100 hover:bg-amber-100 text-amber-700"
                   )}
                 >
-                  Tất cả
+                  <X size={16} />
+                  <span>Quay lại Tra cứu</span>
                 </button>
-                {canSeeAppendixA2 && (
-                  <button
-                    onClick={() => toggleCategoryFilter('appendix_a2')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                      icdCategoryFilter === 'appendix_a2'
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                    )}
-                  >
-                    24
-                  </button>
-                )}
-                {canSeeAppendixA2 && (
-                  <button
-                    onClick={() => toggleCategoryFilter('appendix_a3')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                      icdCategoryFilter === 'appendix_a3'
-                        ? "bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                    )}
-                  >
-                    25
-                  </button>
-                )}
-                <button
-                  onClick={() => toggleCategoryFilter('restricted')}
-                  className={cn(
-                    "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                    icdCategoryFilter === 'restricted'
-                      ? "bg-rose-600 text-white shadow-lg shadow-rose-200 dark:shadow-none"
-                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                  )}
-                >
-                  26
-                </button>
-                {canSeeAppendixA2 && (
-                  <button
-                    onClick={() => toggleCategoryFilter('appendix_a4')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                      icdCategoryFilter === 'appendix_a4'
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                    )}
-                  >
-                    27
-                  </button>
-                )}
-                {canSeeAppendixA2 && (
-                  <button
-                    onClick={() => toggleCategoryFilter('appendix_a5')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                      icdCategoryFilter === 'appendix_a5'
-                        ? "bg-pink-600 text-white shadow-lg shadow-pink-200 dark:shadow-none"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                    )}
-                  >
-                    28
-                  </button>
-                )}
-                {canSeeAppendixA2 && (
-                  <button
-                    onClick={() => toggleCategoryFilter('appendix_a6')}
-                    className={cn(
-                      "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                      icdCategoryFilter === 'appendix_a6'
-                        ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200 dark:shadow-none"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                    )}
-                  >
-                    29
-                  </button>
-                )}
-                <button
-                  onClick={() => toggleCategoryFilter('tt26')}
-                  className={cn(
-                    "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
-                    icdCategoryFilter === 'tt26'
-                      ? "bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-200 dark:shadow-none"
-                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                  )}
-                >
-                  TT26
-                </button>
-              </div>
-              <AnimatePresence>
-                {icdCategoryFilter === 'appendix_a2' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-indigo-400" : "text-indigo-500"
-                    )}
-                  >
-                    24. Mã không được dùng là bệnh chính
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'appendix_a3' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-amber-400" : "text-amber-500"
-                    )}
-                  >
-                    25. MÃ KHÔNG KHUYẾN KHÍCH DÙNG LÀ BỆNH CHÍNH
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'appendix_a4' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-blue-400" : "text-blue-500"
-                    )}
-                  >
-                    27. CHỈ SỬ DỤNG MÃ HÓA NGUYÊN NHÂN TỬ VONG
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'appendix_a5' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-pink-400" : "text-pink-500"
-                    )}
-                  >
-                    28. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NỮ GIỚI
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'appendix_a6' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-cyan-400" : "text-cyan-500"
-                    )}
-                  >
-                    29. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NAM GIỚI
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'restricted' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-rose-400" : "text-rose-500"
-                    )}
-                  >
-                    26. Mã không được sử dụng vì có mã 4 hoặc 5 ký tự cụ thể hơn
-                  </motion.p>
-                )}
-                {icdCategoryFilter === 'tt26' && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-[0.2em] px-2",
-                      isDarkMode ? "text-fuchsia-400" : "text-fuchsia-500"
-                    )}
-                  >
-                    BỆNH, NHÓM BỆNH ĐƯỢC ÁP DỤNG KÊ ĐƠN THUỐC NGOẠI TRÚ TRÊN 30 NGÀY
-                  </motion.p>
-                )}
-              </AnimatePresence>
+              )}
             </div>
           </div>
         </div>
-        {canManage && (
+
+        {/* Full-width Help Center View */}
+        <AnimatePresence>
+          {isGuideModalOpen && guideData && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 15 }}
+              className="space-y-6 animate-in fade-in duration-300"
+            >
+              {/* Help Center Content Grid */}
+              <div className={cn(
+                "p-4 sm:p-6 lg:p-8 rounded-2xl lg:rounded-[32px] border transition-all duration-300 relative shadow-lg shadow-slate-100 dark:shadow-none",
+                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+              )}>
+                {/* Search & Tool Utilities in Guide */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-dashed border-slate-200 dark:border-slate-800 mb-6">
+                  {/* Left: Input search within guide */}
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Tìm kiếm nội dung trong hướng dẫn..."
+                      className={cn(
+                        "w-full pl-9 pr-8 py-2 border rounded-xl focus:ring-2 focus:ring-amber-500 transition-all text-xs font-semibold",
+                        isDarkMode 
+                          ? "bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 focus:bg-slate-850" 
+                          : "bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-amber-500 shadow-inner"
+                      )}
+                      value={guideSearchTerm}
+                      onChange={(e) => setGuideSearchTerm(e.target.value)}
+                    />
+                    {guideSearchTerm && (
+                      <button
+                        onClick={() => setGuideSearchTerm('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right: Text Size and Copy Controls */}
+                  <div className="flex items-center gap-4">
+                    {/* Font Size Adjuster */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1">Cỡ chữ:</span>
+                      <div className={cn(
+                        "flex items-center p-0.5 rounded-lg border",
+                        isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200"
+                      )}>
+                        {[
+                          { id: 'sm', label: 'A-', sizeClass: 'text-[10px]' },
+                          { id: 'base', label: 'A', sizeClass: 'text-xs' },
+                          { id: 'lg', label: 'A+', sizeClass: 'text-sm' }
+                        ].map((btn) => (
+                          <button
+                            key={btn.id}
+                            onClick={() => setGuideFontSize(btn.id as any)}
+                            className={cn(
+                              "px-2.5 py-1 rounded font-black transition-all",
+                              guideFontSize === btn.id
+                                ? "bg-amber-500 text-white shadow-sm"
+                                : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-800")
+                            )}
+                          >
+                            <span className={btn.sizeClass}>{btn.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Quick Info Badge */}
+                    <div className={cn(
+                      "hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black tracking-wider uppercase border",
+                      isDarkMode ? "bg-slate-950/40 border-slate-800 text-amber-400" : "bg-amber-50/50 border-amber-100 text-amber-700"
+                    )}>
+                      <Info size={12} />
+                      <span>Thông tư 06/2026/TT-BYT</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Two-Column Layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                  {/* Left Column: Vertical Topic list */}
+                  <div className="lg:col-span-1 space-y-2">
+                    <div className="px-2 pb-1">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Danh mục chủ đề</span>
+                    </div>
+                    {/* Desktop sidebar list */}
+                    <div className="hidden lg:flex flex-col gap-1.5">
+                      {guideData.tabs && guideData.tabs.map((tab, idx) => (
+                        <button
+                          key={tab.id || idx}
+                          onClick={() => {
+                            setActiveGuideTabIdx(idx);
+                            setGuideSearchTerm('');
+                          }}
+                          className={cn(
+                            "w-full text-left px-4 py-3 rounded-xl transition-all font-bold text-xs border flex items-center justify-between group",
+                            activeGuideTabIdx === idx && !guideSearchTerm
+                              ? (isDarkMode 
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-sm" 
+                                : "bg-amber-50/70 border-amber-100 text-amber-700 shadow-sm shadow-amber-500/5")
+                              : (isDarkMode 
+                                ? "bg-slate-950/20 border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-slate-300" 
+                                : "bg-slate-50/50 border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700")
+                          )}
+                        >
+                          <span className="truncate">{tab.title}</span>
+                          <div className={cn(
+                            "w-1.5 h-1.5 rounded-full transition-colors",
+                            activeGuideTabIdx === idx && !guideSearchTerm ? "bg-amber-500 animate-pulse" : "bg-transparent group-hover:bg-slate-400"
+                          )} />
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Mobile tabs bar */}
+                    <div className="lg:hidden flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+                      {guideData.tabs && guideData.tabs.map((tab, idx) => (
+                        <button
+                          key={tab.id || idx}
+                          onClick={() => {
+                            setActiveGuideTabIdx(idx);
+                            setGuideSearchTerm('');
+                          }}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all border",
+                            activeGuideTabIdx === idx && !guideSearchTerm
+                              ? (isDarkMode ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-amber-50 text-amber-700 border-amber-200")
+                              : (isDarkMode ? "bg-slate-800 border-slate-700/50 text-slate-400" : "bg-slate-50 text-slate-500 border-slate-200")
+                          )}
+                        >
+                          {tab.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Content Card */}
+                  <div className="lg:col-span-3">
+                    {/* Content Section */}
+                    {guideSearchTerm ? (
+                      // Search Result View
+                      <div className="space-y-4">
+                        <div className="px-1 flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Kết quả tìm kiếm cho: "{guideSearchTerm}"
+                          </span>
+                          <button
+                            onClick={() => setGuideSearchTerm('')}
+                            className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:underline"
+                          >
+                            Xóa lọc
+                          </button>
+                        </div>
+                        
+                        {(() => {
+                          const query = guideSearchTerm.toLowerCase();
+                          const matches: Array<{ tabTitle: string; para: string; tabIdx: number; paraIdx: number }> = [];
+                          
+                          guideData.tabs.forEach((tab, tIdx) => {
+                            (tab.paragraphs || []).forEach((para, pIdx) => {
+                              if (para.toLowerCase().includes(query) || tab.title.toLowerCase().includes(query)) {
+                                matches.push({ tabTitle: tab.title, para, tabIdx: tIdx, paraIdx: pIdx });
+                              }
+                            });
+                          });
+
+                          if (matches.length === 0) {
+                            return (
+                              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl animate-in fade-in">
+                                <Search size={28} className="text-slate-300 mx-auto mb-2" />
+                                <p className="text-xs text-slate-400 font-bold">Không tìm thấy nội dung hướng dẫn nào khớp.</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Hãy thử tìm từ khóa khác hoặc viết tiếng Việt không dấu.</p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-3">
+                              {matches.map((match, mIdx) => (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 5 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  key={mIdx}
+                                  className={cn(
+                                    "p-4 rounded-xl border text-left space-y-2 transition-all relative group/para",
+                                    isDarkMode ? "bg-slate-950/30 border-slate-800 hover:bg-slate-950/50" : "bg-slate-50 border-slate-150 hover:bg-white hover:shadow-sm"
+                                  )}
+                                >
+                                  <div className="absolute right-3 top-3 opacity-0 group-hover/para:opacity-100 transition-all">
+                                    <button
+                                      onClick={() => navigator.clipboard.writeText(match.para)}
+                                      className={cn(
+                                        "px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all border",
+                                        isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300 hover:text-white" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                                      )}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[9px] font-black uppercase tracking-widest">
+                                      {match.tabTitle}
+                                    </span>
+                                  </div>
+                                  <p className={cn(
+                                    "leading-relaxed whitespace-pre-line pr-8",
+                                    guideFontSize === 'sm' ? "text-xs" : guideFontSize === 'lg' ? "text-base font-medium" : "text-sm",
+                                    isDarkMode ? "text-slate-300" : "text-slate-700"
+                                  )}>
+                                    {match.para}
+                                  </p>
+                                </motion.div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      // Standard Tab View
+                      <div className="space-y-4">
+                        <div className="px-1">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Nội dung chi tiết - {guideData.tabs[activeGuideTabIdx]?.title}
+                          </span>
+                        </div>
+
+                        {guideData.tabs[activeGuideTabIdx] ? (
+                          <div className="space-y-3.5">
+                            {guideData.tabs[activeGuideTabIdx].paragraphs && guideData.tabs[activeGuideTabIdx].paragraphs.map((para, pIdx) => (
+                              <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: pIdx * 0.03 }}
+                                key={pIdx}
+                                className={cn(
+                                  "p-4 rounded-xl border text-left transition-all relative group/para",
+                                  isDarkMode 
+                                    ? "bg-slate-950/40 border-slate-800/60 text-slate-300" 
+                                    : "bg-white border-slate-100 text-slate-700 shadow-sm"
+                                )}
+                              >
+                                <div className="absolute right-3 top-3 opacity-0 group-hover/para:opacity-100 transition-all">
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(para)}
+                                    className={cn(
+                                      "px-2 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all border",
+                                      isDarkMode ? "bg-slate-800 border-slate-700 text-slate-300 hover:text-white" : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                                    )}
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                  <div className="mt-2 w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+                                  <p className={cn(
+                                    "leading-relaxed whitespace-pre-line pr-8",
+                                    guideFontSize === 'sm' ? "text-xs" : guideFontSize === 'lg' ? "text-base font-medium" : "text-sm",
+                                    isDarkMode ? "text-slate-300" : "text-slate-700"
+                                  )}>
+                                    {para}
+                                  </p>
+                                </div>
+                              </motion.div>
+                            ))}
+                            {(!guideData.tabs[activeGuideTabIdx].paragraphs || guideData.tabs[activeGuideTabIdx].paragraphs.length === 0) && (
+                              <p className="text-slate-500 italic text-center py-6 text-xs">Chưa có nội dung cho phần này.</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-slate-500 italic text-center py-6 text-xs">Chưa có bài viết hoặc nội dung nào được tạo.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {!isGuideModalOpen && canManage && (
           <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-4">
             <div className="flex gap-2 w-full sm:w-auto">
               <button
@@ -1347,10 +1767,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           </div>
         )}
         
-        <div className={cn(
-          "p-2 lg:p-3 rounded-xl lg:rounded-2xl shadow-sm border transition-all space-y-3 hidden lg:block",
-          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-        )}>
+        {!isGuideModalOpen && (
+          <div className={cn(
+            "p-2 lg:p-3 rounded-xl lg:rounded-2xl shadow-sm border transition-all space-y-3 hidden lg:block",
+            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+          )}>
           <div className="flex flex-col gap-5">
             <div className="flex flex-col lg:flex-row gap-4 items-center w-full">
               {/* Search Bar - Main Anchor */}
@@ -1516,13 +1937,14 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               )}>
                 {[
                   { id: 'all', label: 'Tất cả chương', color: 'bg-slate-500' },
-                  { id: 'A-B', label: 'Nhiễm khuẩn (A-B)', color: 'bg-emerald-500' },
+                  { id: 'A-B', label: 'Truyền nhiễm (A-B)', color: 'bg-emerald-500' },
                   { id: 'C-D', label: 'Khối u (C-D)', color: 'bg-rose-500' },
                   { id: 'E-H', label: 'Nội tiết/Mắt (E-H)', color: 'bg-amber-500' },
                   { id: 'I-K', label: 'Hô hấp/Tiêu hóa (I-K)', color: 'bg-blue-500' },
                   { id: 'L-N', label: 'Cơ xương/Da (L-N)', color: 'bg-purple-500' },
                   { id: 'O-Q', label: 'Sản/Nhi/Dị tật (O-Q)', color: 'bg-pink-500' },
-                  { id: 'R-Z', label: 'Triệu chứng (R-Z)', color: 'bg-slate-600' }
+                  { id: 'R-S', label: 'Triệu chứng (R-S)', color: 'bg-slate-600' },
+                  { id: 'U-Z', label: 'Tình trạng (U-Z)', color: 'bg-teal-600' }
                 ].map(filter => (
                   <button
                     key={filter.id}
@@ -1569,14 +1991,16 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
             </div>
           )}
         </div>
+      )}
       </div>
 
-      <div className={cn(
-        "rounded-2xl lg:rounded-[32px] shadow-sm transition-colors border overflow-hidden",
-        isDarkMode 
-          ? "bg-slate-900 border-slate-800 shadow-none" 
-          : "bg-white border-slate-100 shadow-slate-200/20"
-      )}>
+      {!isGuideModalOpen && (
+        <div className={cn(
+          "rounded-2xl lg:rounded-[32px] shadow-sm transition-colors border overflow-hidden",
+          isDarkMode 
+            ? "bg-slate-900 border-slate-800 shadow-none" 
+            : "bg-white border-slate-100 shadow-slate-200/20"
+        )}>
         {/* Mobile Card View */}
         <div className={cn(
           "sm:hidden divide-y",
@@ -1704,7 +2128,23 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   )}
                   </div>
                   {canManage && (
-                    <div className="shrink-0 flex gap-1">
+                    <div className="shrink-0 flex gap-1 items-center">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleTT26(icd); }}
+                          className={cn(
+                            "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border flex items-center justify-center shrink-0 leading-none h-[28px] w-[42px]",
+                            icd.isTT26
+                              ? (isDarkMode 
+                                ? "bg-fuchsia-500/20 border-fuchsia-500/40 text-fuchsia-400" 
+                                : "bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200 shadow-sm")
+                              : (isDarkMode
+                                ? "border-slate-800 text-slate-500 hover:text-fuchsia-400 hover:border-fuchsia-500/30"
+                                : "border-slate-200 text-slate-400 hover:text-fuchsia-600 hover:border-fuchsia-200")
+                          )}
+                          title={icd.isTT26 ? "Gỡ nguyên tắc TT26" : "Thêm nguyên tắc TT26"}
+                        >
+                          TT26
+                        </button>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleOpenModal(icd); }} 
                           className={cn(
@@ -1865,7 +2305,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 )}
                 {canSeeNotes && <th className={cn("px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Ghi chú</th>}
                 {!canManage && canSeeShortcuts && <th className={cn("w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Phím tắt</th>}
-                {canManage && <th className={cn("w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest text-right transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Quản lý</th>}
+                {canManage && <th className={cn("w-36 min-w-[144px] max-w-[144px] sm:w-40 sm:min-w-[160px] sm:max-w-[160px] px-4 sm:px-6 lg:px-8 py-4 text-[10px] lg:text-xs font-black uppercase tracking-widest text-right transition-colors", isDarkMode ? "text-slate-500" : "text-slate-400")}>Quản lý</th>}
               </tr>
             </thead>
             <tbody className={cn(
@@ -2095,8 +2535,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </td>
                   )}
                   {canManage && (
-                    <td className="w-24 min-w-[96px] max-w-[96px] sm:w-28 sm:min-w-[112px] sm:max-w-[112px] px-4 sm:px-6 lg:px-8 py-4 text-right">
-                      <div className="flex justify-end gap-1 lg:gap-2">
+                    <td className="w-36 min-w-[144px] max-w-[144px] sm:w-40 sm:min-w-[160px] sm:max-w-[160px] px-4 sm:px-6 lg:px-8 py-4 text-right">
+                      <div className="flex justify-end items-center gap-1 lg:gap-2">
                         <button
                           onClick={(e) => { e.stopPropagation(); handleOpenModal(icd); }}
                           className={cn(
@@ -2108,6 +2548,22 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           title="Chỉnh sửa"
                         >
                           <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleTT26(icd); }}
+                          className={cn(
+                            "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border flex items-center justify-center shrink-0 leading-none h-[32px] w-[46px]",
+                            icd.isTT26
+                              ? (isDarkMode 
+                                ? "bg-fuchsia-500/20 border-fuchsia-500/40 text-fuchsia-400" 
+                                : "bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200 shadow-sm")
+                              : (isDarkMode
+                                ? "border-slate-800 text-slate-500 hover:text-fuchsia-400 hover:border-fuchsia-500/30 hover:bg-fuchsia-500/10"
+                                : "border-slate-200 text-slate-400 hover:text-fuchsia-600 hover:border-fuchsia-200 hover:bg-fuchsia-50")
+                          )}
+                          title={icd.isTT26 ? "Gỡ nguyên tắc TT26" : "Thêm nguyên tắc TT26"}
+                        >
+                          TT26
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); confirmDelete(icd.code); }}
@@ -2234,6 +2690,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           </div>
         )}
       </div>
+    )}
 
       {/* Bulk Description Update Modal */}
       <AnimatePresence>
@@ -2487,6 +2944,34 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         value={formData.oldName || ''}
                         onChange={(e) => setFormData({ ...formData, oldName: e.target.value })}
                         placeholder="Nhập tên cũ của bệnh nếu có sự thay đổi..."
+                        className={cn(
+                          "w-full px-4 py-2.5 sm:py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                        )}
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên Chương</label>
+                      <input
+                        type="text"
+                        value={formData.chapterName || ''}
+                        onChange={(e) => setFormData({ ...formData, chapterName: e.target.value })}
+                        placeholder="Nhập tên Chương bệnh (VD: Chương I: Một số bệnh nhiễm trùng...)"
+                        className={cn(
+                          "w-full px-4 py-2.5 sm:py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                        )}
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tên Khối</label>
+                      <input
+                        type="text"
+                        value={formData.blockName || ''}
+                        onChange={(e) => setFormData({ ...formData, blockName: e.target.value })}
+                        placeholder="Nhập tên Khối bệnh (VD: A00-A09: Các bệnh nhiễm trùng đường ruột...)"
                         className={cn(
                           "w-full px-4 py-2.5 sm:py-3 border rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all font-bold text-sm",
                           isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
@@ -2839,6 +3324,8 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           }
         }}
       />
+
+
     </div>
   );
 };

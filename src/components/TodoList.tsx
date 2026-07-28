@@ -924,10 +924,10 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
                     </AnimatePresence>
                   ) : (
                     <>
-                      {['pending', 'in_progress', 'completed'].map(status => {
+                      {['pending', 'in_progress', 'completed'].map((status, statusIdx) => {
                         const statusTodos = filteredTodos.filter(t => (t.status || 'pending') === status);
                         return (
-                          <div key={status} className="w-[380px] flex-shrink-0 flex flex-col gap-6">
+                          <div key={`${status}-${statusIdx}`} className="w-[380px] flex-shrink-0 flex flex-col gap-6">
                             <div className="flex items-center justify-between px-4">
                               <div className="flex items-center gap-3">
                                 <div className={cn(

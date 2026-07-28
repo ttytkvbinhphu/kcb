@@ -795,8 +795,8 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
         </div>
       ) : (
         <div className="space-y-12">
-          {groupedCatalog.map((group) => (
-            <div key={group.category} className="space-y-6">
+          {groupedCatalog.map((group, groupIdx) => (
+            <div key={`${group.category}-${groupIdx}`} className="space-y-6">
               <div className="flex items-center gap-3">
                 <div className={cn(
                   "h-8 w-1.5 rounded-full transition-colors",

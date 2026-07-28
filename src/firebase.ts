@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as firebaseSignOut, User, signInAnonymously } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -170,5 +170,5 @@ export async function signOut(auth: any) {
   return firebaseSignOut(auth);
 }
 
-export { signInWithPopup, onAuthStateChanged, collection, getDocs, onSnapshot, query, where, orderBy, limit, doc, getDoc, deleteDoc, serverTimestamp, increment, arrayUnion, arrayRemove };
+export { signInWithPopup, onAuthStateChanged, collection, getDocs, onSnapshot, query, where, orderBy, limit, doc, getDoc, deleteDoc, serverTimestamp, increment, arrayUnion, arrayRemove, signInAnonymously };
 export type { User };

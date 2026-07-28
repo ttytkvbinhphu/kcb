@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, Globe, GraduationCap, Eye, EyeOff } from 'lucide-react';
+import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, Globe, GraduationCap, Eye, EyeOff, MoreVertical } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
 import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -34,6 +34,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [systemSettings, setSystemSettings] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeMenuUserId, setActiveMenuUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setActiveMenuUserId(null);
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => {
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -397,7 +408,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => toggleHidden(user)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleHidden(user);
+                      }}
                       className={cn(
                         "p-2 rounded-lg border transition-all",
                         user.isHidden
@@ -408,25 +422,75 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     >
                       {user.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
-                    <button
-                      onClick={() => startEditing(user)}
-                      className={cn(
-                        "p-2 rounded-lg border transition-all",
-                        isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400"
-                      )}
-                    >
-                      <Edit3 size={14} />
-                    </button>
-                    <button
-                      onClick={() => deleteUser(user.uid, user.displayName || user.email)}
-                      disabled={isMasterAdmin(user.email)}
-                      className={cn(
-                        "p-2 rounded-lg border transition-all disabled:opacity-0",
-                        isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400"
-                      )}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    
+                    <div className="relative inline-block text-left">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuUserId(activeMenuUserId === user.uid ? null : user.uid);
+                        }}
+                        className={cn(
+                          "p-2 rounded-lg border transition-all flex items-center justify-center",
+                          activeMenuUserId === user.uid
+                            ? (isDarkMode ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-500 text-indigo-600")
+                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-200")
+                        )}
+                        title="Thao tác"
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+                      <AnimatePresence>
+                        {activeMenuUserId === user.uid && (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                            transition={{ duration: 0.15 }}
+                            className={cn(
+                              "absolute right-0 mt-2 w-32 rounded-xl shadow-2xl border z-[90] overflow-hidden py-1.5 text-left backdrop-blur-md",
+                              isDarkMode
+                                ? "bg-slate-900/95 border-slate-800 shadow-slate-950/80"
+                                : "bg-white/95 border-slate-200 shadow-slate-200/50"
+                            )}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuUserId(null);
+                                startEditing(user);
+                              }}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors",
+                                isDarkMode
+                                  ? "text-slate-300 hover:bg-slate-800 hover:text-indigo-400"
+                                  : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
+                              )}
+                            >
+                              <Edit3 size={14} className="text-indigo-500" />
+                              <span>Sửa</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuUserId(null);
+                                deleteUser(user.uid, user.displayName || user.email);
+                              }}
+                              disabled={isMasterAdmin(user.email)}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors disabled:opacity-30",
+                                isDarkMode
+                                  ? "text-slate-300 hover:bg-rose-950/20 hover:text-rose-400"
+                                  : "text-slate-600 hover:bg-rose-50 hover:text-rose-600"
+                              )}
+                            >
+                              <Trash2 size={14} className="text-rose-500" />
+                              <span>Xóa</span>
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -627,7 +691,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => toggleHidden(user)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleHidden(user);
+                            }}
                             className={cn(
                               "p-2 rounded-lg transition-all border-2",
                               user.isHidden
@@ -638,29 +705,75 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                           >
                             {user.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
-                          <button
-                            onClick={() => startEditing(user)}
-                            className={cn(
-                              "p-2 rounded-lg transition-all border-2",
-                              isDarkMode 
-                                ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50" 
-                                : "bg-white border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-200"
-                            )}
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                          <button
-                            onClick={() => deleteUser(user.uid, user.displayName || user.email)}
-                            disabled={isMasterAdmin(user.email)}
-                            className={cn(
-                              "p-2 rounded-lg transition-all border-2 disabled:opacity-0",
-                              isDarkMode 
-                                ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50" 
-                                : "bg-white border-slate-100 text-slate-400 hover:text-rose-600 hover:border-rose-200"
-                            )}
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          
+                          <div className="relative inline-block text-left">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuUserId(activeMenuUserId === user.uid ? null : user.uid);
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all border-2 flex items-center justify-center",
+                                activeMenuUserId === user.uid
+                                  ? (isDarkMode ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-500 text-indigo-600")
+                                  : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-200")
+                              )}
+                              title="Thao tác"
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                            <AnimatePresence>
+                              {activeMenuUserId === user.uid && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  transition={{ duration: 0.15 }}
+                                  className={cn(
+                                    "absolute right-0 mt-2 w-32 rounded-xl shadow-2xl border z-[90] overflow-hidden py-1.5 text-left backdrop-blur-md",
+                                    isDarkMode
+                                      ? "bg-slate-900/95 border-slate-800 shadow-slate-950/80"
+                                      : "bg-white/95 border-slate-200 shadow-slate-200/50"
+                                  )}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenuUserId(null);
+                                      startEditing(user);
+                                    }}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors",
+                                      isDarkMode
+                                        ? "text-slate-300 hover:bg-slate-800 hover:text-indigo-400"
+                                        : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
+                                    )}
+                                  >
+                                    <Edit3 size={14} className="text-indigo-500" />
+                                    <span>Sửa</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveMenuUserId(null);
+                                      deleteUser(user.uid, user.displayName || user.email);
+                                    }}
+                                    disabled={isMasterAdmin(user.email)}
+                                    className={cn(
+                                      "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors disabled:opacity-30",
+                                      isDarkMode
+                                        ? "text-slate-300 hover:bg-rose-950/20 hover:text-rose-400"
+                                        : "text-slate-600 hover:bg-rose-50 hover:text-rose-600"
+                                    )}
+                                  >
+                                    <Trash2 size={14} className="text-rose-500" />
+                                    <span>Xóa</span>
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </div>
                       </td>
                     </motion.tr>

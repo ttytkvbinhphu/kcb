@@ -18,6 +18,8 @@ interface ICDDetailModalProps {
     notes?: string;
     guide?: string;
     chapter?: string;
+    chapterName?: string;
+    blockName?: string;
   } | null;
   suggestions: string[];
   isDarkMode?: boolean;
@@ -163,7 +165,26 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                       <BookOpen size={18} className="text-blue-500 shrink-0 mt-1" />
                       <div>
                         <p className={cn("text-xs font-bold leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                          {icd.chapter || 'Thông tin chương đang cập nhật'}
+                          {icd.chapterName || icd.chapter || 'Thông tin chương đang cập nhật'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Block Info */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1 h-4 bg-teal-500 rounded-full" />
+                      <span className="text-xs font-black uppercase tracking-widest text-slate-500">Khối bệnh</span>
+                    </div>
+                    <div className={cn(
+                      "p-4 rounded-2xl border flex items-start gap-3",
+                      isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-teal-50/50 border-teal-100"
+                    )}>
+                      <BookOpen size={18} className="text-teal-500 shrink-0 mt-1" />
+                      <div>
+                        <p className={cn("text-xs font-bold leading-relaxed", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                          {icd.blockName || 'Thông tin khối đang cập nhật'}
                         </p>
                       </div>
                     </div>

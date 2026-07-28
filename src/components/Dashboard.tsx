@@ -148,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     .filter(a => a.showInWorkspace !== false && !dismissedAnnouncements.includes(a.id))
     .map(a => ({
       id: a.id,
-      title: a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống',
+      title: a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống'),
       message: a.content,
       type: (a.type === 'drug_update' ? 'success' : 'info') as 'success' | 'info' | 'warning' | 'error',
       createdAt: a.createdAt,
@@ -1176,7 +1176,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {/* Active Ingredients */}
                         {drug.activeIngredients && drug.activeIngredients.length > 0 && (
                           <div className="space-y-1">
-                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất chính</p>
+                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
                             <div className="flex flex-wrap gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[50px] overflow-hidden">
                               {drug.activeIngredients.map((ai, aiIdx) => (
                                 <span key={aiIdx} className={cn(
@@ -1355,7 +1355,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {/* Active Ingredients */}
                         {drug.activeIngredients && drug.activeIngredients.length > 0 && (
                           <div className="space-y-1">
-                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất chính</p>
+                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
                             <div className="flex flex-wrap gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[50px] overflow-hidden">
                               {drug.activeIngredients.map((ai, aiIdx) => (
                                 <span key={aiIdx} className={cn(

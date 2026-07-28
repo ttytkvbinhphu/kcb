@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight, ChevronLeft, Check, Sparkles, BookOpen, Search, Users, X } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Sparkles, BookOpen, Search, Users, X, Pill, ClipboardList, ShieldAlert, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 // Helper to convert Google Drive links to direct image URLs
@@ -61,22 +61,45 @@ export default function WelcomeSlider({ onComplete, isDarkMode, userName, slides
   };
 
   const displaySlides = React.useMemo(() => {
-    if (!dbSlides || dbSlides.length === 0) {
-      return [{
+    const defaultSlides = [
+      {
         id: 'default-1',
-        title: 'Chào mừng bạn đến với hệ thống',
-        description: 'Hệ thống hỗ trợ tra cứu và quản lý thông tin Y - Dược dành cho nhân viên y tế.',
-        icon: <Sparkles className="w-16 h-16 text-indigo-500" />
-      }];
+        title: 'Hệ thống Tra cứu Y - Dược',
+        description: 'Chào mừng bạn đến với nền tảng hỗ trợ đắc lực dành cho nhân viên y tế trong việc tra cứu thuốc, bệnh danh ICD-10 và an toàn sử dụng thuốc.',
+        icon: <Sparkles className="w-16 h-16 text-indigo-500 animate-pulse" />
+      },
+      {
+        id: 'default-2',
+        title: 'Tra cứu Thuốc Thông minh',
+        description: 'Tìm kiếm hoạt chất, biệt dược, phân nhóm điều trị nhanh chóng. Hỗ trợ xem chi tiết liều dùng, chỉ định, chống chỉ định và tương tác thuốc chính xác.',
+        icon: <Pill className="w-16 h-16 text-emerald-500 animate-bounce" />
+      },
+      {
+        id: 'default-3',
+        title: 'Tra cứu ICD-10 & Nguyên tắc TT26',
+        description: 'Tra cứu nhanh mã bệnh ICD-10 tích hợp các nguyên tắc lọc, xem hướng dẫn áp dụng nguyên tắc TT26 tức thời để phục vụ công tác thanh quyết toán BHYT.',
+        icon: <ClipboardList className="w-16 h-16 text-amber-500" />
+      },
+      {
+        id: 'default-4',
+        title: 'Kiểm tra Tương tác Thuốc',
+        description: 'Phát hiện nhanh chóng các cặp tương tác thuốc bất lợi khi kê đơn, hiển thị chi tiết mức độ nghiêm trọng và khuyến cáo xử trí lâm sàng kịp thời.',
+        icon: <ShieldAlert className="w-16 h-16 text-rose-500 animate-pulse" />
+      },
+      {
+        id: 'default-5',
+        title: 'Lịch công tác & Trợ lý Y khoa',
+        description: 'Theo dõi lịch làm việc tuần, quản lý danh sách việc cần làm, ghi chú lâm sàng nhanh và tích hợp bộ công cụ máy tính y khoa tiện lợi ngay tại sidebar.',
+        icon: <Calendar className="w-16 h-16 text-sky-500" />
+      }
+    ];
+
+    if (!dbSlides || dbSlides.length === 0) {
+      return defaultSlides;
     }
     const filtered = dbSlides.filter(s => s.isActive !== false);
     if (filtered.length === 0) {
-      return [{
-        id: 'default-1',
-        title: 'Chào mừng bạn đến với hệ thống',
-        description: 'Hệ thống hỗ trợ tra cứu và quản lý thông tin Y - Dược dành cho nhân viên y tế.',
-        icon: <Sparkles className="w-16 h-16 text-indigo-500" />
-      }];
+      return defaultSlides;
     }
     return filtered;
   }, [dbSlides]);

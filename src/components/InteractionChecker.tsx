@@ -1152,7 +1152,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Phân loại tương tác</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {INTERACTION_TYPES.map((type) => (
+                    {INTERACTION_TYPES.map((type, typeIdx) => (
                       <button
                         key={type}
                         type="button"

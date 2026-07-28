@@ -56,7 +56,28 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: false,
       target: 'esnext',
-      chunkSizeWarningLimit: 3000
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('xlsx')) {
+                return 'xlsx-vendor';
+              }
+              if (id.includes('firebase')) {
+                return 'firebase-vendor';
+              }
+              if (id.includes('lucide-react')) {
+                return 'lucide-vendor';
+              }
+              if (id.includes('motion')) {
+                return 'motion-vendor';
+              }
+              return 'vendor';
+            }
+          }
+        }
+      }
     },
     server: {
       port: 3000,

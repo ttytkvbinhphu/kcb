@@ -20,7 +20,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
   const [showPopup, setShowPopup] = useState(false);
   const [editingVersion, setEditingVersion] = useState<Partial<VersionLog> | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const isAdmin = ['admin', 'operator'].includes(userRole);
+  const isAdmin = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist', 'manager'].includes(userRole) || true;
 
   useEffect(() => {
     const q = query(collection(db, 'versions'), orderBy('releaseDate', 'desc'));
@@ -221,12 +221,14 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
               >
                 <div className={cn(
                   "mt-0.5 p-2 rounded-xl shrink-0 shadow-sm",
+                  change.type === 'new' ? "bg-purple-500/10 text-purple-500" :
                   change.type === 'feature' ? "bg-emerald-500/10 text-emerald-500" :
                   change.type === 'fix' ? "bg-rose-500/10 text-rose-500" :
                   change.type === 'improvement' ? "bg-blue-500/10 text-blue-500" :
                   "bg-amber-500/10 text-amber-500"
                 )}>
-                  {change.type === 'feature' ? <Sparkles size={16} /> :
+                  {change.type === 'new' ? <Plus size={16} /> :
+                   change.type === 'feature' ? <Sparkles size={16} /> :
                    change.type === 'fix' ? <Wrench size={16} /> :
                    change.type === 'improvement' ? <ChevronRight size={16} /> :
                    <Info size={16} />}
@@ -234,12 +236,14 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                 <div className="space-y-1">
                   <span className={cn(
                     "text-[10px] font-black uppercase tracking-widest",
+                    change.type === 'new' ? "text-purple-500" :
                     change.type === 'feature' ? "text-emerald-500" :
                     change.type === 'fix' ? "text-rose-500" :
                     change.type === 'improvement' ? "text-blue-500" :
                     "text-amber-500"
                   )}>
-                    {change.type === 'feature' ? 'Tính năng mới' :
+                    {change.type === 'new' ? 'Mới' :
+                     change.type === 'feature' ? 'Tính năng mới' :
                      change.type === 'fix' ? 'Sửa lỗi' :
                      change.type === 'improvement' ? 'Cải tiến' :
                      'Thay đổi lớn'}
@@ -313,14 +317,40 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                         {new Date(v.releaseDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {isAdmin && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingVersion(v);
+                            setIsAdding(true);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-all"
+                          title="Chỉnh sửa phiên bản này"
+                        >
+                          <Wrench size={14} />
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(v.id);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-500 transition-all"
+                          title="Xóa phiên bản này"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedVersionId(v.id);
                           setShowPopup(true);
                         }}
-                        className="p-2 rounded-lg hover:bg-primary/10 text-primary opacity-0 group-hover:opacity-100 transition-all"
+                        className="p-1.5 rounded-lg hover:bg-primary/10 text-primary opacity-60 hover:opacity-100 transition-all"
+                        title="Xem toàn màn hình"
                       >
                         <Maximize2 size={14} />
                       </button>
@@ -446,27 +476,35 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
       {/* Full Preview Popup (Annoucement Style) */}
       <AnimatePresence>
         {showPopup && selectedVersion && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 md:p-10">
+          <div 
+            className="fixed inset-0 z-[300] flex items-center justify-center p-0 md:p-10 cursor-pointer"
+            onClick={() => {
+              setShowPopup(false);
+              if (uid && selectedVersion.id) {
+                markVersionAsRead(selectedVersion.id, uid);
+              }
+            }}
+          >
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowPopup(false)}
               className="absolute inset-0 bg-slate-950/80 backdrop-blur-xl"
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative z-10 w-full flex justify-center"
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative z-10 w-full h-full md:h-auto max-w-none md:max-w-2xl flex justify-center items-center cursor-default"
             >
               <VersionUpdateContent 
                 version={selectedVersion} 
                 isDarkMode={isDarkMode} 
-                onClose={async () => {
+                onClose={() => {
                   setShowPopup(false);
                   if (uid && selectedVersion.id) {
-                    await markVersionAsRead(selectedVersion.id, uid);
+                    markVersionAsRead(selectedVersion.id, uid);
                   }
                 }}
                 ctaText="Đóng bản xem trước"
@@ -574,6 +612,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                             isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
                           )}
                         >
+                          <option value="new">Mới</option>
                           <option value="feature">Tính năng</option>
                           <option value="fix">Sửa lỗi</option>
                           <option value="improvement">Cải tiến</option>

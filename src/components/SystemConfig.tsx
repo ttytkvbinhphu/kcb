@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch } from 'lucide-react';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { SystemSettings, UserProfile, AuthLog } from '../types';
+import { SystemSettings, UserProfile, AuthLog, GuestLog } from '../types';
 import ThemeSettings from './ThemeSettings';
 import ConfirmModal from './ConfirmModal';
 import StaffManagement from './StaffManagement';
@@ -162,6 +162,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   });
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [newAnnouncement, setNewAnnouncement] = useState('');
+  const [announcementTitle, setAnnouncementTitle] = useState('');
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
   const [targetTitles, setTargetTitles] = useState<string[]>([]);
   const [announcementType, setAnnouncementType] = useState<'general' | 'drug_update'>('general');
@@ -173,14 +174,41 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [drugSearchQuery, setDrugSearchQuery] = useState('');
   const [isSavingReg, setIsSavingReg] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+
+  // Announcement editing state
+  const [editingAnnouncement, setEditingAnnouncement] = useState<any | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [editType, setEditType] = useState<'general' | 'drug_update'>('general');
+  const [editTargetRoles, setEditTargetRoles] = useState<string[]>([]);
+  const [editTargetTitles, setEditTargetTitles] = useState<string[]>([]);
+  const [editShowInWorkspace, setEditShowInWorkspace] = useState(true);
+  const [editShowInHeader, setEditShowInHeader] = useState(true);
+  const [editDrugId, setEditDrugId] = useState('');
+  const [editDrugName, setEditDrugName] = useState('');
+  const [editDrugSearchQuery, setEditDrugSearchQuery] = useState('');
+  const [isSavingAnnouncementEdit, setIsSavingAnnouncementEdit] = useState(false);
   const [authLogs, setAuthLogs] = useState<AuthLog[]>([]);
+  const [guestLogs, setGuestLogs] = useState<GuestLog[]>([]);
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
   const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
   const [hrSubTab, setHrSubTab] = useState<'staff' | 'titles' | 'positions' | 'specialties' | 'departments' | 'roles' | 'permissions'>('staff');
-  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings' | 'history'>('pending');
+  const [regSubTab, setRegSubTab] = useState<'pending' | 'settings' | 'history' | 'guest_history'>('pending');
   const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [guestSearchQuery, setGuestSearchQuery] = useState('');
   const [historyActionFilter, setHistoryActionFilter] = useState<'all' | 'login' | 'logout'>('all');
+  const [deletingGuestLogId, setDeletingGuestLogId] = useState<string | null>(null);
+
+  // Guide Management states
+  const [guideSubTab, setGuideSubTab] = useState<'icd10'>('icd10');
+  const [guideTitle, setGuideTitle] = useState('');
+  const [guideTabs, setGuideTabs] = useState<Array<{ id: string; title: string; paragraphs: string[] }>>([]);
+  const [newContentTabTitle, setNewContentTabTitle] = useState('');
+  const [selectedContentTabIndex, setSelectedContentTabIndex] = useState<number>(0);
+  const [newParagraphText, setNewParagraphText] = useState('');
+  const [isSavingGuide, setIsSavingGuide] = useState(false);
+  const [saveGuideSuccess, setSaveGuideSuccess] = useState(false);
   // --- Rendering Editor UI ---
   const effectiveCategory = activeCategory === 'hr' ? hrSubTab : activeCategory;
 
@@ -248,6 +276,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       }
     );
 
+    const unsubGuestLogs = onSnapshot(
+      query(collection(db, 'guest_logs'), orderBy('timestamp', 'desc'), limit(100)),
+      (snapshot) => {
+        setGuestLogs(snapshot.docs.map(doc => doc.data() as GuestLog));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'guest_logs');
+      }
+    );
+
     const unsubPendingUsers = onSnapshot(
       query(collection(db, 'users'), where('isApproved', '==', false)),
       (snapshot) => {
@@ -263,13 +300,38 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       console.error("Error loading drugs inside SystemConfig:", error);
     });
 
+    const unsubGuide = onSnapshot(doc(db, 'system_config', 'guide_icd10'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setGuideTitle(data.title || '');
+        setGuideTabs(data.tabs || []);
+      } else {
+        setGuideTitle('Hướng dẫn Tra cứu ICD-10');
+        setGuideTabs([
+          {
+            id: 'tab-1',
+            title: 'Tổng quan',
+            paragraphs: [
+              'Tra cứu ICD-10 là công cụ hỗ trợ tìm kiếm nhanh mã bệnh quốc tế ICD-10.',
+              'Nhập mã ICD-10 hoặc tên bệnh tiếng Việt không dấu/có dấu để tìm kiếm.',
+              'Bạn có thể click vào các nút triệu chứng hoặc tình trạng để lọc nhanh mã bệnh theo chương.'
+            ]
+          }
+        ]);
+      }
+    }, (error) => {
+      console.error("Error loading guides inside SystemConfig:", error);
+    });
+
     return () => {
       unsubFeatures();
       unsubReg();
       unsubAnnouncements();
       unsubAuthLogs();
+      unsubGuestLogs();
       unsubPendingUsers();
       unsubDrugs();
+      unsubGuide();
     };
   }, []);
 
@@ -320,6 +382,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     try {
       const id = Date.now().toString();
       await setDoc(doc(db, 'announcements', id), {
+        title: announcementTitle.trim() || null,
         content: newAnnouncement,
         createdAt: new Date().toISOString(),
         targetRoles: targetRoles.length > 0 ? targetRoles : null,
@@ -331,6 +394,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         showInHeader: showInHeader
       });
       setNewAnnouncement('');
+      setAnnouncementTitle('');
       setTargetRoles([]);
       setTargetTitles([]);
       setAnnouncementType('general');
@@ -353,6 +417,46 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       await deleteDoc(doc(db, 'announcements', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `announcements/${id}`);
+    }
+  };
+
+  const startEditingAnnouncement = (ann: any) => {
+    setEditingAnnouncement(ann);
+    setEditTitle(ann.title || '');
+    setEditContent(ann.content || '');
+    setEditType(ann.type || 'general');
+    setEditTargetRoles(ann.targetRoles || []);
+    setEditTargetTitles(ann.targetTitles || []);
+    setEditShowInWorkspace(ann.showInWorkspace !== false);
+    setEditShowInHeader(ann.showInHeader !== false);
+    setEditDrugId(ann.drugId || '');
+    setEditDrugName(ann.drugName || '');
+    setEditDrugSearchQuery('');
+  };
+
+  const saveAnnouncementEdit = async () => {
+    if (!editingAnnouncement) return;
+    if (!editContent.trim()) return;
+    setIsSavingAnnouncementEdit(true);
+    try {
+      await setDoc(doc(db, 'announcements', editingAnnouncement.id), {
+        title: editTitle.trim() || null,
+        content: editContent,
+        type: editType,
+        targetRoles: editTargetRoles.length > 0 ? editTargetRoles : null,
+        targetTitles: editTargetTitles.length > 0 ? editTargetTitles : null,
+        showInWorkspace: editShowInWorkspace,
+        showInHeader: editShowInHeader,
+        drugId: editType === 'drug_update' ? editDrugId : null,
+        drugName: editType === 'drug_update' ? editDrugName : null,
+        createdAt: editingAnnouncement.createdAt, // keep original timestamp
+        updatedAt: new Date().toISOString()
+      });
+      setEditingAnnouncement(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `announcements/${editingAnnouncement.id}`);
+    } finally {
+      setIsSavingAnnouncementEdit(false);
     }
   };
 
@@ -609,6 +713,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'theme', label: 'Quản lý Giao diện', icon: Sun, color: 'text-pink-500', bg: 'bg-pink-500/10' },
     { id: 'version', label: 'Nhật ký Phiên bản', icon: History, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+    { id: 'guide', label: 'Hướng dẫn/Trợ giúp', icon: HelpCircle, color: 'text-amber-500', bg: 'bg-amber-500/10' },
   ];
 
   const HR_SUB_TABS = [
@@ -661,6 +766,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       desc: 'Lộ trình phát triển hệ thống',
       longDesc: 'Ghi nhận lịch sử hoàn thiện ứng dụng, cập nhật tính năng mới và theo dõi quá trình tiến hóa của hệ thống qua thời gian.',
       gradient: 'from-violet-600 to-purple-500'
+    },
+    guide: {
+      desc: 'Hướng dẫn & Trợ giúp',
+      longDesc: 'Cấu hình và cập nhật tài liệu hướng dẫn sử dụng, bài viết nghiệp vụ lâm sàng để hỗ trợ trực tiếp cho nhân sự.',
+      gradient: 'from-amber-600 to-yellow-500'
     }
   };
 
@@ -700,6 +810,26 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       handleFirestoreError(error, OperationType.UPDATE, 'system_config/feature_settings');
     } finally {
       setIsSavingFeature(false);
+    }
+  };
+
+  const handleSaveGuide = async () => {
+    setIsSavingGuide(true);
+    setSaveGuideSuccess(false);
+    try {
+      await setDoc(doc(db, 'system_config', 'guide_icd10'), {
+        id: 'guide_icd10',
+        title: guideTitle,
+        tabs: guideTabs,
+        updatedAt: new Date().toISOString()
+      });
+      setSaveGuideSuccess(true);
+      setTimeout(() => setSaveGuideSuccess(false), 3000);
+    } catch (error: any) {
+      console.error("Error saving guide:", error);
+      alert("Lỗi khi lưu bài viết hướng dẫn: " + (error.message || error));
+    } finally {
+      setIsSavingGuide(false);
     }
   };
 
@@ -837,293 +967,444 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             </div>
 
             {feature.id === 'view_directory' && (
-              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ</label>
+              <div className="md:col-span-2 space-y-8 pt-6 border-t border-slate-100/10">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình chi tiết & Phân quyền nội bộ (Theo nhóm)</label>
+                  <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200")}>
+                    4 Nhóm phân quyền
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                      Chỉ định thường dùng — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.commonIndicationsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, commonIndicationsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
+                {/* Group 1: Bảng dữ liệu & Cột hiển thị */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 font-black text-[10px] uppercase tracking-wider">Nhóm 1</span>
+                    <h4 className={cn("text-xs font-black uppercase tracking-wider", isDarkMode ? "text-slate-200" : "text-slate-800")}>
+                      Bảng dữ liệu & Cột hiển thị
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/40 border-indigo-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                          Cột Tình trạng
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem cột Tình trạng (Mở/Khóa/Ẩn) trong bảng danh mục thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.showStatusColumnMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showStatusColumnMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-indigo-200 text-indigo-900 focus:border-indigo-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-pink-50/40 border-pink-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-pink-400" : "text-pink-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-pink-500 inline-block"></span>
+                          Cột Thao tác
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem cột Thao tác (các nút Chỉnh sửa, Khóa, Mở khóa) trên bảng danh mục thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.showActionsColumnMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showActionsColumnMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-pink-200 text-pink-900 focus:border-pink-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-purple-50/40 border-purple-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-purple-400" : "text-purple-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                          Xem thuốc đang ẩn / khóa
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để hệ thống hiển thị và tìm kiếm các thuốc đang bị khóa hoặc ẩn."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.showClosedDrugsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showClosedDrugsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-purple-200 text-purple-900 focus:border-purple-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
-                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
-                      Gợi ý ICD-10 — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.icdSuggestionsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, icdSuggestionsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
+                {/* Group 2: Gợi ý lâm sàng & Hướng dẫn liều */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 font-black text-[10px] uppercase tracking-wider">Nhóm 2</span>
+                    <h4 className={cn("text-xs font-black uppercase tracking-wider", isDarkMode ? "text-slate-200" : "text-slate-800")}>
+                      Gợi ý lâm sàng & Hướng dẫn liều
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/40 border-emerald-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                          Chỉ định thường dùng
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để người dùng xem thông tin Chỉ định lâm sàng thường dùng trong chi tiết thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.commonIndicationsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, commonIndicationsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-emerald-200 text-emerald-900 focus:border-emerald-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/40 border-blue-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                          Gợi ý ICD-10
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem danh sách gợi ý mã chẩn đoán ICD-10 tương ứng với thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.icdSuggestionsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, icdSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-blue-200 text-blue-900 focus:border-blue-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/40 border-cyan-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
+                          Gợi ý Ghi liều
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem danh sách câu mẫu hướng dẫn ghi liều dùng nhanh."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.showDosageSuggestionsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showDosageSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-cyan-200 text-cyan-900 focus:border-cyan-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/40 border-cyan-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
+                          Thời điểm uống thuốc
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem hướng dẫn chi tiết thời điểm sử dụng thuốc (trước/sau ăn, sáng/tối...)."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.showIntakeTimeMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showIntakeTimeMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-cyan-200 text-cyan-900 focus:border-cyan-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
-                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
-                      Cột Tình trạng — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.showStatusColumnMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showStatusColumnMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
+                {/* Group 3: Cảnh báo Thận trọng & Tương tác */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-500 font-black text-[10px] uppercase tracking-wider">Nhóm 3</span>
+                    <h4 className={cn("text-xs font-black uppercase tracking-wider", isDarkMode ? "text-slate-200" : "text-slate-800")}>
+                      Cảnh báo Thận trọng & Tương tác
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-amber-50/40 border-amber-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                          Phân loại Thận trọng
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem phân loại mức độ cảnh báo thận trọng khi chỉ định thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.precautionTypeMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionTypeMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-amber-200 text-amber-900 focus:border-amber-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-teal-50/40 border-teal-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-teal-400" : "text-teal-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>
+                          Mức độ nghiêm trọng
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem thang điểm đánh giá mức độ nghiêm trọng của cảnh báo."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.precautionSeverityMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionSeverityMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-teal-200 text-teal-900 focus:border-teal-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-sky-50/40 border-sky-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-sky-400" : "text-sky-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-sky-500 inline-block"></span>
+                          Nhãn chọn nhanh Thận trọng
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem và chọn các nhãn tag cảnh báo nhanh cho thuốc."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.quickSelectTagsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, quickSelectTagsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-sky-200 text-sky-900 focus:border-sky-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/40 border-indigo-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                          Gợi ý & Mức độ Tương tác cụ thể
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem phân tích chi tiết mức độ nguy cơ tương tác giữa các hoạt chất."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.interactionSuggestionsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, interactionSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-indigo-200 text-indigo-900 focus:border-indigo-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-pink-50/50 border-pink-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-pink-400" : "text-pink-700")}>
-                      <span className="w-2 h-2 rounded-full bg-pink-500 inline-block"></span>
-                      Cột Thao tác — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.showActionsColumnMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showActionsColumnMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
+                {/* Group 4: Chống chỉ định đặc biệt (Thai kỳ & Độ tuổi) */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-rose-500/10 text-rose-500 font-black text-[10px] uppercase tracking-wider">Nhóm 4</span>
+                    <h4 className={cn("text-xs font-black uppercase tracking-wider", isDarkMode ? "text-slate-200" : "text-slate-800")}>
+                      Chống chỉ định Đặc biệt (Thai kỳ & Độ tuổi)
+                    </h4>
                   </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-purple-50/50 border-purple-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-purple-400" : "text-purple-700")}>
-                      <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
-                      Xem thuốc đang ẩn — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.showClosedDrugsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showClosedDrugsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/40 border-rose-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                          3 tháng thai kỳ (Đầu / Giữa / Cuối)
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem mức độ an toàn và cảnh báo chống chỉ định theo từng 3 tháng thai kỳ."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.pregnancyTrimestersMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, pregnancyTrimestersMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-rose-200 text-rose-900 focus:border-rose-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem.
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/50 border-cyan-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
-                      <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
-                      Gợi ý Ghi liều — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.showDosageSuggestionsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showDosageSuggestionsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-cyan-50/50 border-cyan-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-cyan-400" : "text-cyan-700")}>
-                      <span className="w-2 h-2 rounded-full bg-cyan-500 inline-block"></span>
-                      Thời điểm uống thuốc — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.showIntakeTimeMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, showIntakeTimeMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-amber-50/50 border-amber-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
-                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                      Phân loại Thận trọng — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.precautionTypeMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionTypeMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-teal-50/50 border-teal-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-teal-400" : "text-teal-700")}>
-                      <span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>
-                      Mức độ nghiêm trọng — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.precautionSeverityMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, precautionSeverityMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
-                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
-                      Gợi ý & Mức độ Tương tác cụ thể — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.interactionSuggestionsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, interactionSuggestionsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
-                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                      3 tháng thai kỳ (Đầu/Giữa/Cuối) — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.pregnancyTrimestersMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, pregnancyTrimestersMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-sky-50/50 border-sky-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-sky-400" : "text-sky-700")}>
-                      <span className="w-2 h-2 rounded-full bg-sky-500 inline-block"></span>
-                      Nhãn chọn nhanh Thận trọng — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.quickSelectTagsMinPower ?? 0}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, quickSelectTagsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Vai trò có điểm ≥ giá trị này mới được xem.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/50 border-rose-100")}>
-                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
-                      <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                      Chi tiết So sánh & Mốc sinh Chống chỉ định tuổi — Điểm quyền lực tối thiểu
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="number"
-                        min={0}
-                        value={settings.ageContraindicationsMinPower ?? 5}
-                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, ageContraindicationsMinPower: parseInt(e.target.value) || 0 })}
-                        className={cn(
-                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
-                          isDarkMode ? "bg-slate-900 border-slate-700 text-rose-400" : "bg-white border-rose-100 text-rose-600"
-                        )}
-                      />
-                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                        ⚡ Điểm quyền lực tối thiểu để xem chi tiết So sánh và Mốc sinh gợi ý của chống chỉ định theo Tuổi.
-                      </span>
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-rose-50/40 border-rose-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-rose-400" : "text-rose-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                          Chi tiết So sánh & Mốc sinh Chống chỉ định tuổi
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem bảng phân tích so sánh chi tiết và mốc năm sinh quy đổi tương ứng với mốc tuổi chống chỉ định."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.ageContraindicationsMinPower ?? 5}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, ageContraindicationsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-rose-400 focus:border-rose-500" : "bg-white border-rose-200 text-rose-900 focus:border-rose-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem chi tiết So sánh và Mốc sinh.
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1999,36 +2280,38 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
           <div className="max-w-2xl">
-            <div className="flex items-center gap-4 mb-4">
-              <div className={cn(
-                "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-2xl transition-transform hover:scale-110",
-                "bg-gradient-to-br", details.gradient
-              )}>
-                <currentCategory.icon size={28} />
-              </div>
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className={cn(
-                    "text-3xl lg:text-4xl font-black tracking-tight",
-                    isDarkMode ? "text-white" : "text-slate-900"
-                  )}>
-                    {currentCategory.label}
-                  </h2>
-                  <span className={cn(
-                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                    isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
-                  )}>
-                    Admin Panel
-                  </span>
-                </div>
-                <p className={cn(
-                  "text-sm font-black uppercase tracking-[0.2em] mt-1",
-                  isDarkMode ? "text-indigo-400" : "text-indigo-600"
+            {activeCategory !== 'guide' && (
+              <div className="flex items-center gap-4 mb-4">
+                <div className={cn(
+                  "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-2xl transition-transform hover:scale-110",
+                  "bg-gradient-to-br", details.gradient
                 )}>
-                  {details.desc}
-                </p>
+                  <currentCategory.icon size={28} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h2 className={cn(
+                      "text-3xl lg:text-4xl font-black tracking-tight",
+                      isDarkMode ? "text-white" : "text-slate-900"
+                    )}>
+                      {currentCategory.label}
+                    </h2>
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                      isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
+                    )}>
+                      Admin Panel
+                    </span>
+                  </div>
+                  <p className={cn(
+                    "text-sm font-black uppercase tracking-[0.2em] mt-1",
+                    isDarkMode ? "text-indigo-400" : "text-indigo-600"
+                  )}>
+                    {details.desc}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
             
             <p className={cn(
               "text-base lg:text-lg font-medium leading-relaxed max-w-xl",
@@ -2074,11 +2357,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               </div>
             )}
-            {activeCategory === 'version' && ['admin', 'operator'].includes(userRole) && (
+            {activeCategory === 'version' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('trigger-add-version'))}
                 className={cn(
-                  "group relative px-8 py-5 rounded-[28px] transition-all duration-300",
+                  "group relative px-8 py-5 rounded-[28px] transition-all duration-300 cursor-pointer",
                   "bg-indigo-600 text-white shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40",
                   "hover:-translate-y-1 active:translate-y-0",
                   "flex items-center gap-3 overflow-hidden"
@@ -2092,6 +2375,42 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           </div>
         </div>
       </div>
+
+      {activeCategory === 'guide' && (
+        <div className={cn(
+          "hidden lg:flex items-center gap-4 p-5 rounded-3xl border transition-all mb-4",
+          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/10"
+        )}>
+          <div className={cn(
+            "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105",
+            "bg-gradient-to-br", details.gradient
+          )}>
+            <currentCategory.icon size={22} />
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className={cn(
+                "text-2xl font-black tracking-tight",
+                isDarkMode ? "text-white" : "text-slate-900"
+              )}>
+                {currentCategory.label}
+              </h2>
+              <span className={cn(
+                "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
+                isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
+              )}>
+                Admin Panel
+              </span>
+            </div>
+            <p className={cn(
+              "text-[10px] font-black uppercase tracking-[0.15em] mt-0.5",
+              isDarkMode ? "text-amber-400" : "text-amber-500"
+            )}>
+              {details.desc}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* Content Area */}
@@ -2328,15 +2647,37 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </div>
                   )}
 
-                  <textarea
-                    value={newAnnouncement}
-                    onChange={(e) => setNewAnnouncement(e.target.value)}
-                    placeholder="Nhập nội dung thông báo cho toàn bộ nhân viên..."
-                    className={cn(
-                      "w-full px-5 py-4 rounded-2xl border-2 min-h-[150px] outline-none font-medium text-sm resize-none transition-all",
-                      isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-indigo-500 shadow-inner"
-                    )}
-                  />
+                  {/* Tiêu đề thông báo */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <Type size={12} /> Tiêu đề thông báo (Không bắt buộc)
+                    </label>
+                    <input
+                      type="text"
+                      value={announcementTitle}
+                      onChange={(e) => setAnnouncementTitle(e.target.value)}
+                      placeholder="Nhập tiêu đề thông báo..."
+                      className={cn(
+                        "w-full px-5 py-3 rounded-2xl border-2 outline-none font-semibold text-xs transition-all",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-indigo-500 shadow-inner"
+                      )}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
+                      <FileText size={12} /> Nội dung thông báo
+                    </label>
+                    <textarea
+                      value={newAnnouncement}
+                      onChange={(e) => setNewAnnouncement(e.target.value)}
+                      placeholder="Nhập nội dung thông báo cho toàn bộ nhân viên..."
+                      className={cn(
+                        "w-full px-5 py-4 rounded-2xl border-2 min-h-[150px] outline-none font-medium text-sm resize-none transition-all",
+                        isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-indigo-500 shadow-inner"
+                      )}
+                    />
+                  </div>
 
                   <div className="space-y-3">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-2">
@@ -2452,41 +2793,149 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Lịch sử thông báo</h3>
                 <div className="space-y-4">
                   {announcements.length > 0 ? (
-                    announcements.map((ann) => (
-                      <div key={ann.id} className={cn(
-                        "p-5 rounded-2xl border-2 group transition-all",
-                        isDarkMode ? "bg-slate-800 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-50 hover:border-indigo-100"
-                      )}>
-                        <div className="flex justify-between items-start gap-4">
-                          <p className={cn("text-xs font-semibold leading-relaxed flex-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                            {ann.content}
-                          </p>
-                          <button
-                            onClick={() => deleteAnnouncement(ann.id)}
-                            className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                    announcements.map((ann) => {
+                      const categoryInfo = (() => {
+                        if (ann.type === 'drug_update') {
+                          return {
+                            label: '🟡 Cập nhật thuốc',
+                            icon: Pill,
+                            color: 'bg-amber-500/15 text-amber-500 dark:bg-amber-500/20 border-amber-500/20'
+                          };
+                        }
+                        const contentLower = (ann.content || '').toLowerCase();
+                        const titleLower = (ann.title || '').toLowerCase();
+                        if (
+                          contentLower.includes('cảnh báo') || contentLower.includes('adr') || contentLower.includes('chống chỉ định') ||
+                          titleLower.includes('cảnh báo') || titleLower.includes('adr') || titleLower.includes('chống chỉ định')
+                        ) {
+                          return {
+                            label: '🔴 Cảnh báo lâm sàng',
+                            icon: ShieldAlert,
+                            color: 'bg-rose-500/15 text-rose-500 dark:bg-rose-500/20 border-rose-500/20'
+                          };
+                        }
+                        if (
+                          contentLower.includes('bộ y tế') || contentLower.includes('who') || contentLower.includes('tin tức') || 
+                          contentLower.includes('icd-10') || contentLower.includes('hướng dẫn điều trị') ||
+                          titleLower.includes('bộ y tế') || titleLower.includes('who') || titleLower.includes('y khoa')
+                        ) {
+                          return {
+                            label: '🔵 Tin tức y học',
+                            icon: FileText,
+                            color: 'bg-sky-500/15 text-sky-500 dark:bg-sky-500/20 border-sky-500/20'
+                          };
+                        }
+                        if (
+                          contentLower.includes('phiên bản') || contentLower.includes('đồng bộ') || contentLower.includes('hệ thống') || 
+                          contentLower.includes('sao lưu') || titleLower.includes('phiên bản') || titleLower.includes('hệ thống')
+                        ) {
+                          return {
+                            label: '⚙️ Hệ thống',
+                            icon: Settings,
+                            color: 'bg-slate-500/15 text-slate-400 dark:bg-slate-500/20 border-slate-500/20'
+                          };
+                        }
+                        return {
+                          label: '🔵 Thông báo',
+                          icon: MessageSquare,
+                          color: 'bg-indigo-500/15 text-indigo-500 dark:bg-indigo-500/20 border-indigo-500/20'
+                        };
+                      })();
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {ann.targetRoles && ann.targetRoles.map((r: string) => (
-                            <span key={r} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase tracking-widest">{roles.find(role => role.id === r)?.name || r}</span>
-                          ))}
-                          {ann.targetTitles && ann.targetTitles.map((t: string) => (
-                            <span key={t} className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-widest">{t}</span>
-                          ))}
-                          {!ann.targetRoles && !ann.targetTitles && (
-                            <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-500 text-[8px] font-black uppercase tracking-widest">Tất cả mọi người</span>
-                          )}
-                        </div>
+                      const Icon = categoryInfo.icon;
 
-                        <div className="mt-4 flex items-center gap-2 text-[8px] font-black uppercase tracking-widest text-slate-400">
-                          <Calendar size={10} />
-                          {new Date(ann.createdAt).toLocaleString('vi-VN')}
+                      return (
+                        <div key={ann.id} className={cn(
+                          "p-6 rounded-3xl border-2 transition-all relative group flex flex-col gap-3",
+                          isDarkMode ? "bg-slate-800/40 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-50 hover:border-indigo-100"
+                        )}>
+                          <div className="flex gap-4">
+                            <div className={cn("p-2 rounded-xl shrink-0 h-fit border", categoryInfo.color)}>
+                              <Icon size={16} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-4 mb-1">
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-[8px] font-black tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5">
+                                    {categoryInfo.label}
+                                  </span>
+                                  <h4 className={cn("font-extrabold text-sm leading-tight", isDarkMode ? "text-slate-100" : "text-slate-900")}>
+                                    {ann.title || (ann.type === 'drug_update' ? `Cập nhật thuốc: ${ann.drugName || 'Thuốc'}` : 'Thông báo')}
+                                  </h4>
+                                </div>
+                                
+                                <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100 transition-all">
+                                  <button
+                                    onClick={() => startEditingAnnouncement(ann)}
+                                    className="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+                                    title="Chỉnh sửa thông báo"
+                                  >
+                                    <Edit3 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteAnnouncement(ann.id)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                                    title="Xóa thông báo"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <p className={cn("text-xs font-semibold leading-relaxed whitespace-pre-wrap mt-2", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                {ann.content}
+                              </p>
+                              
+                              <div className="mt-4 flex flex-wrap gap-1.5 items-center">
+                                {/* Target Roles & Titles */}
+                                {ann.targetRoles && ann.targetRoles.map((r: string, rIdx: number) => (
+                                  <span key={`${r}-${rIdx}`} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase tracking-widest border border-indigo-500/10">
+                                    {roles.find(role => role.id === r)?.name || r}
+                                  </span>
+                                ))}
+                                {ann.targetTitles && ann.targetTitles.map((t: string, tIdx: number) => (
+                                  <span key={`${t}-${tIdx}`} className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-widest border border-blue-500/10">
+                                    {t}
+                                  </span>
+                                ))}
+                                {!ann.targetRoles && !ann.targetTitles && (
+                                  <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-500 text-[8px] font-black uppercase tracking-widest border border-slate-500/10">
+                                    Tất cả người dùng
+                                  </span>
+                                )}
+
+                                {/* Location */}
+                                <div className="ml-auto flex items-center gap-2">
+                                  {ann.showInWorkspace !== false && (
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-[8px] font-extrabold uppercase tracking-wider border border-emerald-500/10">
+                                      Workspace
+                                    </span>
+                                  )}
+                                  {ann.showInHeader !== false && (
+                                    <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500 text-[8px] font-extrabold uppercase tracking-wider border border-violet-500/10">
+                                      Hộp thông báo
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="mt-3 pt-3 border-t border-dashed border-slate-500/10 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-slate-400">
+                                <span className="flex items-center gap-1">
+                                  <Calendar size={10} />
+                                  Gửi lúc: {new Date(ann.createdAt).toLocaleString('vi-VN')}
+                                </span>
+                                {ann.updatedAt && (
+                                  <span className="text-amber-500 flex items-center gap-1">
+                                    <Edit3 size={10} />
+                                    Cập nhật: {new Date(ann.updatedAt).toLocaleString('vi-VN')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="py-20 text-center">
                       <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
@@ -2751,6 +3200,261 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             </div>
           )}
 
+          {activeCategory === 'guide' && (
+            <div className="space-y-8">
+              {/* Help & Guide Sub Tabs */}
+              <div className={cn(
+                "flex items-center gap-2 p-1.5 rounded-3xl w-fit border backdrop-blur-md mb-8",
+                isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
+              )}>
+                <button
+                  onClick={() => setGuideSubTab('icd10')}
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all",
+                    guideSubTab === 'icd10'
+                      ? (isDarkMode ? "bg-slate-700 text-white shadow-lg" : "bg-white text-slate-900 shadow-lg shadow-slate-200/50")
+                      : "text-slate-500 hover:text-slate-900 dark:hover:text-slate-300"
+                  )}
+                >
+                  <ClipboardList size={14} />
+                  Tra cứu ICD-10
+                </button>
+              </div>
+
+              {guideSubTab === 'icd10' && (
+                <div className={cn(
+                  "p-6 sm:p-10 rounded-[2.5rem] border transition-all",
+                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/30"
+                )}>
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className={cn(
+                      "w-12 h-12 rounded-2xl flex items-center justify-center text-slate-950 bg-gradient-to-br from-amber-400 to-yellow-300 shadow-lg"
+                    )}>
+                      <ClipboardList size={22} />
+                    </div>
+                    <div>
+                      <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                        Cấu hình bài viết Hướng dẫn Tra cứu ICD-10
+                      </h3>
+                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">
+                        Cung cấp thông tin trợ giúp khi người dùng click xem hướng dẫn tại tính năng ICD-10
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-8">
+                    {/* Article Title */}
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Tiêu đề bài viết</label>
+                      <input
+                        type="text"
+                        value={guideTitle}
+                        onChange={(e) => setGuideTitle(e.target.value)}
+                        placeholder="Nhập tiêu đề hướng dẫn..."
+                        className={cn(
+                          "w-full px-5 py-4 rounded-2xl border-2 transition-all font-bold text-base outline-none focus:ring-0",
+                          isDarkMode ? "bg-slate-950 border-slate-800 text-white focus:border-amber-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-amber-500"
+                        )}
+                      />
+                    </div>
+
+                    {/* Manage Internal Content Tabs */}
+                    <div className="space-y-4 pt-4 border-t border-dashed border-slate-100/10">
+                      <div>
+                        <h4 className={cn("text-sm font-black", isDarkMode ? "text-white" : "text-slate-900")}>Các Tab Nội Dung Bài Viết</h4>
+                        <p className="text-[10px] text-slate-500 font-bold mt-1">
+                          Tạo các tab khác nhau để phân chia nội dung hướng dẫn gọn gàng và khoa học.
+                        </p>
+                      </div>
+
+                      {/* Add New Tab */}
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newContentTabTitle}
+                          onChange={(e) => setNewContentTabTitle(e.target.value)}
+                          placeholder="Nhập tiêu đề tab mới (ví dụ: Chỉ dẫn chung)..."
+                          className={cn(
+                            "flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium text-xs outline-none focus:ring-0",
+                            isDarkMode ? "bg-slate-950 border-slate-800 text-white focus:border-amber-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-amber-500"
+                          )}
+                        />
+                        <button
+                          onClick={() => {
+                            if (!newContentTabTitle.trim()) return;
+                            const newTabId = `tab-${Date.now()}`;
+                            const updated = [...guideTabs, { id: newTabId, title: newContentTabTitle.trim(), paragraphs: [] }];
+                            setGuideTabs(updated);
+                            setNewContentTabTitle('');
+                            setSelectedContentTabIndex(updated.length - 1);
+                          }}
+                          className="px-5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 transition-colors"
+                        >
+                          <Plus size={14} /> Thêm Tab mới
+                        </button>
+                      </div>
+
+                      {/* Tab List buttons to select active tab */}
+                      {guideTabs.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 p-2 rounded-2xl bg-slate-100/10 border border-slate-100/5">
+                          {guideTabs.map((t, idx) => (
+                            <div
+                              key={t.id}
+                              onClick={() => setSelectedContentTabIndex(idx)}
+                              className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all border",
+                                selectedContentTabIndex === idx
+                                  ? (isDarkMode ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-amber-50 border-amber-300 text-amber-700 shadow-sm")
+                                  : (isDarkMode ? "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200" : "bg-white border-slate-150 text-slate-500 hover:text-slate-800")
+                              )}
+                            >
+                              <span>{t.title}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const updated = guideTabs.filter((_, i) => i !== idx);
+                                  setGuideTabs(updated);
+                                  if (selectedContentTabIndex >= updated.length) {
+                                    setSelectedContentTabIndex(Math.max(0, updated.length - 1));
+                                  }
+                                }}
+                                className="p-0.5 rounded-full hover:bg-rose-500 hover:text-white text-slate-400 transition-colors"
+                                title="Xóa Tab"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center p-6 text-xs font-bold text-slate-500 bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl">
+                          Chưa có tab nội dung nào. Vui lòng thêm một tab mới ở trên.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Manage Paragraphs inside the Selected Tab */}
+                    {guideTabs.length > 0 && selectedContentTabIndex < guideTabs.length && (
+                      <div className="space-y-4 pt-4 border-t border-dashed border-slate-100/10">
+                        <div>
+                          <h4 className={cn("text-sm font-black", isDarkMode ? "text-white" : "text-slate-900")}>
+                            Đoạn văn trong Tab: <span className="text-amber-500">"{guideTabs[selectedContentTabIndex].title}"</span>
+                          </h4>
+                          <p className="text-[10px] text-slate-500 font-bold mt-1">
+                            Mỗi bài viết có nhiều đoạn văn (paragraphs). Hãy nhập nội dung chi tiết bên dưới.
+                          </p>
+                        </div>
+
+                        {/* List of existing paragraphs in this tab */}
+                        <div className="space-y-3">
+                          {guideTabs[selectedContentTabIndex].paragraphs.map((p, pIdx) => (
+                            <div key={pIdx} className="flex gap-3 items-start">
+                              <span className="w-6 h-6 mt-2 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-black flex items-center justify-center shrink-0 text-slate-400">
+                                {pIdx + 1}
+                              </span>
+                              <textarea
+                                value={p}
+                                onChange={(e) => {
+                                  const updatedTabs = [...guideTabs];
+                                  updatedTabs[selectedContentTabIndex].paragraphs[pIdx] = e.target.value;
+                                  setGuideTabs(updatedTabs);
+                                }}
+                                rows={2}
+                                className={cn(
+                                  "flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium text-xs outline-none focus:ring-0 resize-y",
+                                  isDarkMode ? "bg-slate-950 border-slate-800 text-white focus:border-amber-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-amber-500"
+                                )}
+                              />
+                              <button
+                                onClick={() => {
+                                  const updatedTabs = [...guideTabs];
+                                  updatedTabs[selectedContentTabIndex].paragraphs = updatedTabs[selectedContentTabIndex].paragraphs.filter((_, i) => i !== pIdx);
+                                  setGuideTabs(updatedTabs);
+                                }}
+                                className="mt-1 p-2 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                title="Xóa đoạn này"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Add New Paragraph */}
+                        <div className="space-y-2 pt-2">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Thêm đoạn mới</label>
+                          <div className="flex gap-3 items-end">
+                            <textarea
+                              value={newParagraphText}
+                              onChange={(e) => setNewParagraphText(e.target.value)}
+                              placeholder="Nhập nội dung cho đoạn mới này..."
+                              rows={3}
+                              className={cn(
+                                "flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium text-xs outline-none focus:ring-0 resize-y",
+                                isDarkMode ? "bg-slate-950 border-slate-800 text-white focus:border-amber-500" : "bg-slate-50 border-slate-100 text-slate-900 focus:border-amber-500"
+                              )}
+                            />
+                            <button
+                              onClick={() => {
+                                if (!newParagraphText.trim()) return;
+                                const updatedTabs = [...guideTabs];
+                                updatedTabs[selectedContentTabIndex].paragraphs.push(newParagraphText.trim());
+                                setGuideTabs(updatedTabs);
+                                setNewParagraphText('');
+                              }}
+                              className="px-5 py-3 bg-slate-850 hover:bg-slate-700 text-white hover:text-amber-400 font-black text-xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 transition-colors self-stretch"
+                            >
+                              <Plus size={14} /> Thêm đoạn
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Bar */}
+                    <div className={cn(
+                      "pt-8 border-t flex flex-col sm:flex-row items-center justify-between gap-4 mt-8",
+                      isDarkMode ? "border-slate-800" : "border-slate-100"
+                    )}>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        * Nhớ nhấn nút lưu bên dưới để cập nhật bài viết lên cơ sở dữ liệu đám mây.
+                      </div>
+                      
+                      <div className="flex justify-end items-center gap-4 w-full sm:w-auto">
+                        <AnimatePresence>
+                          {saveGuideSuccess && (
+                            <motion.div
+                              initial={{ opacity: 0, x: 20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              className="flex items-center gap-2 text-emerald-500 font-bold text-sm"
+                            >
+                              <CheckCircle2 size={16} />
+                              Đã lưu bài viết!
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                        <button
+                          onClick={handleSaveGuide}
+                          disabled={isSavingGuide}
+                          className={cn(
+                            "px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50",
+                            saveGuideSuccess
+                              ? "bg-emerald-500 text-white shadow-xl shadow-emerald-500/20"
+                              : "bg-amber-500 text-slate-950 shadow-xl shadow-amber-500/20 hover:bg-amber-600"
+                          )}
+                        >
+                          {isSavingGuide ? <Loader2 size={20} className="animate-spin" /> : (saveGuideSuccess ? <CheckCircle2 size={20} /> : <Save size={20} />)}
+                          {saveGuideSuccess ? 'Đã lưu' : 'Lưu bài viết'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeCategory === 'version' && (
             <div className="-m-4 lg:-m-10">
               <VersionManagement 
@@ -2873,6 +3577,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   { id: 'pending', label: 'Duyệt tài khoản', icon: ShieldAlert },
                   { id: 'settings', label: 'Cấu hình đăng ký', icon: Settings },
                   { id: 'history', label: 'Lịch sử', icon: History },
+                  { id: 'guest_history', label: 'Lịch sử khách', icon: Globe },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -3275,6 +3980,226 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </motion.div>
                   );
                 })()}
+
+                {regSubTab === 'guest_history' && (() => {
+                  const filteredGuestLogs = guestLogs.filter((log) => {
+                    if (guestSearchQuery.trim() !== '') {
+                      const q = guestSearchQuery.toLowerCase();
+                      return (
+                        (log.ipAddress || '').toLowerCase().includes(q) ||
+                        (log.macAddress || '').toLowerCase().includes(q) ||
+                        (log.device || '').toLowerCase().includes(q) ||
+                        (log.userAgent || '').toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  });
+
+                  return (
+                    <motion.div
+                      key="guest_history_tab"
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -15 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-6"
+                    >
+                      {/* Filter & Action Bar */}
+                      <div className={cn(
+                        "p-5 rounded-[24px] sm:rounded-[32px] border transition-all flex flex-col xl:flex-row gap-4 justify-between items-stretch xl:items-center",
+                        isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                      )}>
+                        <div className="flex items-center gap-3">
+                          <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl text-indigo-600 dark:text-indigo-400">
+                            <Globe size={20} />
+                          </div>
+                          <div>
+                            <h4 className={cn("text-base font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                              Lịch sử truy cập của Khách
+                            </h4>
+                            <p className={cn("text-xs font-semibold mt-0.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                              Lưu lại thông tin thiết bị, IP, MAC và thời gian truy cập của khách vãng lai
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 shrink-0 items-stretch sm:items-center">
+                          {/* Search Input */}
+                          <div className="relative w-full sm:w-64">
+                            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Tìm kiếm IP, MAC, thiết bị..."
+                              value={guestSearchQuery}
+                              onChange={(e) => setGuestSearchQuery(e.target.value)}
+                              className={cn(
+                                "w-full pl-11 pr-4 py-3 rounded-2xl text-xs font-bold transition-all border outline-none",
+                                isDarkMode
+                                  ? "bg-slate-950/40 border-slate-800 text-white focus:border-indigo-500"
+                                  : "bg-slate-50/50 border-slate-200 text-slate-900 focus:border-indigo-500 focus:bg-white"
+                              )}
+                            />
+                          </div>
+
+                          {/* Simulate Guest Log Button */}
+                          <button
+                            onClick={async () => {
+                              try {
+                                const logId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5);
+                                const ip = '113.161.' + Math.floor(Math.random() * 254 + 1) + '.' + Math.floor(Math.random() * 254 + 1);
+                                const hex = '0123456789ABCDEF';
+                                const parts = ['FC', 'A1', '3E'];
+                                for (let i = 0; i < 3; i++) {
+                                  parts.push(hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)]);
+                                }
+                                const mac = parts.join(':');
+                                const devices = ['iPhone 15 Pro', 'Samsung Galaxy S24 Ultra', 'Windows 11 PC (Chrome)', 'MacBook Pro (Safari)', 'iPad Pro (Chrome)'];
+                                const dev = devices[Math.floor(Math.random() * devices.length)];
+                                const userAgents = [
+                                  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+                                  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15'
+                                ];
+                                await setDoc(doc(db, 'guest_logs', logId), {
+                                  id: logId,
+                                  ipAddress: ip,
+                                  macAddress: mac,
+                                  device: dev,
+                                  userAgent: userAgents[Math.floor(Math.random() * userAgents.length)],
+                                  timestamp: new Date().toISOString()
+                                });
+                              } catch (e) {
+                                console.error("Failed to create mock guest log", e);
+                              }
+                            }}
+                            className="px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-2 text-xs font-black transition-all shadow-lg shadow-indigo-600/20 active:scale-95 cursor-pointer"
+                          >
+                            <Sparkles size={14} />
+                            Tạo Log Thử Nghiệm
+                          </button>
+                          
+                          <div className="px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center gap-2 text-xs font-black">
+                            <span className="text-slate-500">Tổng:</span>
+                            <span className="text-indigo-600 dark:text-indigo-400">{filteredGuestLogs.length}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Informational Alert Box */}
+                      <div className={cn(
+                        "p-5 rounded-[24px] border flex gap-3 text-xs font-semibold leading-relaxed transition-all",
+                        isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50/70 border-amber-100 text-amber-800"
+                      )}>
+                        <Info size={16} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                        <div>
+                          <p className="font-bold mb-1">💡 Cơ chế lưu và hiển thị thông tin:</p>
+                          <ul className="list-disc pl-4 space-y-1 opacity-90">
+                            <li>Hệ thống <strong>chỉ ghi nhận tự động</strong> lịch sử ở tab này khi có người dùng truy cập trang web ở trạng thái <strong>chưa đăng nhập (khách vãng lai)</strong>.</li>
+                            <li>Vì bạn hiện đang đăng nhập với tư cách là Quản trị viên, các hoạt động của bạn được ghi nhận riêng biệt tại tab <strong>"Lịch sử"</strong>.</li>
+                            <li>Để tự mình thử nghiệm tính năng ghi nhận tự động thực tế, bạn hãy <strong>đăng xuất</strong> hoặc truy cập trang web bằng một <strong>cửa sổ ẩn danh (Incognito)</strong>!</li>
+                            <li>Bạn có thể bấm nút <strong>"Tạo Log Thử Nghiệm"</strong> ở phía trên để mô phỏng ngay lập tức các truy cập vãng lai từ khách để kiểm tra cấu trúc dữ liệu.</li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* Log List Table */}
+                      <div className={cn(
+                        "border rounded-[24px] sm:rounded-[32px] overflow-hidden transition-all",
+                        isDarkMode ? "bg-slate-900/30 border-slate-800/80" : "bg-white border-slate-100 shadow-xl shadow-slate-200/20"
+                      )}>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className={cn(
+                                "border-b",
+                                isDarkMode ? "bg-slate-900/60 border-slate-800" : "bg-slate-50/50 border-slate-100"
+                              )}>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Thời gian</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Thiết bị</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-wider text-slate-400">Địa chỉ mạng</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-wider text-slate-400">User Agent</th>
+                                {userRole === 'admin' && <th className="px-6 py-4 text-[10px] font-black uppercase tracking-wider text-slate-400 text-right">Thao tác</th>}
+                              </tr>
+                            </thead>
+                            <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
+                              {filteredGuestLogs.length > 0 ? filteredGuestLogs.map((log) => (
+                                <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/20" : "hover:bg-slate-50/50")}>
+                                  <td className="px-6 py-5 whitespace-nowrap text-xs font-bold text-slate-500">
+                                    {new Date(log.timestamp).toLocaleString('vi-VN')}
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <span className={cn("text-[13px] font-bold tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                      {log.device || 'Thiết bị không xác định'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-5 whitespace-nowrap">
+                                    <div className="flex flex-col">
+                                      <span className={cn("text-[13px] font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                        {log.ipAddress || '127.0.0.1'}
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 font-mono font-bold">
+                                        MAC: {log.macAddress || 'Chưa nhận'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-5 max-w-xs truncate">
+                                    <span className="text-[11px] text-slate-400 font-mono" title={log.userAgent}>
+                                      {log.userAgent || 'Không có thông tin'}
+                                    </span>
+                                  </td>
+                                  {userRole === 'admin' && (
+                                    <td className="px-6 py-5 whitespace-nowrap text-right">
+                                      {deletingGuestLogId === log.id ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await deleteDoc(doc(db, 'guest_logs', log.id));
+                                                setDeletingGuestLogId(null);
+                                              } catch (err) {
+                                                console.error("Failed to delete guest log", err);
+                                              }
+                                            }}
+                                            className="px-2 py-1 text-[11px] font-bold rounded bg-rose-500 hover:bg-rose-600 text-white transition-colors cursor-pointer"
+                                            title="Xác nhận xóa"
+                                          >
+                                            Xác nhận
+                                          </button>
+                                          <button
+                                            onClick={() => setDeletingGuestLogId(null)}
+                                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 transition-colors cursor-pointer"
+                                            title="Hủy"
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          onClick={() => setDeletingGuestLogId(log.id)}
+                                          className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                          title="Xóa bản ghi"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      )}
+                                    </td>
+                                  )}
+                                </tr>
+                              )) : (
+                                <tr>
+                                  <td colSpan={userRole === 'admin' ? 5 : 4} className="px-6 py-12 text-center text-xs font-bold text-slate-400 italic">
+                                    Chưa có dữ liệu lịch sử khách phù hợp với tìm kiếm
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })()}
               </AnimatePresence>
             </div>
           )}
@@ -3517,6 +4442,296 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         type="warning"
         isDarkMode={isDarkMode}
       />
+
+      {/* Edit Announcement Modal */}
+      <AnimatePresence>
+        {editingAnnouncement && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingAnnouncement(null)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className={cn(
+                "w-full max-w-2xl rounded-[32px] border-2 overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[90vh]",
+                isDarkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-100 text-slate-900"
+              )}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-500/10 flex justify-between items-center bg-indigo-500/5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500">
+                    <Edit3 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm uppercase tracking-wider">Chỉnh sửa thông báo</h3>
+                    <p className="text-[10px] text-slate-400 font-medium mt-0.5">Cập nhật nội dung và tùy chọn hiển thị cho thông báo này</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingAnnouncement(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
+                {/* Announcement Type */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Loại thông báo</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditType('general')}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 font-bold text-xs transition-all flex items-center justify-center gap-2",
+                        editType === 'general'
+                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-300" : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100")
+                      )}
+                    >
+                      <MessageSquare size={14} />
+                      Thông báo thường
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditType('drug_update')}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 font-bold text-xs transition-all flex items-center justify-center gap-2",
+                        editType === 'drug_update'
+                          ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/20"
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-300" : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100")
+                      )}
+                    >
+                      <Pill size={14} />
+                      Cập nhật thuốc mới
+                    </button>
+                  </div>
+                </div>
+
+                {/* Drug Selection if drug_update */}
+                {editType === 'drug_update' && (
+                  <div className="space-y-2 p-4 rounded-2xl border border-slate-500/10 bg-slate-500/5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Chọn thuốc cập nhật</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                      <input
+                        type="text"
+                        placeholder="Tìm kiếm thuốc..."
+                        value={editDrugSearchQuery}
+                        onChange={(e) => setEditDrugSearchQuery(e.target.value)}
+                        className={cn(
+                          "w-full pl-9 pr-4 py-2.5 rounded-xl border text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-white border-slate-200 text-slate-900 placeholder-slate-400"
+                        )}
+                      />
+                    </div>
+
+                    {editDrugId && (
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 border border-indigo-500/20 text-xs font-bold">
+                        <span>Đã chọn: {editDrugName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setEditDrugId(''); setEditDrugName(''); }}
+                          className="text-rose-500 hover:bg-rose-500/10 p-1 rounded"
+                        >
+                          Gỡ bỏ
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="max-h-36 overflow-y-auto border border-slate-500/10 rounded-xl divide-y divide-slate-500/10 bg-slate-500/5 custom-scrollbar">
+                      {drugsList
+                        .filter(d => d.name?.toLowerCase().includes(editDrugSearchQuery.toLowerCase()))
+                        .slice(0, 50)
+                        .map(d => (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => {
+                              setEditDrugId(d.id);
+                              setEditDrugName(d.name);
+                              setEditDrugSearchQuery('');
+                            }}
+                            className={cn(
+                              "w-full text-left px-4 py-2 text-xs font-semibold hover:bg-indigo-500/10 transition-all flex justify-between items-center",
+                              isDarkMode ? "text-slate-300" : "text-slate-700"
+                            )}
+                          >
+                            <span>{d.name}</span>
+                            <span className="text-[9px] text-slate-400 font-normal">{d.activeIngredient}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Title */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tiêu đề thông báo (Tùy chọn)</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder="Nhập tiêu đề hoặc để trống..."
+                    className={cn(
+                      "w-full px-4 py-3 rounded-2xl border text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all",
+                      isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-slate-50 border-slate-100 text-slate-900 placeholder-slate-400"
+                    )}
+                  />
+                </div>
+
+                {/* Content */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nội dung thông báo</label>
+                  <textarea
+                    rows={4}
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    placeholder="Nhập nội dung thông báo..."
+                    className={cn(
+                      "w-full px-4 py-3 rounded-2xl border text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition-all custom-scrollbar",
+                      isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-slate-50 border-slate-100 text-slate-900 placeholder-slate-400"
+                    )}
+                  />
+                </div>
+
+                {/* Target Audience */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Đối tượng nhận thông báo (Bỏ trống = Tất cả)</label>
+                  
+                  {/* Roles */}
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] font-extrabold text-slate-400 block">Theo vai trò:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {roles.map(r => {
+                        const isSelected = editTargetRoles.includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setEditTargetRoles(editTargetRoles.filter(roleId => roleId !== r.id));
+                              } else {
+                                setEditTargetRoles([...editTargetRoles, r.id]);
+                              }
+                            }}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all border",
+                              isSelected
+                                ? "bg-indigo-600 text-white border-indigo-600"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-300" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100")
+                            )}
+                          >
+                            {r.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Titles */}
+                  <div className="space-y-1.5 pt-2">
+                    <span className="text-[9px] font-extrabold text-slate-400 block">Theo chức danh:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {titles.map(t => {
+                        const isSelected = editTargetTitles.includes(t.name);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setEditTargetTitles(editTargetTitles.filter(titleName => titleName !== t.name));
+                              } else {
+                                setEditTargetTitles([...editTargetTitles, t.name]);
+                              }
+                            }}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all border",
+                              isSelected
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-300" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100")
+                            )}
+                          >
+                            {t.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Display Locations */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nơi hiển thị thông báo</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditShowInWorkspace(prev => !prev)}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 font-bold text-xs transition-all flex items-center justify-center gap-2",
+                        editShowInWorkspace
+                          ? "bg-emerald-600 border-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-400" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600")
+                      )}
+                    >
+                      <LayoutGrid size={14} />
+                      Màn hình Workspace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditShowInHeader(prev => !prev)}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 font-bold text-xs transition-all flex items-center justify-center gap-2",
+                        editShowInHeader
+                          ? "bg-violet-600 border-violet-600 text-white shadow-lg shadow-violet-500/20"
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-500 hover:text-slate-400" : "bg-slate-100 border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-600")
+                      )}
+                    >
+                      <MessageSquare size={14} />
+                      Hộp thông báo Header
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="p-6 border-t border-slate-500/10 flex items-center justify-end gap-3 bg-slate-500/5">
+                <button
+                  type="button"
+                  onClick={() => setEditingAnnouncement(null)}
+                  className={cn(
+                    "px-4 py-2.5 rounded-xl font-bold text-xs transition-all",
+                    isDarkMode ? "text-slate-400 hover:text-slate-300 hover:bg-slate-800" : "text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                  )}
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={saveAnnouncementEdit}
+                  disabled={isSavingAnnouncementEdit || !editContent.trim() || (editType === 'drug_update' && !editDrugId)}
+                  className="px-6 py-2.5 bg-indigo-600 text-white font-extrabold text-xs rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-indigo-500/20"
+                >
+                  {isSavingAnnouncementEdit ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                  Lưu thay đổi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
     </>

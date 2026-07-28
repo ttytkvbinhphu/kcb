@@ -12,7 +12,7 @@ export interface Drug {
   mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
   mechanismOfActionLabel?: string; // Tùy chỉnh tiêu đề của cơ chế tác dụng
   pharmacology?: string; // Thông tin dược lý chi tiết
-  indications: { title?: string; content: string; icd10s?: string[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[] }[];
+  indications: { title?: string; content: string; icd10s?: string[]; doubleIcd10s?: { dagger: string; asterisk: string }[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[]; notRecommendedIcd10s?: string[]; betterAlternativeIcd10s?: string[]; isRecommended?: boolean; isNotRecommended?: boolean; }[];
   contraindications: { 
     content: string; 
     type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
@@ -38,7 +38,17 @@ export interface Drug {
   pdfUrl?: string;
   registrationNumber?: string;
   lotNumber?: string;
-  lots?: { lotNumber: string; expiryDate: string }[];
+  lots?: { lotNumber: string; expiryDate: string; quantity?: number | string; reportDate?: string }[];
+  stockQuantity?: number | string;
+  lastReportDate?: string;
+  quantityReports?: {
+    id?: string;
+    lotNumber: string;
+    expiryDate: string;
+    quantity: number | string;
+    reportDate: string;
+    createdAt?: string;
+  }[];
   leafletVersion?: string;
   leafletUpdateDate?: string;
   isClosed?: boolean;
@@ -84,6 +94,7 @@ export interface Drug {
       afternoon?: string;
       night?: string;
       totalDay?: string;
+      quantityMaxDose?: string;
 
       // Tab 2: Hàm lượng
       dosageUnit?: string;
@@ -92,6 +103,7 @@ export interface Drug {
       dosageAfternoon?: string;
       dosageNight?: string;
       dosageTotalDay?: string;
+      dosageMaxDose?: string;
 
       // Tab 3: Số kg (Liều theo kg)
       weightUnit?: string;
@@ -106,6 +118,9 @@ export interface Drug {
       intervalValue?: string; // Số của khoảng cách uống (e.g., "4")
       intervalUnit?: string;   // Đơn vị của khoảng cách: "giờ", "ngày", "tuần" (e.g., "giờ")
       timesPerDay?: string;    // Số lần trong ngày (e.g., "3")
+      dosePerTime?: string;    // Mỗi lần dùng bao nhiêu - Theo Số lượng (e.g., "1 viên", "2 ml")
+      dosageDosePerTime?: string; // Mỗi lần dùng bao nhiêu - Theo Hàm lượng (e.g., "500 mg")
+      weightDosePerTime?: string; // Mỗi lần dùng bao nhiêu - Theo Số kg (e.g., "10 mg/kg")
     }[];
   }[];
   precautions?: string | { 
@@ -158,6 +173,7 @@ export interface Drug {
   drivingStatus?: string;
   drivingNotes?: string;
   isWHOGMP?: boolean;
+  isEUGMP?: boolean;
   isTCCS?: boolean;
   isCYP3A4?: boolean;
   storageCondition?: string;
@@ -252,6 +268,8 @@ export interface UserProfile {
   createdAt?: string;
   updatedAt?: string;
   powerPoints?: number;
+  lastVisit?: any;
+  visitCount?: any;
 }
 
 export interface ICD10 {
@@ -275,6 +293,8 @@ export interface ICD10 {
   commonDrugs?: string[];
   pinnedBy?: string[];
   workspaceBy?: string[];
+  chapterName?: string;
+  blockName?: string;
 }
 
 export interface Company {
@@ -609,6 +629,7 @@ export interface Notification {
 
 export interface Announcement {
   id: string;
+  title?: string;
   content: string;
   createdAt: string;
   authorId?: string;
@@ -631,6 +652,15 @@ export interface AuthLog {
   ipAddress?: string;
   macAddress?: string;
   device?: string;
+}
+
+export interface GuestLog {
+  id: string;
+  ipAddress: string;
+  macAddress?: string;
+  device?: string;
+  userAgent?: string;
+  timestamp: string;
 }
 
 export interface RegistrationSettings {
@@ -662,7 +692,7 @@ export interface VersionLog {
   versionName: string;
   releaseDate: string;
   notes: string;
-  changes: { type: 'fix' | 'feature' | 'improvement' | 'breaking'; description: string }[];
+  changes: { type: 'fix' | 'feature' | 'improvement' | 'breaking' | 'new'; description: string }[];
   isDraft?: boolean;
   readBy?: string[];
   createdBy: string;

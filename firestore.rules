@@ -354,6 +354,16 @@ service cloud.firestore {
              isValidDateString(data.timestamp);
     }
 
+    function isValidGuestLog(data) {
+      return hasRequiredFields(['id', 'ipAddress', 'timestamp']) &&
+             data.id is string &&
+             data.ipAddress is string &&
+             isValidDateString(data.timestamp) &&
+             (!('macAddress' in data) || data.macAddress is string) &&
+             (!('device' in data) || data.device is string) &&
+             (!('userAgent' in data) || data.userAgent is string);
+    }
+
     function isValidVersion(data) {
       return hasRequiredFields(['id', 'versionName', 'releaseDate', 'createdBy', 'createdAt']) &&
              data.id is string &&
@@ -393,8 +403,14 @@ service cloud.firestore {
     // ===============================================================
 
     match /auth_logs/{logId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isOperator();
       allow create: if isAuthenticated() && isValidAuthLog(request.resource.data);
+    }
+
+    match /guest_logs/{logId} {
+      allow read: if isAdmin() || isOperator();
+      allow create: if isValidGuestLog(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     // Drugs: Publicly readable, writable only by operators/admins
@@ -632,9 +648,10 @@ service cloud.firestore {
     }
 
     match /versions/{versionId} {
-      allow get, list: if isAuthenticated();
-      allow create, update: if isOperator() && isValidVersion(request.resource.data);
-      allow delete: if isOperator();
+      allow read: if true;
+      allow create, delete: if isOperator();
+      allow update: if (isOperator() && isValidVersion(request.resource.data)) ||
+                    (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']));
     }
 
     match /y_khoa_documents/{docId} {

@@ -20,34 +20,73 @@ import PatientManagement from './components/PatientManagement';
 import StaffManagement from './components/StaffManagement';
 import UpdateNotification from './components/UpdateNotification';
 import DrugDetailModal from './components/DrugDetailModal';
+import WelcomeSlider from './components/WelcomeSlider';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType } from './firebase';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment } from './firebase';
 import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings } from './types';
 import { seedInitialData } from './lib/seed';
 
+// Session visit log tracker
+let isVisitLoggedThisSession = false;
+let isSigningInAnonymously = false;
+
+// Safe wrapper for localStorage that falls back to in-memory dictionary in incognito/sandboxed frames
+export const safeLocalStorage = {
+  getItem(key: string): string | null {
+    try {
+      return localStorage.getItem(key);
+    } catch (e) {
+      return (window as any).__memStorage?.[key] || null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      if (!(window as any).__memStorage) {
+        (window as any).__memStorage = {};
+      }
+      (window as any).__memStorage[key] = value;
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      if ((window as any).__memStorage) {
+        delete (window as any).__memStorage[key];
+      }
+    }
+  }
+};
+
 export async function getIpAddress(): Promise<string> {
   try {
-    const res = await fetch('https://api.ipify.org?format=json');
+    const fetchPromise = fetch('https://api.ipify.org?format=json');
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), 1500)
+    );
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
     const data = await res.json();
     return data.ip || '127.0.0.1';
   } catch (error) {
-    let storedIp = localStorage.getItem('sim_ip');
+    let storedIp = safeLocalStorage.getItem('sim_ip');
     if (!storedIp) {
       const octet3 = Math.floor(Math.random() * 254) + 1;
       const octet4 = Math.floor(Math.random() * 254) + 1;
       storedIp = `113.161.${octet3}.${octet4}`;
-      localStorage.setItem('sim_ip', storedIp);
+      safeLocalStorage.setItem('sim_ip', storedIp);
     }
     return storedIp;
   }
 }
 
 export function getMacAddress(): string {
-  let mac = localStorage.getItem('sim_mac');
+  let mac = safeLocalStorage.getItem('sim_mac');
   if (!mac) {
     const hex = '0123456789ABCDEF';
     const parts = ['FC', 'A1', '3E'];
@@ -55,7 +94,7 @@ export function getMacAddress(): string {
       parts.push(hex[Math.floor(Math.random() * 16)] + hex[Math.floor(Math.random() * 16)]);
     }
     mac = parts.join(':');
-    localStorage.setItem('sim_mac', mac);
+    safeLocalStorage.setItem('sim_mac', mac);
   }
   return mac;
 }
@@ -120,21 +159,21 @@ const ALL_TABS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
-    const saved = localStorage.getItem('activeTab');
+    const saved = safeLocalStorage.getItem('activeTab');
     return saved || 'dashboard';
   });
 
   const [drugDirectoryViewMode, setDrugDirectoryViewMode] = useState<'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies'>(() => {
-    const saved = localStorage.getItem('drugDirectoryViewMode');
+    const saved = safeLocalStorage.getItem('drugDirectoryViewMode');
     return (saved as any) || 'drugs';
   });
 
   useEffect(() => {
-    localStorage.setItem('drugDirectoryViewMode', drugDirectoryViewMode);
+    safeLocalStorage.setItem('drugDirectoryViewMode', drugDirectoryViewMode);
   }, [drugDirectoryViewMode]);
 
   useEffect(() => {
-    localStorage.setItem('activeTab', activeTab);
+    safeLocalStorage.setItem('activeTab', activeTab);
 
     // Reset scroll and overflow on main container when switching tabs.
     // This fixes the bug where components (like DrugDirectory) might leave the container locked.
@@ -173,8 +212,213 @@ export default function App() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [readAnnouncementIds, setReadAnnouncementIds] = useState<string[]>(() => {
+    try {
+      const stored = safeLocalStorage.getItem('read_announcements');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notificationTab, setNotificationTab] = useState<'all' | 'unread' | 'read' | 'announcements'>('unread');
+  const [toastPopups, setToastPopups] = useState<any[]>([]);
+  const isInitialNotificationsLoad = useRef(true);
+  const isInitialAnnouncementsLoad = useRef(true);
+  const existingNotificationIds = useRef<string[]>([]);
+  const existingAnnouncementIds = useRef<string[]>([]);
+
+  const addToastPopup = (id: string, title: string, message: string, category: string, item: any) => {
+    const newToast = { id, title, message, category, item, timestamp: Date.now() };
+    setToastPopups(prev => {
+      if (prev.some(t => t.id === id)) return prev;
+      return [...prev, newToast];
+    });
+    
+    setTimeout(() => {
+      setToastPopups(prev => prev.filter(t => t.id !== id));
+    }, 8000);
+  };
+
+  const [notificationTab, setNotificationTab] = useState<'all' | 'clinical_alert' | 'data_update' | 'medical_news_personal' | 'system'>('all');
+  const [notifSearchQuery, setNotifSearchQuery] = useState('');
+  const [visibleNotifCount, setVisibleNotifCount] = useState(20);
+
+  const getNotificationCategory = (item: any, isAnnouncement: boolean): 'clinical_alert' | 'data_update' | 'medical_news_personal' | 'system' => {
+    if (item.category) return item.category;
+    
+    if (isAnnouncement) {
+      if (item.type === 'drug_update') return 'data_update';
+      const contentLower = (item.content || '').toLowerCase();
+      const titleLower = (item.title || '').toLowerCase();
+      if (
+        contentLower.includes('adr') || contentLower.includes('cảnh báo') || contentLower.includes('chống chỉ định') || 
+        contentLower.includes('nguy cơ') || contentLower.includes('nguy hiểm') ||
+        titleLower.includes('cảnh báo') || titleLower.includes('adr') || titleLower.includes('chống chỉ định')
+      ) {
+        return 'clinical_alert';
+      }
+      if (
+        contentLower.includes('bộ y tế') || contentLower.includes('who') || contentLower.includes('tin tức') || 
+        contentLower.includes('icd-10') || contentLower.includes('hướng dẫn điều trị') ||
+        titleLower.includes('bộ y tế') || titleLower.includes('who') || titleLower.includes('y khoa')
+      ) {
+        return 'medical_news_personal';
+      }
+      if (
+        contentLower.includes('phiên bản') || contentLower.includes('đồng bộ') || contentLower.includes('hệ thống') || 
+        contentLower.includes('sao lưu') || titleLower.includes('phiên bản') || titleLower.includes('hệ thống')
+      ) {
+        return 'system';
+      }
+      return 'system'; // mặc định cho các thông báo hệ thống thông thường
+    } else {
+      if (item.type === 'error' || item.type === 'warning') return 'clinical_alert';
+      const msgLower = (item.message || '').toLowerCase();
+      const titleLower = (item.title || '').toLowerCase();
+      if (
+        msgLower.includes('adr') || msgLower.includes('chống chỉ định') || msgLower.includes('cảnh báo lâm sàng') || 
+        titleLower.includes('adr') || titleLower.includes('cảnh báo')
+      ) {
+        return 'clinical_alert';
+      }
+      if (
+        msgLower.includes('cập nhật thuốc') || msgLower.includes('hướng dẫn sử dụng') || 
+        titleLower.includes('cập nhật') || item.type === 'success'
+      ) {
+        return 'data_update';
+      }
+      if (
+        msgLower.includes('bộ y tế') || msgLower.includes('who') || titleLower.includes('y khoa') || 
+        titleLower.includes('tin tức') || titleLower.includes('trả lời') || titleLower.includes('bình luận') ||
+        titleLower.includes('theo dõi')
+      ) {
+        return 'medical_news_personal';
+      }
+      if (msgLower.includes('phiên bản') || msgLower.includes('sao lưu') || msgLower.includes('đồng bộ dữ liệu')) {
+        return 'system';
+      }
+      return 'medical_news_personal';
+    }
+  };
+
+  const getUnifiedNotifications = () => {
+    const list: any[] = [];
+    
+    // Convert announcements to unified form
+    announcements.filter(a => a.showInHeader !== false).forEach(a => {
+      const isRead = readAnnouncementIds.includes(a.id);
+      const category = getNotificationCategory(a, true);
+      list.push({
+        id: a.id,
+        title: a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống'),
+        message: a.content,
+        createdAt: a.createdAt,
+        isRead,
+        category,
+        link: a.type === 'drug_update' ? 'drugs' : undefined,
+        drugName: a.drugName,
+        isAnnouncement: true
+      });
+    });
+
+    // Convert personal notifications to unified form
+    notifications.forEach(n => {
+      const category = getNotificationCategory(n, false);
+      list.push({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        createdAt: n.createdAt,
+        isRead: n.isRead,
+        category,
+        link: n.link,
+        isAnnouncement: false
+      });
+    });
+
+    // Sort: newest first
+    const sorted = list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Filter by Tab
+    let filtered = sorted;
+    if (notificationTab !== 'all') {
+      filtered = sorted.filter(item => item.category === notificationTab);
+    }
+
+    // Filter by search query
+    if (notifSearchQuery.trim()) {
+      const queryLower = notifSearchQuery.toLowerCase();
+      filtered = filtered.filter(item => 
+        (item.title || '').toLowerCase().includes(queryLower) || 
+        (item.message || '').toLowerCase().includes(queryLower)
+      );
+    }
+
+    return filtered;
+  };
+
+  const groupNotificationsByDate = (items: any[]) => {
+    const groups: { [key: string]: any[] } = {};
+    
+    items.forEach(item => {
+      const date = new Date(item.createdAt);
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(today.getDate() - 1);
+      
+      let groupTitle = '';
+      if (date.toDateString() === today.toDateString()) {
+        groupTitle = 'Hôm nay';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        groupTitle = 'Hôm qua';
+      } else {
+        groupTitle = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      }
+      
+      if (!groups[groupTitle]) {
+        groups[groupTitle] = [];
+      }
+      groups[groupTitle].push(item);
+    });
+    
+    return groups;
+  };
+
+  const toggleReadStatus = async (item: any) => {
+    if (item.isAnnouncement) {
+      setReadAnnouncementIds(prev => {
+        let next;
+        if (item.isRead) {
+          next = prev.filter(id => id !== item.id);
+        } else {
+          next = Array.from(new Set([...prev, item.id]));
+        }
+        safeLocalStorage.setItem('read_announcements', JSON.stringify(next));
+        return next;
+      });
+    } else {
+      if (item.isRead) {
+        await markAsUnread(item.id);
+      } else {
+        await markAsRead(item.id);
+      }
+    }
+  };
+
+  const isDrugRelated = (item: any, isAnnouncement: boolean) => {
+    const text = (isAnnouncement 
+      ? `${item.title || ''} ${item.content || ''}` 
+      : `${item.title || ''} ${item.message || ''}`
+    ).toLowerCase();
+    
+    if (isAnnouncement) {
+      return item.type === 'drug_update' || !!item.drugId || !!item.drugName || 
+             text.includes('thuốc') || text.includes('hoạt chất') || text.includes('biệt dược') || text.includes('drug');
+    } else {
+      return item.link === 'drugs' || item.link === 'drug_directory' || item.link === 'drug_groups' || 
+             text.includes('thuốc') || text.includes('hoạt chất') || text.includes('biệt dược') || text.includes('drug');
+    }
+  };
   const [globalSelectedDrug, setGlobalSelectedDrug] = useState<any | null>(null);
   const [isGlobalDrugModalOpen, setIsGlobalDrugModalOpen] = useState(false);
 
@@ -217,7 +461,7 @@ export default function App() {
           const todayStr = new Date().toLocaleDateString('sv-SE'); // Local date "YYYY-MM-DD"
           const deviceMac = getMacAddress();
           const storageKey = `daily_access_logged_${user.uid}_${deviceMac}`;
-          const lastLoggedDate = localStorage.getItem(storageKey);
+          const lastLoggedDate = safeLocalStorage.getItem(storageKey);
 
           if (lastLoggedDate !== todayStr) {
             const logId = Date.now().toString();
@@ -237,7 +481,7 @@ export default function App() {
             });
 
             // Mark daily log as registered in localStorage for this user-device pair
-            localStorage.setItem(storageKey, todayStr);
+            safeLocalStorage.setItem(storageKey, todayStr);
           }
         } catch (error) {
           console.warn("Failed to automatically record daily device access:", error);
@@ -247,6 +491,25 @@ export default function App() {
       logDailyDeviceAccess();
     }
   }, [user, userProfile]);
+  const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const [dbSlides, setDbSlides] = useState<any[]>([]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'slides'), orderBy('order', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      setDbSlides(list);
+    }, (error) => {
+      if (error.code !== 'permission-denied') {
+        console.error("Slides listener error:", error);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isPrivacyConfirmOpen, setIsPrivacyConfirmOpen] = useState(false);
@@ -254,7 +517,7 @@ export default function App() {
   const [featureStates, setFeatureStates] = useState<Record<string, 'open' | 'closed' | 'maintenance'>>({});
   const [featureSettings, setFeatureSettings] = useState<Record<string, any>>({});
   const [isAdminMode, setIsAdminMode] = useState(() => {
-    const saved = localStorage.getItem('isAdminMode');
+    const saved = safeLocalStorage.getItem('isAdminMode');
     return saved === 'true';
   });
 
@@ -287,7 +550,7 @@ export default function App() {
   };
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('isSidebarCollapsed');
+    const saved = safeLocalStorage.getItem('isSidebarCollapsed');
     return saved === 'true';
   });
   const [externalSelectedDrugId, setExternalSelectedDrugId] = useState<string | null>(null);
@@ -295,11 +558,11 @@ export default function App() {
   const [externalPatientSearchQuery, setExternalPatientSearchQuery] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('isAdminMode', isAdminMode.toString());
+    safeLocalStorage.setItem('isAdminMode', isAdminMode.toString());
   }, [isAdminMode]);
 
   useEffect(() => {
-    localStorage.setItem('isSidebarCollapsed', isSidebarCollapsed.toString());
+    safeLocalStorage.setItem('isSidebarCollapsed', isSidebarCollapsed.toString());
     // Dispatch resize event to let components (like charts) know the layout changed
     setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
   }, [isSidebarCollapsed]);
@@ -402,6 +665,20 @@ export default function App() {
   }, [activeTab]);
 
   useEffect(() => {
+    const handleNavigateTab = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        if (typeof customEvent.detail === 'string' && customEvent.detail.startsWith('admin_') && !isAdminMode) {
+          setIsAdminMode(true);
+        }
+        setActiveTab(customEvent.detail);
+      }
+    };
+    window.addEventListener('navigate-tab', handleNavigateTab);
+    return () => window.removeEventListener('navigate-tab', handleNavigateTab);
+  }, [isAdminMode]);
+
+  useEffect(() => {
     // When switching to a sub-page/utility, push state to history
     // Only push if we're not already on dashboard and the current hash doesn't match
     if (activeTab !== 'dashboard' && window.location.hash !== `#${activeTab}`) {
@@ -461,13 +738,13 @@ export default function App() {
   }, []);
 
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('theme');
+    const saved = safeLocalStorage.getItem('theme');
     return (saved as any) || 'light';
   });
 
   const handleThemeChange = (newTheme: string) => {
     setTheme(newTheme);
-    localStorage.setItem('theme_preference', 'true');
+    safeLocalStorage.setItem('theme_preference', 'true');
   };
 
   const isDarkMode = theme === 'dark';
@@ -480,7 +757,7 @@ export default function App() {
       root.classList.remove('dark');
     }
 
-    localStorage.setItem('theme', theme);
+    safeLocalStorage.setItem('theme', theme);
   }, [theme, isDarkMode]);
 
   useEffect(() => {
@@ -535,7 +812,7 @@ export default function App() {
         setSystemSettings(settings);
 
         // Apply default theme only if user hasn't explicitly set one in this session's localStorage
-        const hasUserPreference = localStorage.getItem('theme_preference');
+        const hasUserPreference = safeLocalStorage.getItem('theme_preference');
         if (!hasUserPreference && settings.defaultTheme) {
           setTheme(settings.defaultTheme);
         }
@@ -630,7 +907,32 @@ export default function App() {
     );
 
     const unsubNotifications = onSnapshot(q, (snapshot) => {
-      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification)));
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+      
+      if (isInitialNotificationsLoad.current) {
+        existingNotificationIds.current = items.map(x => x.id);
+        isInitialNotificationsLoad.current = false;
+      } else {
+        const newItems = items.filter(x => !existingNotificationIds.current.includes(x.id));
+        if (newItems.length > 0) {
+          newItems.forEach(n => {
+            const category = getNotificationCategory(n, false);
+            addToastPopup(
+              n.id,
+              n.title || "Thông báo mới",
+              n.message || "",
+              category,
+              { ...n, isAnnouncement: false }
+            );
+          });
+          existingNotificationIds.current = [
+            ...existingNotificationIds.current,
+            ...newItems.map(x => x.id)
+          ];
+        }
+      }
+
+      setNotifications(items);
     }, (error) => {
       console.error("Error loading notifications:", error);
       handleFirestoreError(error, OperationType.LIST, 'notifications');
@@ -663,6 +965,30 @@ export default function App() {
         return roleMatched || titleMatched;
       });
 
+      if (isInitialAnnouncementsLoad.current) {
+        existingAnnouncementIds.current = filtered.map(x => x.id);
+        isInitialAnnouncementsLoad.current = false;
+      } else {
+        const newItems = filtered.filter(x => !existingAnnouncementIds.current.includes(x.id));
+        if (newItems.length > 0) {
+          newItems.forEach(a => {
+            const category = getNotificationCategory(a, true);
+            const title = a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống');
+            addToastPopup(
+              a.id,
+              title,
+              a.content || "",
+              category,
+              { ...a, isAnnouncement: true }
+            );
+          });
+          existingAnnouncementIds.current = [
+            ...existingAnnouncementIds.current,
+            ...newItems.map(x => x.id)
+          ];
+        }
+      }
+
       setAnnouncements(filtered);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'announcements');
@@ -690,16 +1016,33 @@ export default function App() {
     }
   };
 
+  const markAsUnread = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', id), { isRead: false });
+    } catch (error) {
+      console.error("Error marking notification as unread:", error);
+    }
+  };
+
   const markAllAsRead = async () => {
     try {
+      // 1. Mark all personal notifications as read
       const unread = notifications.filter(n => !n.isRead);
-      if (unread.length === 0) return;
-
-      const batchSize = 10; // Batch for large number of notifications
-      for (let i = 0; i < unread.length; i += batchSize) {
-        const chunk = unread.slice(i, i + batchSize);
-        await Promise.all(chunk.map(n => updateDoc(doc(db, 'notifications', n.id), { isRead: true })));
+      if (unread.length > 0) {
+        const batchSize = 10;
+        for (let i = 0; i < unread.length; i += batchSize) {
+          const chunk = unread.slice(i, i + batchSize);
+          await Promise.all(chunk.map(n => updateDoc(doc(db, 'notifications', n.id), { isRead: true })));
+        }
       }
+
+      // 2. Mark all announcements as read
+      const allAnnIds = announcements.map(a => a.id);
+      setReadAnnouncementIds(prev => {
+        const next = Array.from(new Set([...prev, ...allAnnIds]));
+        safeLocalStorage.setItem('read_announcements', JSON.stringify(next));
+        return next;
+      });
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
     }
@@ -713,69 +1056,166 @@ export default function App() {
     }
   };
 
-  const renderNotificationItem = (notification: Notification, isDesktop: boolean = false) => {
+  const renderNotificationItem = (item: any, isDesktop: boolean = false, index?: number) => {
+    const isClinicalAlert = item.category === 'clinical_alert';
+    const isDataUpdate = item.category === 'data_update';
+    const isMedicalNews = item.category === 'medical_news_personal';
+    const isSystem = item.category === 'system';
+    
+    let IconComponent = Info;
+    let iconBgColor = "bg-blue-500/10 text-blue-500";
+    let borderStyle = isDarkMode ? "border-slate-800 bg-slate-900/30 text-slate-400" : "border-slate-100 bg-slate-50/30 text-slate-500";
+    let categoryBadge = "";
+
+    if (isClinicalAlert) {
+      IconComponent = AlertOctagon;
+      iconBgColor = "bg-rose-500/15 text-rose-500 dark:bg-rose-500/20";
+      categoryBadge = "🔴 Cảnh báo lâm sàng";
+      if (!item.isRead) {
+        borderStyle = isDarkMode 
+          ? "border-rose-500/40 bg-rose-950/20 shadow-md shadow-rose-950/20 text-slate-200" 
+          : "border-rose-200 bg-rose-50/80 shadow-sm text-slate-800";
+      }
+    } else if (isDataUpdate) {
+      IconComponent = Pill;
+      iconBgColor = "bg-amber-500/15 text-amber-500 dark:bg-amber-500/20";
+      categoryBadge = "🟡 Dữ liệu";
+      if (!item.isRead) {
+        borderStyle = isDarkMode 
+          ? "border-amber-500/40 bg-amber-950/20 shadow-md shadow-amber-950/20 text-slate-200" 
+          : "border-amber-200 bg-amber-50/85 shadow-sm text-slate-800";
+      }
+    } else if (isMedicalNews) {
+      IconComponent = FileText;
+      iconBgColor = "bg-sky-500/15 text-sky-500 dark:bg-sky-500/20";
+      categoryBadge = "🔵 Tin tức y khoa / Cá nhân";
+      if (!item.isRead) {
+        borderStyle = isDarkMode 
+          ? "border-sky-500/40 bg-sky-950/20 shadow-md shadow-sky-950/20 text-slate-200" 
+          : "border-sky-200 bg-sky-50/85 shadow-sm text-slate-800";
+      }
+    } else if (isSystem) {
+      IconComponent = Settings;
+      iconBgColor = "bg-slate-500/15 text-slate-400 dark:bg-slate-500/20";
+      categoryBadge = "⚙️ Hệ thống";
+      if (!item.isRead) {
+        borderStyle = isDarkMode 
+          ? "border-slate-500/40 bg-slate-800/60 shadow-md text-slate-200" 
+          : "border-slate-200 bg-slate-100/80 shadow-sm text-slate-800";
+      }
+    }
+
     return (
       <div
-        key={notification.id}
+        key={`${item.id || 'notif'}-${index ?? 0}`}
+        onClick={() => {
+          if (!item.isRead) {
+            toggleReadStatus(item);
+          }
+        }}
         className={cn(
-          "p-2.5 rounded-xl border transition-all relative group",
-          notification.isRead
-            ? (isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-slate-50/50 border-slate-100")
-            : (isDarkMode ? "bg-slate-800 border-primary/30" : "bg-white border-primary/20 shadow-sm")
+          "p-2.5 rounded-xl border transition-all relative group flex flex-col gap-2",
+          !item.isRead ? "cursor-pointer hover:scale-[1.01]" : "opacity-75 hover:opacity-100",
+          borderStyle
         )}
       >
-        <div className="flex gap-2">
-          <div className={cn(
-            "p-1.5 rounded-lg shrink-0 h-fit",
-            notification.type === 'info' ? "bg-blue-500/10 text-blue-500" :
-              notification.type === 'success' ? "bg-emerald-500/10 text-emerald-500" :
-                notification.type === 'warning' ? "bg-amber-500/10 text-amber-500" :
-                  "bg-rose-500/10 text-rose-500"
-          )}>
-            {notification.type === 'info' ? <Info size={14} /> :
-              notification.type === 'success' ? <Check size={14} /> :
-                notification.type === 'warning' ? <AlertTriangle size={14} /> :
-                  <AlertOctagon size={14} />}
+        <div className="flex gap-2.5">
+          <div className={cn("p-1.5 rounded-lg shrink-0 h-fit", iconBgColor)}>
+            <IconComponent size={14} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 mb-0.5">
-              <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>
-                {notification.title}
-              </h4>
-              <span className="text-[8px] text-slate-400 font-medium shrink-0">
-                {new Date(notification.createdAt).toLocaleDateString('vi-VN')}
-              </span>
+            <div className="flex items-start justify-between gap-2 mb-0.5">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[7.5px] font-black tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5">
+                  {categoryBadge}
+                </span>
+                <h4 className={cn("font-bold text-[10.5px] leading-tight", isDarkMode ? "text-slate-100" : "text-slate-900")}>
+                  {item.title}
+                </h4>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {!item.isRead && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                )}
+                <span className="text-[8px] text-slate-400 font-medium shrink-0">
+                  {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                </span>
+              </div>
             </div>
-            <p className={cn("text-[10px] leading-tight mb-1.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-              {notification.message}
-            </p>
-            <div className="flex items-center gap-2">
-              {!notification.isRead && (
-                <button
-                  onClick={() => markAsRead(notification.id)}
-                  className="text-[8px] font-black text-primary hover:underline flex items-center gap-0.5"
-                >
-                  <Check size={8} /> Đã đọc
-                </button>
+            
+            <div className={cn("text-[9.5px] leading-relaxed transition-colors prose prose-sm max-w-none mb-1.5", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
+              {item.isAnnouncement ? (
+                <ReactMarkdown>{item.message}</ReactMarkdown>
+              ) : (
+                <p>{item.message}</p>
               )}
-              {notification.link && (
+            </div>
+            
+            <div className="flex items-center justify-between border-t border-dashed border-slate-500/10 pt-1.5 mt-1">
+              <div className="flex items-center gap-1.5">
+                {item.isRead ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleReadStatus(item);
+                    }}
+                    className="text-[8px] font-bold text-slate-400 hover:text-amber-600 dark:text-slate-500 dark:hover:text-amber-500 flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-500/5 hover:bg-amber-500/10 border border-slate-500/10 transition-all cursor-pointer"
+                    title="Bấm để đánh dấu chưa đọc"
+                  >
+                    <CheckCheck size={10} className="text-emerald-500" /> Đã đọc
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleReadStatus(item);
+                    }}
+                    className="text-[8px] font-black text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/20 hover:underline flex items-center gap-0.5 cursor-pointer px-1 py-0.5 rounded transition-all"
+                  >
+                    <Check size={8} /> Đánh dấu đã đọc
+                  </button>
+                )}
+                
+                {item.drugName && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenGlobalDrugModal(item.drugName);
+                    }}
+                    className="text-[8px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-0.5 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    <Pill size={8} /> Chi tiết thuốc
+                  </button>
+                )}
+
+                {item.link && item.link !== 'drugs' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab(item.link!);
+                      setIsNotificationsOpen(false);
+                      if (!item.isRead) {
+                        toggleReadStatus(item);
+                      }
+                    }}
+                    className="text-[8px] font-black text-indigo-500 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <Zap size={8} /> Xem trang
+                  </button>
+                )}
+              </div>
+
+              {!item.isAnnouncement && (
                 <button
-                  onClick={() => {
-                    setActiveTab(notification.link!);
-                    setIsNotificationsOpen(false);
-                    markAsRead(notification.id);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteNotification(item.id);
                   }}
-                  className="text-[8px] font-black text-indigo-500 hover:underline flex items-center gap-0.5"
+                  className="text-[8px] font-black text-rose-500 hover:underline flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer px-1 py-0.5 rounded"
                 >
-                  <Zap size={8} /> Xem
+                  <Trash2 size={8} /> Xóa
                 </button>
               )}
-              <button
-                onClick={() => deleteNotification(notification.id)}
-                className="text-[8px] font-black text-rose-500 hover:underline flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <Trash2 size={8} /> Xóa
-              </button>
             </div>
           </div>
         </div>
@@ -816,6 +1256,22 @@ export default function App() {
 
           if (userSnap.exists()) {
             let profile = userSnap.data() as UserProfile;
+
+            // Log visit count and last visit exactly once per app session
+            if (!isVisitLoggedThisSession) {
+              isVisitLoggedThisSession = true;
+              try {
+                await updateDoc(userRef, {
+                  lastVisit: serverTimestamp(),
+                  visitCount: increment(1)
+                });
+                profile.lastVisit = new Date().toISOString();
+                profile.visitCount = (profile.visitCount || 0) + 1;
+              } catch (visitErr) {
+                console.warn("Failed to update visit stats for existing user:", visitErr);
+              }
+            }
+
             const isAdminEmail = refreshedUser.email === 'ttytkvbinhphu@gmail.com';
 
             // Force approval and admin role for the master admin
@@ -877,18 +1333,24 @@ export default function App() {
           } else {
             // New user logic
             const isAdmin = currentUser.email === 'ttytkvbinhphu@gmail.com';
+            const isAnonymous = currentUser.isAnonymous;
+
+            isVisitLoggedThisSession = true; // Mark as logged since we are initializing it now
+
             const freshProfile: UserProfile = {
               uid: currentUser.uid,
-              email: currentUser.email!,
-              displayName: currentUser.displayName || (isAdmin ? 'Quản trị viên' : 'Thành viên mới'),
+              email: currentUser.email || '',
+              displayName: currentUser.displayName || (isAnonymous ? 'Khách truy cập' : (isAdmin ? 'Quản trị viên' : 'Thành viên mới')),
               photoURL: currentUser.photoURL || '',
-              role: isAdmin ? 'admin' : (regSettings.defaultRoleId as any || 'unapproved'),
-              isApproved: isAdmin || regSettings.autoApprove, // Auto-approve admin or if setting is on
+              role: isAdmin ? 'admin' : (isAnonymous ? 'member' : (regSettings.defaultRoleId as any || 'unapproved')),
+              isApproved: isAdmin || isAnonymous || regSettings.autoApprove, // Auto-approve admin or anonymous or if setting is on
               title: isAdmin ? 'Bác sĩ' : (regSettings.defaultTitleId || 'Chưa cập nhật'),
               position: isAdmin ? 'Giám đốc' : 'Chưa cập nhật',
               specialty: 'Không',
               createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              lastVisit: serverTimestamp(),
+              visitCount: increment(1)
             };
 
             // Set profile locally first so UI transitions immediately
@@ -924,6 +1386,55 @@ export default function App() {
         }
       } else {
         setUserProfile(null);
+
+        // Auto sign in anonymously when unauthenticated (if enabled in Firebase)
+        const autoAnonymouslySignIn = async () => {
+          if (isSigningInAnonymously) return;
+          isSigningInAnonymously = true;
+          try {
+            await signInAnonymously(auth);
+          } catch (error: any) {
+            if (error?.code === 'auth/admin-restricted-operation' || error?.message?.includes('admin-restricted-operation')) {
+              // Anonymous sign-in is disabled in Firebase console, operate in standard unauthenticated guest mode
+            } else {
+              console.warn("Failed to sign in anonymously:", error);
+            }
+          } finally {
+            isSigningInAnonymously = false;
+          }
+        };
+        autoAnonymouslySignIn();
+
+        // Log guest access if unauthenticated
+        const logGuestAccess = async () => {
+          try {
+            const todayStr = new Date().toLocaleDateString('sv-SE'); // Local date "YYYY-MM-DD"
+            const storageKey = `guest_access_logged_${todayStr}`;
+            const lastLoggedDate = safeLocalStorage.getItem(storageKey);
+
+            if (!lastLoggedDate) {
+              const logId = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5);
+              const ip = (await getIpAddress()) || '127.0.0.1';
+              const mac = getMacAddress() || 'Chưa nhận';
+              const dev = getDeviceName() || 'Thiết bị không xác định';
+              const userAgent = navigator.userAgent || 'Unknown';
+
+              await setDoc(doc(db, 'guest_logs', logId), {
+                id: logId,
+                ipAddress: ip,
+                macAddress: mac,
+                device: dev,
+                userAgent: userAgent,
+                timestamp: new Date().toISOString()
+              });
+
+              safeLocalStorage.setItem(storageKey, todayStr);
+            }
+          } catch (error) {
+            console.warn("Failed to log guest access", error);
+          }
+        };
+        logGuestAccess();
       }
 
       clearTimeout(authTimeout);
@@ -958,7 +1469,7 @@ export default function App() {
           // Avoid duplicate automated daily check logging for this login interaction
           const todayStr = new Date().toLocaleDateString('sv-SE');
           const storageKey = `daily_access_logged_${result.user.uid}_${mac}`;
-          localStorage.setItem(storageKey, todayStr);
+          safeLocalStorage.setItem(storageKey, todayStr);
         } catch (logError) {
           console.warn("Failed to create auth log:", logError);
           // Don't block login if logging fails
@@ -1943,6 +2454,14 @@ export default function App() {
   return (
     <>
       <UpdateNotification isDarkMode={isDarkMode} uid={user?.uid} />
+      {isUserGuideOpen && (
+        <WelcomeSlider 
+          slides={dbSlides}
+          onComplete={() => setIsUserGuideOpen(false)}
+          isDarkMode={isDarkMode}
+          userName={userProfile?.displayName || 'Người dùng'}
+        />
+      )}
       <div className={cn(
         "h-[100dvh] max-h-[100dvh] font-sans transition-colors duration-300 flex overflow-hidden",
         isDarkMode ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"
@@ -1979,6 +2498,7 @@ export default function App() {
             isApproved={userProfile.isApproved}
             drugDirectoryViewMode={drugDirectoryViewMode}
             setDrugDirectoryViewMode={setDrugDirectoryViewMode}
+            onOpenUserGuide={() => setIsUserGuideOpen(true)}
           />
 
           <main 
@@ -2222,12 +2742,18 @@ export default function App() {
                     )}
                   >
                     <Bell size={18} />
-                    {notifications.some(n => !n.isRead) && (
-                      <span className={cn(
-                        "absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 animate-pulse",
-                        isDarkMode ? "border-slate-900" : "border-white"
-                      )} />
-                    )}
+                    {(() => {
+                      const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !readAnnouncementIds.includes(a.id)).length;
+                      if (unreadCount === 0) return null;
+                      return (
+                        <span className={cn(
+                          "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 shadow-sm animate-pulse",
+                          isDarkMode ? "border-slate-900" : "border-white"
+                        )}>
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      );
+                    })()}
                   </button>
 
                   <AnimatePresence>
@@ -2242,12 +2768,15 @@ export default function App() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 10, scale: 0.95 }}
                           className={cn(
-                            "fixed inset-x-4 top-16 z-50 p-4 rounded-2xl border shadow-2xl flex flex-col",
+                            "fixed inset-x-4 top-16 z-50 p-4 rounded-2xl border shadow-2xl flex flex-col max-h-[85vh]",
                             isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                           )}
                         >
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className={cn("font-black text-sm", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-1.5">
+                              <Bell className="text-primary" size={14} />
+                              <h3 className={cn("font-black text-xs uppercase tracking-wider", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
+                            </div>
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={markAllAsRead}
@@ -2259,138 +2788,107 @@ export default function App() {
                                 onClick={() => setIsNotificationsOpen(false)}
                                 className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
                               >
-                                <X size={16} className="text-slate-400" />
+                                <X size={15} className="text-slate-400" />
                               </button>
                             </div>
                           </div>
 
-                          <div className={cn(
-                            "flex items-center gap-1 p-1 rounded-xl mb-4 text-[9px] font-black uppercase tracking-widest transition-colors",
-                            isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                          )}>
+                          <div className="relative mb-2.5">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                            <input
+                              type="text"
+                              placeholder="Tìm kiếm thông báo, hoạt chất..."
+                              value={notifSearchQuery}
+                              onChange={(e) => {
+                                setNotifSearchQuery(e.target.value);
+                                setVisibleNotifCount(20);
+                              }}
+                              className={cn(
+                                "w-full pl-8 pr-8 py-1.5 rounded-lg border-none text-[10px] font-bold focus:ring-1 focus:ring-primary outline-none transition-all",
+                                isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-50 text-slate-900 placeholder-slate-400"
+                              )}
+                            />
+                            {notifSearchQuery && (
+                              <button
+                                onClick={() => setNotifSearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                              >
+                                <X size={11} />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 overflow-x-auto pb-1.5 mb-2.5 scrollbar-none scroll-smooth">
                             {[
-                              { id: 'unread', label: 'Mới' },
-                              { id: 'read', label: 'Đã đọc' },
-                              { id: 'announcements', label: 'Hệ thống' }
+                              { id: 'all', label: 'Tất cả', icon: Bell },
+                              { id: 'clinical_alert', label: 'Cảnh báo', icon: AlertOctagon, color: 'text-rose-500' },
+                              { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
+                              { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
+                              { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
                             ].map(tab => (
                               <button
                                 key={tab.id}
-                                onClick={() => setNotificationTab(tab.id as any)}
+                                onClick={() => {
+                                  setNotificationTab(tab.id as any);
+                                  setVisibleNotifCount(20);
+                                }}
                                 className={cn(
-                                  "flex-1 py-1.5 rounded-lg transition-all",
+                                  "flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-black shrink-0 transition-all border cursor-pointer",
                                   notificationTab === tab.id
-                                    ? (isDarkMode ? "bg-slate-700 text-white shadow-sm" : "bg-white text-primary shadow-sm")
-                                    : "text-slate-500 hover:text-slate-400"
+                                    ? "bg-primary text-white border-primary shadow-sm"
+                                    : isDarkMode 
+                                      ? "bg-slate-800 border-slate-750 text-slate-400 hover:text-slate-300" 
+                                      : "bg-slate-50 border-slate-100 text-slate-500 hover:text-slate-700"
                                 )}
                               >
-                                {tab.label}
+                                <tab.icon size={9} className={notificationTab === tab.id ? "text-white" : tab.color} />
+                                <span>{tab.label}</span>
                               </button>
                             ))}
                           </div>
 
-                          <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-2">
+                          <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 space-y-3 max-h-[55vh]">
                             {(() => {
-                              if (notificationTab === 'unread') {
-                                const recentAnnouncements = announcements.filter(a => a.showInHeader !== false && (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
-                                const unreadNotifs = notifications.filter(n => !n.isRead);
-
-                                if (recentAnnouncements.length === 0 && unreadNotifs.length === 0) {
-                                  return (
-                                    <div className="py-8 text-center text-slate-500 font-bold text-[10px]">
-                                      Không có thông báo mới
-                                    </div>
-                                  );
-                                }
-
+                              const allFiltered = getUnifiedNotifications();
+                              const visibleItems = allFiltered.slice(0, visibleNotifCount);
+                              
+                              if (visibleItems.length === 0) {
                                 return (
-                                  <>
-                                    {recentAnnouncements.map(announcement => {
-                                      const isDrugUpdate = announcement.type === 'drug_update';
-                                      const IconComponent = isDrugUpdate ? Pill : Sparkles;
-                                      const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
-                                      const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
-                                      const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
-
-                                      return (
-                                        <div key={`mob-ann-${announcement.id}`} className={cn("p-3 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
-                                          <div className="flex gap-3">
-                                            <div className={cn("p-2 rounded-lg shrink-0", iconBgColor)}>
-                                              <IconComponent size={16} />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center justify-between gap-2 mb-1">
-                                                <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
-                                                <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
-                                              </div>
-                                              <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                                <ReactMarkdown>{announcement.content}</ReactMarkdown>
-                                              </div>
-                                              {isDrugUpdate && announcement.drugName && (
-                                                <button
-                                                  onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
-                                                  className="mt-2 text-[9px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-md w-fit cursor-pointer"
-                                                >
-                                                  <Pill size={11} /> Xem chi tiết thuốc
-                                                </button>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {unreadNotifs.map(notification => renderNotificationItem(notification))}
-                                  </>
+                                  <div className="py-8 text-center">
+                                    <Bell className="mx-auto text-slate-300 mb-1.5" size={24} />
+                                    <p className="text-slate-500 text-[10px] font-extrabold">Không có thông báo nào phù hợp</p>
+                                  </div>
                                 );
                               }
 
-                              if (notificationTab === 'read') {
-                                const readNotifs = notifications.filter(n => n.isRead);
-                                if (readNotifs.length === 0) {
-                                  return <div className="py-8 text-center text-slate-500 font-bold text-[10px]">Không có thông báo đã đọc</div>;
-                                }
-                                return readNotifs.map(notification => renderNotificationItem(notification));
-                              }
-
-                              if (notificationTab === 'announcements') {
-                                const visibleAnnouncements = announcements.filter(a => a.showInHeader !== false);
-                                if (visibleAnnouncements.length === 0) {
-                                  return <div className="py-8 text-center text-slate-500 font-bold text-[10px]">Chưa có thông báo hệ thống</div>;
-                                }
-                                return visibleAnnouncements.map(announcement => {
-                                  const isDrugUpdate = announcement.type === 'drug_update';
-                                  const IconComponent = isDrugUpdate ? Pill : Sparkles;
-                                  const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
-                                  const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
-                                  const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
-
-                                  return (
-                                    <div key={`mob-ann-all-${announcement.id}`} className={cn("p-3 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
-                                      <div className="flex gap-3">
-                                        <div className={cn("p-2 rounded-lg shrink-0", iconBgColor)}>
-                                          <IconComponent size={16} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center justify-between gap-2 mb-1">
-                                            <h4 className={cn("font-bold text-xs truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
-                                            <span className="text-[9px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
-                                          </div>
-                                          <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                            <ReactMarkdown>{announcement.content}</ReactMarkdown>
-                                          </div>
-                                          {isDrugUpdate && announcement.drugName && (
-                                            <button
-                                              onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
-                                              className="mt-2 text-[9px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-2 py-1 rounded-md w-fit cursor-pointer"
-                                            >
-                                              <Pill size={11} /> Xem chi tiết thuốc
-                                            </button>
-                                          )}
-                                        </div>
+                              const grouped = groupNotificationsByDate(visibleItems);
+                              
+                              return (
+                                <div className="space-y-3">
+                                  {Object.entries(grouped).map(([groupName, items], gIdx) => (
+                                    <div key={`${groupName}-${gIdx}`} className="space-y-1.5">
+                                      <div className="flex items-center gap-1.5 px-0.5">
+                                        <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                          {groupName}
+                                        </span>
+                                        <div className="flex-1 h-[1px] bg-slate-500/10" />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        {items.map((item, idx) => renderNotificationItem(item, false, idx))}
                                       </div>
                                     </div>
-                                  );
-                                });
-                              }
+                                  ))}
+
+                                  {allFiltered.length > visibleNotifCount && (
+                                    <button
+                                      onClick={() => setVisibleNotifCount(prev => prev + 15)}
+                                      className="w-full py-1.5 mt-1.5 rounded-lg text-[8.5px] font-black uppercase tracking-widest text-primary bg-primary/5 hover:bg-primary/10 border border-dashed border-primary/20 transition-all text-center cursor-pointer"
+                                    >
+                                      Tải thêm thông báo...
+                                    </button>
+                                  )}
+                                </div>
+                              );
                             })()}
                           </div>
                         </motion.div>
@@ -2605,12 +3103,18 @@ export default function App() {
                   )}
                 >
                   <Bell size={18} />
-                  {notifications.some(n => !n.isRead) && (
-                    <span className={cn(
-                      "absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 animate-pulse",
-                      isDarkMode ? "border-slate-900" : "border-white"
-                    )} />
-                  )}
+                  {(() => {
+                    const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !readAnnouncementIds.includes(a.id)).length;
+                    if (unreadCount === 0) return null;
+                    return (
+                      <span className={cn(
+                        "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 shadow-sm animate-pulse",
+                        isDarkMode ? "border-slate-900" : "border-white"
+                      )}>
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    );
+                  })()}
                 </button>
                 
                 <AnimatePresence>
@@ -2620,161 +3124,122 @@ export default function App() {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
                       className={cn(
-                        "absolute right-0 top-full mt-2 w-80 z-[110] p-4 rounded-2xl border shadow-2xl flex flex-col",
+                        "absolute right-0 top-full mt-2 w-80 z-[110] p-4 rounded-2xl border shadow-2xl flex flex-col max-h-[85vh]",
                         isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                       )}
                     >
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className={cn("font-black text-sm", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
-                          <button 
-                            onClick={markAllAsRead}
-                            className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1.5">
+                          <Bell className="text-primary" size={14} />
+                          <h3 className={cn("font-black text-xs uppercase tracking-wider", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
+                        </div>
+                        <button 
+                          onClick={markAllAsRead}
+                          className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCheck size={12} /> Đọc tất cả
+                        </button>
+                      </div>
+
+                      <div className="relative mb-2.5">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                        <input
+                          type="text"
+                          placeholder="Tìm kiếm thông báo, hoạt chất..."
+                          value={notifSearchQuery}
+                          onChange={(e) => {
+                            setNotifSearchQuery(e.target.value);
+                            setVisibleNotifCount(20);
+                          }}
+                          className={cn(
+                            "w-full pl-8 pr-8 py-1.5 rounded-lg border-none text-[10px] font-bold focus:ring-1 focus:ring-primary outline-none transition-all",
+                            isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-50 text-slate-900 placeholder-slate-400"
+                          )}
+                        />
+                        {notifSearchQuery && (
+                          <button
+                            onClick={() => setNotifSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                           >
-                            <CheckCheck size={12} /> Đọc tất cả
+                            <X size={11} />
                           </button>
-                        </div>
+                        )}
+                      </div>
 
-                        <div className={cn(
-                          "flex items-center gap-1 p-1 rounded-xl mb-4 text-[9px] font-black uppercase tracking-widest transition-colors",
-                          isDarkMode ? "bg-slate-800" : "bg-slate-50"
-                        )}>
-                          {[
-                            { id: 'unread', label: 'Mới nhất' },
-                            { id: 'read', label: 'Đã đọc' },
-                            { id: 'announcements', label: 'Hệ thống' }
-                          ].map(tab => (
-                            <button
-                              key={tab.id}
-                              onClick={() => setNotificationTab(tab.id as any)}
-                              className={cn(
-                                "flex-1 py-1.5 rounded-lg transition-all",
-                                notificationTab === tab.id
-                                  ? (isDarkMode ? "bg-slate-700 text-white shadow-sm" : "bg-white text-primary shadow-sm")
-                                  : "text-slate-500 hover:text-slate-400"
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1.5 mb-2.5 scrollbar-none scroll-smooth">
+                        {[
+                          { id: 'all', label: 'Tất cả', icon: Bell },
+                          { id: 'clinical_alert', label: 'Cảnh báo', icon: AlertOctagon, color: 'text-rose-500' },
+                          { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
+                          { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
+                          { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
+                        ].map(tab => (
+                          <button
+                            key={tab.id}
+                            onClick={() => {
+                              setNotificationTab(tab.id as any);
+                              setVisibleNotifCount(20);
+                            }}
+                            className={cn(
+                              "flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[8.5px] font-black shrink-0 transition-all border cursor-pointer",
+                              notificationTab === tab.id
+                                ? "bg-primary text-white border-primary shadow-sm"
+                                : isDarkMode 
+                                  ? "bg-slate-800 border-slate-750 text-slate-400 hover:text-slate-300" 
+                                  : "bg-slate-50 border-slate-100 text-slate-500 hover:text-slate-700"
+                            )}
+                          >
+                            <tab.icon size={9} className={notificationTab === tab.id ? "text-white" : tab.color} />
+                            <span>{tab.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 space-y-3 max-h-[50vh]">
+                        {(() => {
+                          const allFiltered = getUnifiedNotifications();
+                          const visibleItems = allFiltered.slice(0, visibleNotifCount);
+                          
+                          if (visibleItems.length === 0) {
+                            return (
+                              <div className="py-8 text-center">
+                                <Bell className="mx-auto text-slate-300 mb-1.5" size={24} />
+                                <p className="text-slate-500 text-[10px] font-extrabold">Không có thông báo nào phù hợp</p>
+                              </div>
+                            );
+                          }
+
+                          const grouped = groupNotificationsByDate(visibleItems);
+                          
+                          return (
+                            <div className="space-y-3">
+                              {Object.entries(grouped).map(([groupName, items], gIdx) => (
+                                <div key={`${groupName}-${gIdx}`} className="space-y-1.5">
+                                  <div className="flex items-center gap-1.5 px-0.5">
+                                    <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                      {groupName}
+                                    </span>
+                                    <div className="flex-1 h-[1px] bg-slate-500/10" />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    {items.map((item, idx) => renderNotificationItem(item, true, idx))}
+                                  </div>
+                                </div>
+                              ))}
+
+                              {allFiltered.length > visibleNotifCount && (
+                                <button
+                                  onClick={() => setVisibleNotifCount(prev => prev + 15)}
+                                  className="w-full py-1.5 mt-1.5 rounded-lg text-[8.5px] font-black uppercase tracking-widest text-primary bg-primary/5 hover:bg-primary/10 border border-dashed border-primary/20 transition-all text-center cursor-pointer"
+                                >
+                                  Tải thêm thông báo...
+                                </button>
                               )}
-                            >
-                              {tab.label}
-                            </button>
-                          ))}
-                        </div>
-                        
-                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-2">
-                          {(() => {
-                            if (notificationTab === 'unread') {
-                              const recentAnnouncements = announcements.filter(a => a.showInHeader !== false && (Date.now() - new Date(a.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000);
-                              const unreadNotifs = notifications.filter(n => !n.isRead);
-                              
-                              if (recentAnnouncements.length === 0 && unreadNotifs.length === 0) {
-                                return (
-                                  <div className="py-8 text-center">
-                                    <Bell className="mx-auto text-slate-300 mb-2" size={24} />
-                                    <p className="text-slate-500 text-[10px] font-bold">Không có thông báo mới</p>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <>
-                                  {recentAnnouncements.map(announcement => {
-                                    const isDrugUpdate = announcement.type === 'drug_update';
-                                    const IconComponent = isDrugUpdate ? Pill : Sparkles;
-                                    const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
-                                    const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
-                                    const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
-
-                                    return (
-                                      <div key={`ann-${announcement.id}`} className={cn("p-2.5 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
-                                        <div className="flex gap-2">
-                                          <div className={cn("p-1.5 rounded-lg shrink-0 h-fit", iconBgColor)}>
-                                            <IconComponent size={14} />
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-2 mb-0.5">
-                                              <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
-                                              <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
-                                            </div>
-                                            <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                              <ReactMarkdown>{announcement.content}</ReactMarkdown>
-                                            </div>
-                                            {isDrugUpdate && announcement.drugName && (
-                                              <button
-                                                onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
-                                                className="mt-1.5 text-[8px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded-md w-fit cursor-pointer"
-                                              >
-                                                <Pill size={10} /> Xem chi tiết thuốc
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                  {unreadNotifs.map(notification => renderNotificationItem(notification, true))}
-                                </>
-                              );
-                            }
-
-                            if (notificationTab === 'read') {
-                              const readNotifs = notifications.filter(n => n.isRead);
-                              if (readNotifs.length === 0) {
-                                return (
-                                  <div className="py-8 text-center">
-                                    <CheckCheck className="mx-auto text-slate-300 mb-2" size={24} />
-                                    <p className="text-slate-500 text-[10px] font-bold">Không có thông báo đã đọc</p>
-                                  </div>
-                                );
-                              }
-                              return readNotifs.map(notification => renderNotificationItem(notification, true));
-                            }
-
-                            if (notificationTab === 'announcements') {
-                              const visibleAnnouncements = announcements.filter(a => a.showInHeader !== false);
-                              if (visibleAnnouncements.length === 0) {
-                                return (
-                                  <div className="py-8 text-center">
-                                    <Sparkles className="mx-auto text-slate-300 mb-2" size={24} />
-                                    <p className="text-slate-500 text-[10px] font-bold">Chưa có thông báo hệ thống</p>
-                                  </div>
-                                );
-                              }
-                              return visibleAnnouncements.map(announcement => {
-                                const isDrugUpdate = announcement.type === 'drug_update';
-                                const IconComponent = isDrugUpdate ? Pill : Sparkles;
-                                const iconBgColor = isDrugUpdate ? "bg-emerald-500/10 text-emerald-500" : "bg-indigo-500/10 text-indigo-500";
-                                const borderStyle = isDrugUpdate ? "bg-emerald-500/5 border-emerald-500/20" : "bg-indigo-500/5 border-indigo-500/20";
-                                const titleText = isDrugUpdate ? `Cập bến/Cập nhật: ${announcement.drugName || 'Thuốc'}` : 'Hệ thống';
-
-                                return (
-                                  <div key={`ann-all-${announcement.id}`} className={cn("p-2.5 rounded-xl border transition-all relative group shadow-sm mb-2", borderStyle)}>
-                                    <div className="flex gap-2">
-                                      <div className={cn("p-1.5 rounded-lg shrink-0 h-fit", iconBgColor)}>
-                                        <IconComponent size={14} />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-2 mb-0.5">
-                                          <h4 className={cn("font-bold text-[11px] truncate", isDarkMode ? "text-white" : "text-slate-900")}>{titleText}</h4>
-                                          <span className="text-[8px] text-slate-400 font-medium shrink-0">{new Date(announcement.createdAt).toLocaleDateString('vi-VN')}</span>
-                                        </div>
-                                        <div className={cn("text-[10px] leading-relaxed transition-colors prose prose-sm max-w-none", isDarkMode ? "text-slate-300 prose-invert" : "text-slate-600")}>
-                                          <ReactMarkdown>{announcement.content}</ReactMarkdown>
-                                        </div>
-                                        {isDrugUpdate && announcement.drugName && (
-                                          <button
-                                            onClick={() => handleOpenGlobalDrugModal(announcement.drugName!)}
-                                            className="mt-1.5 text-[8px] font-black text-emerald-500 hover:text-emerald-600 hover:underline flex items-center gap-1 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded-md w-fit cursor-pointer"
-                                          >
-                                            <Pill size={10} /> Xem chi tiết thuốc
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            }
-                          })()}
-                        </div>
-                      </motion.div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </div>
@@ -3460,6 +3925,123 @@ export default function App() {
             isDarkMode={isDarkMode}
             userPowerPoints={userProfile?.powerPoints || 0}
           />
+
+          {/* Live Toast Popups Container */}
+          <div className="fixed bottom-6 right-6 z-[99999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+            <AnimatePresence>
+              {toastPopups.map((toast) => {
+                const isClinicalAlert = toast.category === 'clinical_alert';
+                const isDataUpdate = toast.category === 'data_update';
+                const isMedicalNews = toast.category === 'medical_news_personal';
+                const isSystem = toast.category === 'system';
+                
+                let IconComponent = Info;
+                let iconBgColor = "bg-blue-500/15 text-blue-500 dark:bg-blue-500/20";
+                let borderStyle = isDarkMode 
+                  ? "border-slate-800 bg-slate-900/95 shadow-xl shadow-slate-950/45 text-slate-200 backdrop-blur-md" 
+                  : "border-slate-100 bg-white/95 shadow-xl shadow-slate-200/45 text-slate-700 backdrop-blur-md";
+                let categoryBadge = "Thông báo";
+                
+                if (isClinicalAlert) {
+                  IconComponent = ShieldAlert;
+                  iconBgColor = "bg-rose-500/15 text-rose-500 dark:bg-rose-500/20";
+                  categoryBadge = "🔴 Cảnh báo lâm sàng";
+                  if (isDarkMode) {
+                    borderStyle = "border-rose-500/40 bg-slate-900/95 shadow-xl shadow-rose-950/20 text-slate-200 backdrop-blur-md";
+                  } else {
+                    borderStyle = "border-rose-100 bg-white/95 shadow-xl shadow-rose-100/30 text-slate-700 backdrop-blur-md";
+                  }
+                } else if (isDataUpdate) {
+                  IconComponent = Pill;
+                  iconBgColor = "bg-amber-500/15 text-amber-500 dark:bg-amber-500/20";
+                  categoryBadge = "🟡 Dữ liệu";
+                  if (isDarkMode) {
+                    borderStyle = "border-amber-500/40 bg-slate-900/95 shadow-xl shadow-amber-950/20 text-slate-200 backdrop-blur-md";
+                  } else {
+                    borderStyle = "border-amber-100 bg-white/95 shadow-xl shadow-amber-100/30 text-slate-700 backdrop-blur-md";
+                  }
+                } else if (isMedicalNews) {
+                  IconComponent = FileText;
+                  iconBgColor = "bg-sky-500/15 text-sky-500 dark:bg-sky-500/20";
+                  categoryBadge = "🔵 Tin tức y học";
+                } else if (isSystem) {
+                  IconComponent = Settings;
+                  iconBgColor = "bg-slate-500/15 text-slate-400 dark:bg-slate-500/20";
+                  categoryBadge = "⚙️ Hệ thống";
+                }
+
+                return (
+                  <motion.div
+                    key={toast.id}
+                    layout
+                    initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.9, transition: { duration: 0.15 } }}
+                    className={cn(
+                      "p-4 rounded-2xl border-2 pointer-events-auto flex gap-3.5 relative overflow-hidden group",
+                      borderStyle
+                    )}
+                  >
+                    {isClinicalAlert && <div className="absolute top-0 bottom-0 left-0 w-1 bg-rose-500" />}
+                    {isDataUpdate && <div className="absolute top-0 bottom-0 left-0 w-1 bg-amber-500" />}
+
+                    <div className={cn("p-2.5 rounded-xl shrink-0 h-fit border border-slate-500/5", iconBgColor)}>
+                      <IconComponent size={16} />
+                    </div>
+
+                    <div className="flex-1 min-w-0 pr-6">
+                      <div className="flex flex-col mb-1">
+                        <span className="text-[8px] font-black tracking-widest uppercase text-slate-400 dark:text-slate-500">
+                          {categoryBadge}
+                        </span>
+                        <h4 className="font-extrabold text-xs leading-tight mt-0.5 truncate text-slate-900 dark:text-white">
+                          {toast.title}
+                        </h4>
+                      </div>
+                      
+                      <p className="text-[10px] font-semibold leading-relaxed line-clamp-2 text-slate-500 dark:text-slate-400">
+                        {toast.message}
+                      </p>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleReadStatus(toast.item);
+                            setToastPopups(prev => prev.filter(t => t.id !== toast.id));
+                          }}
+                          className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500 hover:text-white transition-all cursor-pointer border border-indigo-500/10"
+                        >
+                          Đã xem
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsNotificationsOpen(true);
+                            toggleReadStatus(toast.item);
+                            setToastPopups(prev => prev.filter(t => t.id !== toast.id));
+                          }}
+                          className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider rounded-lg bg-slate-500/10 hover:bg-slate-500/20 text-slate-600 dark:text-slate-400 transition-all cursor-pointer"
+                        >
+                          Chi tiết
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setToastPopups(prev => prev.filter(t => t.id !== toast.id));
+                      }}
+                      className="absolute top-3 right-3 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-500/5 transition-all opacity-0 group-hover:opacity-100"
+                    >
+                      <X size={12} />
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
       </main >
       </Suspense >
     </div >
