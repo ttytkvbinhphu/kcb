@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap } from 'lucide-react';
+import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap, Mail } from 'lucide-react';
 import { cn, getBustedPhotoURL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
@@ -289,7 +289,12 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     { name: 'slate', bg: 'bg-slate-500', light: 'bg-slate-50', dark: 'bg-slate-900/20' },
   ];
   
+  const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
+
   const [editName, setEditName] = useState(userProfile.displayName);
+  const [editEmail, setEditEmail] = useState(userProfile.email || '');
+  const [editPhotoURL, setEditPhotoURL] = useState(userProfile.photoURL || '');
+  const [showAvatarInput, setShowAvatarInput] = useState(false);
   const [editTitle, setEditTitle] = useState(userProfile.title || '');
   const [editPosition, setEditPosition] = useState(userProfile.position || '');
   const [editSpecialty, setEditSpecialty] = useState(userProfile.specialty || '');
@@ -333,6 +338,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   useEffect(() => {
     if (userProfile && !isEditingProfile) {
       setEditName(userProfile.displayName || '');
+      setEditEmail(userProfile.email || '');
+      setEditPhotoURL(userProfile.photoURL || '');
       setEditTitle(userProfile.title || '');
       setEditPosition(userProfile.position || '');
       setEditSpecialty(userProfile.specialty || '');
@@ -340,6 +347,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       setEditZalo(userProfile.zalo || '');
       setHideEmail(userProfile.hideEmail || false);
       setHideZalo(userProfile.hideZalo || false);
+      setShowAvatarInput(false);
     }
   }, [userProfile, isEditingProfile]);
 
@@ -531,7 +539,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     setSaveLoading(true);
     try {
       const userRef = doc(db, 'users', userProfile.uid);
-      const updateData = {
+      const updateData: Record<string, any> = {
         displayName: editName,
         title: editTitle,
         position: editPosition,
@@ -542,10 +550,54 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         hideZalo: hideZalo,
         updatedAt: new Date().toISOString()
       };
-      await updateDoc(userRef, updateData);
-      
+
+      if (isQuickAccount) {
+        if (editEmail.trim()) {
+          updateData.email = editEmail.trim();
+        }
+        if (editPhotoURL.trim()) {
+          updateData.photoURL = editPhotoURL.trim();
+        }
+      }
+
+      await setDoc(userRef, updateData, { merge: true });
+
+      // If staff account, also update staff document
+      if (userProfile.uid.startsWith('staff_')) {
+        const staffId = userProfile.uid.replace(/^staff_/, '');
+        try {
+          const staffUpdate: Record<string, any> = {
+            fullName: editName,
+            type: editTitle,
+            position: editPosition,
+            specialty: editSpecialty,
+            department: editDepartment,
+            updatedAt: new Date().toISOString()
+          };
+          if (editEmail.trim()) {
+            staffUpdate.email = editEmail.trim();
+          }
+          if (editPhotoURL.trim()) {
+            staffUpdate.photoURL = editPhotoURL.trim();
+          }
+          await setDoc(doc(db, 'staff', staffId), staffUpdate, { merge: true });
+        } catch (e) {
+          console.warn("Could not sync staff doc:", e);
+        }
+      }
+
       const updatedProfile = { ...userProfile, ...updateData };
       setUserProfile(updatedProfile);
+
+      // Update local storage session if exists
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+          localStorage.setItem('staff_login_session', JSON.stringify(updatedProfile));
+        }
+      } catch (e) {
+        console.warn("Could not update staff_login_session:", e);
+      }
+
       setShowSuccess(true);
       setIsEditingProfile(false);
       setTimeout(() => setShowSuccess(false), 3000);
@@ -931,23 +983,40 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Cập nhật thông tin cá nhân của bạn</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {onSyncProfile && (
+                          {isQuickAccount ? (
                             <button
-                              onClick={async () => {
-                                setSaveLoading(true);
-                                await onSyncProfile();
-                                setSaveLoading(false);
-                              }}
-                              disabled={saveLoading}
+                              type="button"
+                              onClick={() => setShowAvatarInput(!showAvatarInput)}
                               className={cn(
                                 "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
-                                isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                                showAvatarInput 
+                                  ? "bg-primary text-white shadow-md shadow-primary/20" 
+                                  : (isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100")
                               )}
-                              title="Cập nhật tên và ảnh từ tài khoản Google"
+                              title="Thay đổi ảnh đại diện qua URL"
                             >
-                              <Globe size={14} />
-                              Làm mới từ Google
+                              <Pencil size={14} />
+                              Sửa Avatar
                             </button>
+                          ) : (
+                            onSyncProfile && (
+                              <button
+                                onClick={async () => {
+                                  setSaveLoading(true);
+                                  await onSyncProfile();
+                                  setSaveLoading(false);
+                                }}
+                                disabled={saveLoading}
+                                className={cn(
+                                  "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                                  isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                                )}
+                                title="Cập nhật tên và ảnh từ tài khoản Google"
+                              >
+                                <Globe size={14} />
+                                Làm mới từ Google
+                              </button>
+                            )
                           )}
                           <button 
                             onClick={() => setIsEditingProfile(false)}
@@ -957,6 +1026,38 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           </button>
                         </div>
                       </div>
+                      
+                      {isQuickAccount && showAvatarInput && (
+                        <div className="mb-8 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 space-y-2 animate-in fade-in duration-200">
+                          <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                            <ImageIcon size={14} /> Link (URL) Ảnh đại diện mới
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="url"
+                              placeholder="Nhập đường dẫn ảnh (https://...)..."
+                              value={editPhotoURL}
+                              onChange={(e) => setEditPhotoURL(e.target.value)}
+                              className={cn(
+                                "flex-1 px-3.5 py-2.5 rounded-xl border-2 text-xs font-bold outline-none focus:border-primary transition-all shadow-sm",
+                                isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"
+                              )}
+                              autoFocus
+                            />
+                            {editPhotoURL.trim() ? (
+                              <img
+                                src={editPhotoURL.trim()}
+                                alt="Avatar preview"
+                                className="w-10 h-10 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0 shadow-sm"
+                                onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                              />
+                            ) : null}
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-medium">
+                            Dán liên kết hình ảnh trực tiếp (JPEG, PNG, WebP) để cập nhật ảnh đại diện cho tài khoản.
+                          </p>
+                        </div>
+                      )}
                       <div className="space-y-8">
                         {/* Section: Basic Info */}
                         <div className="space-y-4">
@@ -974,12 +1075,30 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editName}
                                   onChange={(e) => setEditName(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 />
                               </div>
                             </div>
+                            {isQuickAccount && (
+                              <div className="space-y-2">
+                                <label className="text-[11px] font-bold text-slate-500 ml-1">Email đăng nhập / liên hệ</label>
+                                <div className="relative group">
+                                  <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
+                                  <input 
+                                    type="email" 
+                                    placeholder="nhanvien@domain.com..."
+                                    value={editEmail}
+                                    onChange={(e) => setEditEmail(e.target.value)}
+                                    className={cn(
+                                      "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
+                                      isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                            )}
                             <div className="space-y-2">
                               <label className="text-[11px] font-bold text-slate-500 ml-1">Số Zalo liên hệ</label>
                               <div className="relative group">
@@ -990,7 +1109,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editZalo}
                                   onChange={(e) => setEditZalo(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 />
@@ -1013,7 +1132,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editTitle}
                                   onChange={(e) => setEditTitle(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 >
@@ -1032,7 +1151,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editDepartment}
                                   onChange={(e) => setEditDepartment(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 >
@@ -1051,7 +1170,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editPosition}
                                   onChange={(e) => setEditPosition(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 >
@@ -1070,7 +1189,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   value={editSpecialty}
                                   onChange={(e) => setEditSpecialty(e.target.value)}
                                   className={cn(
-                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
+                                    "w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 text-sm font-bold focus:ring-0 focus:border-primary transition-all appearance-none cursor-pointer shadow-sm outline-none",
                                     isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-white border-slate-100 text-slate-900"
                                   )}
                                 >
@@ -1085,98 +1204,114 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                         </div>
 
                         {/* Section: Privacy */}
-                        <div className="space-y-4">
-                          <h4 className={cn("text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                            <Lock size={12} /> Cài đặt riêng tư
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label className={cn(
-                              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
-                              !hideEmail 
-                                ? "border-primary bg-primary/5 shadow-sm" 
-                                : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
-                            )}>
-                               <div className="flex items-center gap-3">
-                                 <div className={cn(
-                                   "p-2 rounded-xl transition-all shadow-sm", 
-                                   !hideEmail ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
-                                 )}>
-                                   {!hideEmail ? <Globe size={14} /> : <Lock size={14} />}
-                                 </div>
-                                 <div>
-                                   <p className="text-[11px] font-black uppercase tracking-wider">Email liên hệ</p>
-                                   <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideEmail ? "text-primary/70" : "text-slate-500")}>
-                                     {!hideEmail ? 'Đang công khai' : 'Đang ẩn với mọi người'}
-                                   </p>
-                                 </div>
-                               </div>
-                               <input 
-                                 type="checkbox"
-                                 checked={!hideEmail}
-                                 onChange={(e) => {
-                                   const isPublic = e.target.checked;
-                                   if (isPublic) {
-                                     setPrivacyConfirm({ open: true, type: 'email' });
-                                   } else {
-                                     setHideEmail(true);
-                                   }
-                                 }}
-                                 className="sr-only"
-                               />
-                               <div className={cn(
-                                 "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
-                                 !hideEmail 
-                                   ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
-                                   : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
-                               )}>
-                                 {!hideEmail && <Check size={14} className="text-white" />}
-                               </div>
-                            </label>
+                        {(() => {
+                          const hasEmailInfo = !!(editEmail?.trim() && !editEmail.trim().endsWith('@bv.local'));
+                          const hasZaloInfo = !!(editZalo?.trim());
+                          return (
+                            <div className="space-y-4">
+                              <h4 className={cn("text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                <Lock size={12} /> Cài đặt riêng tư
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label className={cn(
+                                  "flex items-center justify-between p-4 rounded-2xl border-2 transition-all group",
+                                  !hasEmailInfo ? "opacity-50 cursor-not-allowed pointer-events-none select-none" : "cursor-pointer",
+                                  !hideEmail && hasEmailInfo 
+                                    ? "border-primary bg-primary/5 shadow-sm" 
+                                    : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
+                                )}>
+                                   <div className="flex items-center gap-3">
+                                     <div className={cn(
+                                       "p-2 rounded-xl transition-all shadow-sm", 
+                                       !hideEmail && hasEmailInfo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                     )}>
+                                       {!hideEmail && hasEmailInfo ? <Globe size={14} /> : <Lock size={14} />}
+                                     </div>
+                                     <div>
+                                       <p className="text-[11px] font-black uppercase tracking-wider">Email liên hệ</p>
+                                       {hasEmailInfo && (
+                                         <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideEmail ? "text-primary/70" : "text-slate-500")}>
+                                           {!hideEmail ? 'Đang công khai' : 'Đang ẩn với mọi người'}
+                                         </p>
+                                       )}
+                                     </div>
+                                   </div>
+                                   <input 
+                                     type="checkbox"
+                                     disabled={!hasEmailInfo}
+                                     checked={!hideEmail && hasEmailInfo}
+                                     onChange={(e) => {
+                                       if (!hasEmailInfo) return;
+                                       const isPublic = e.target.checked;
+                                       if (isPublic) {
+                                         setPrivacyConfirm({ open: true, type: 'email' });
+                                       } else {
+                                         setHideEmail(true);
+                                       }
+                                     }}
+                                     className="sr-only"
+                                   />
+                                   <div className={cn(
+                                     "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                     !hideEmail && hasEmailInfo 
+                                       ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
+                                       : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
+                                   )}>
+                                     {!hideEmail && hasEmailInfo && <Check size={14} className="text-white" />}
+                                   </div>
+                                </label>
 
-                            <label className={cn(
-                              "flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer group",
-                              !hideZalo 
-                                ? "border-primary bg-primary/5 shadow-sm" 
-                                : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
-                            )}>
-                               <div className="flex items-center gap-3">
-                                 <div className={cn(
-                                   "p-2 rounded-xl transition-all shadow-sm", 
-                                   !hideZalo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
-                                 )}>
-                                   {!hideZalo ? <Globe size={14} /> : <Lock size={14} />}
-                                 </div>
-                                 <div>
-                                   <p className="text-[11px] font-black uppercase tracking-wider">Số Zalo</p>
-                                   <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideZalo ? "text-primary/70" : "text-slate-500")}>
-                                     {!hideZalo ? 'Đang công khai' : 'Đang ẩn với mọi người'}
-                                   </p>
-                                 </div>
-                               </div>
-                               <input 
-                                 type="checkbox"
-                                 checked={!hideZalo}
-                                 onChange={(e) => {
-                                   const isPublic = e.target.checked;
-                                   if (isPublic) {
-                                     setPrivacyConfirm({ open: true, type: 'zalo' });
-                                   } else {
-                                     setHideZalo(true);
-                                   }
-                                 }}
-                                 className="sr-only"
-                               />
-                               <div className={cn(
-                                 "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
-                                 !hideZalo 
-                                   ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
-                                   : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
-                               )}>
-                                 {!hideZalo && <Check size={14} className="text-white" />}
-                               </div>
-                            </label>
-                          </div>
-                        </div>
+                                <label className={cn(
+                                  "flex items-center justify-between p-4 rounded-2xl border-2 transition-all group",
+                                  !hasZaloInfo ? "opacity-50 cursor-not-allowed pointer-events-none select-none" : "cursor-pointer",
+                                  !hideZalo && hasZaloInfo 
+                                    ? "border-primary bg-primary/5 shadow-sm" 
+                                    : (isDarkMode ? "border-slate-800 bg-slate-900/50 hover:border-slate-700" : "border-slate-100 bg-slate-50 hover:bg-slate-100")
+                                )}>
+                                   <div className="flex items-center gap-3">
+                                     <div className={cn(
+                                       "p-2 rounded-xl transition-all shadow-sm", 
+                                       !hideZalo && hasZaloInfo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                     )}>
+                                       {!hideZalo && hasZaloInfo ? <Globe size={14} /> : <Lock size={14} />}
+                                     </div>
+                                     <div>
+                                       <p className="text-[11px] font-black uppercase tracking-wider">Số Zalo</p>
+                                       {hasZaloInfo && (
+                                         <p className={cn("text-[9px] font-bold mt-0.5 transition-colors", !hideZalo ? "text-primary/70" : "text-slate-500")}>
+                                           {!hideZalo ? 'Đang công khai' : 'Đang ẩn với mọi người'}
+                                         </p>
+                                       )}
+                                     </div>
+                                   </div>
+                                   <input 
+                                     type="checkbox"
+                                     disabled={!hasZaloInfo}
+                                     checked={!hideZalo && hasZaloInfo}
+                                     onChange={(e) => {
+                                       if (!hasZaloInfo) return;
+                                       const isPublic = e.target.checked;
+                                       if (isPublic) {
+                                         setPrivacyConfirm({ open: true, type: 'zalo' });
+                                       } else {
+                                         setHideZalo(true);
+                                       }
+                                     }}
+                                     className="sr-only"
+                                   />
+                                   <div className={cn(
+                                     "w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all",
+                                     !hideZalo && hasZaloInfo 
+                                       ? "bg-primary border-primary scale-110 shadow-lg shadow-primary/20" 
+                                       : "border-slate-300 dark:border-slate-700 group-hover:border-primary/50"
+                                   )}>
+                                     {!hideZalo && hasZaloInfo && <Check size={14} className="text-white" />}
+                                   </div>
+                                </label>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div className="mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-3">

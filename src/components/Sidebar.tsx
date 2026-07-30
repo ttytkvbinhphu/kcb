@@ -86,22 +86,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   }, [activeTab]);
 
   useEffect(() => {
-    if (!uid) return;
-
     try {
       const q = query(
         collection(db, 'versions'), 
-        where('isDraft', '==', false),
-        orderBy('releaseDate', 'desc'), 
-        limit(1)
+        orderBy('releaseDate', 'desc')
       );
       
       const unsubscribe = onSnapshot(q, (snap) => {
         if (!snap.empty) {
-          setLatestVersion(snap.docs[0].data() as VersionLog);
+          const versions = snap.docs.map(d => ({ id: d.id, ...d.data() } as VersionLog));
+          const published = versions.find(v => !v.isDraft);
+          setLatestVersion(published || versions[0] || null);
         }
       }, (error) => {
-        // Silently fail if permissions are not set yet to avoid console clutter
         if (error.code !== 'permission-denied') {
           console.error("Version listener error:", error);
         }
@@ -111,7 +108,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (e) {
       console.warn("Firestore query failed:", e);
     }
-  }, [uid]);
+  }, []);
 
   useEffect(() => {
     const allPossibleItems: SidebarItem[] = [
@@ -232,12 +229,25 @@ const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     const handleProfileChange = (e: any) => {
       if (e.detail && e.detail.uid) {
-        setViewedProfileUid(e.detail.uid);
+        if (uid && e.detail.uid === uid) {
+          setViewedProfileUid(null);
+        } else {
+          setViewedProfileUid(e.detail.uid);
+        }
+      } else {
+        setViewedProfileUid(null);
       }
     };
+    const handleResetProfile = () => {
+      setViewedProfileUid(null);
+    };
     window.addEventListener('social-profile-changed', handleProfileChange);
-    return () => window.removeEventListener('social-profile-changed', handleProfileChange);
-  }, []);
+    window.addEventListener('reset-profile-view', handleResetProfile);
+    return () => {
+      window.removeEventListener('social-profile-changed', handleProfileChange);
+      window.removeEventListener('reset-profile-view', handleResetProfile);
+    };
+  }, [uid]);
 
   useEffect(() => {
     if (activeTab !== 'view_profile') {
@@ -245,7 +255,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [activeTab]);
 
-  const isOwnProfileActive = activeTab === 'view_profile' && (!viewedProfileUid || viewedProfileUid === uid);
+  const isOwnProfileActive = activeTab === 'view_profile' && (!viewedProfileUid || (!!uid && viewedProfileUid === uid));
 
   const handleReorder = (newOrder: SidebarItem[]) => {
     setItems(newOrder);
@@ -576,14 +586,15 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button 
             onClick={() => {
               setActiveTab('view_profile');
+              setViewedProfileUid(null);
               window.dispatchEvent(new CustomEvent('reset-profile-view'));
             }}
             className={cn(
-              "w-full p-2 rounded-lg border flex items-center gap-2 transition-all duration-300 group/profile mb-2 overflow-hidden",
+              "w-full p-2.5 rounded-xl border flex items-center gap-2.5 transition-all duration-300 group/profile mb-2 overflow-hidden",
               isCollapsed ? "justify-center" : "",
               isOwnProfileActive
-                ? (isDarkMode ? "bg-primary/20 border-primary/50" : "bg-primary/5 border-primary/20")
-                : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-white border-slate-100 shadow-sm hover:border-slate-200")
+                ? "bg-primary text-white border-primary shadow-lg shadow-primary/25 ring-2 ring-primary/30"
+                : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80 text-slate-300" : "bg-white border-slate-100 shadow-sm hover:border-slate-200 hover:bg-slate-50 text-slate-900")
             )}
             title={isCollapsed ? displayName : undefined}
           >
@@ -591,23 +602,33 @@ const Sidebar: React.FC<SidebarProps> = ({
               <img 
                 src={getBustedPhotoURL(photoURL, photoSyncToken)} 
                 alt={displayName} 
-                className={cn("w-7 h-7 rounded-full border-2 shadow-sm transition-transform group-hover/profile:scale-110 shrink-0", isDarkMode ? "border-slate-800" : "border-white")}
+                className={cn(
+                  "w-8 h-8 rounded-full border-2 shadow-sm transition-transform group-hover/profile:scale-110 shrink-0 object-cover", 
+                  isOwnProfileActive ? "border-white/80" : (isDarkMode ? "border-slate-800" : "border-white")
+                )}
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className={cn("w-7 h-7 rounded-full flex items-center justify-center transition-transform group-hover/profile:scale-110 shrink-0", isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-400 shadow-sm")}>
-                <Users size={14} />
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center transition-transform group-hover/profile:scale-110 shrink-0", 
+                isOwnProfileActive ? "bg-white/20 text-white" : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500 shadow-sm")
+              )}>
+                <Users size={16} />
               </div>
             )}
             <div className={cn(
               "flex-1 min-w-0 text-left whitespace-nowrap transition-all duration-300 ease-in-out overflow-hidden",
               isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
             )}>
-              <p className="text-[8px] font-black text-slate-500 uppercase tracking-wider truncate">
+              <p className={cn(
+                "text-[9px] font-black uppercase tracking-wider truncate",
+                isOwnProfileActive ? "text-white/80" : "text-slate-500"
+              )}>
                 {!isApproved ? 'Đang chờ duyệt' : (title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên'))}
               </p>
-              <p className={cn("text-[14px] font-bold truncate transition-colors", 
-                isOwnProfileActive ? "text-primary" : (isDarkMode ? "text-slate-200" : "text-slate-900")
+              <p className={cn(
+                "text-[14px] font-bold truncate transition-colors", 
+                isOwnProfileActive ? "text-white" : (isDarkMode ? "text-slate-200" : "text-slate-900")
               )}>
                 {displayName}
               </p>

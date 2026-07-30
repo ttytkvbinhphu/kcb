@@ -370,36 +370,66 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
   const workspaceIds = userProfile?.workspacePatientIds || [];
 
   const handleTogglePin = async (patient: Patient) => {
-    if (!userProfile || !auth.currentUser) return;
+    if (!userProfile || !userProfile.uid) return;
     try {
       const pinnedPatientIds = userProfile.pinnedPatientIds || [];
       const newPinnedPatientIds = pinnedPatientIds.includes(patient.MA_LK) 
         ? pinnedPatientIds.filter((id: string) => id !== patient.MA_LK)
         : [...pinnedPatientIds, patient.MA_LK];
       
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      const targetUid = userProfile.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         pinnedPatientIds: newPinnedPatientIds,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.pinnedPatientIds = newPinnedPatientIds;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+      if (userProfile?.uid) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userProfile.uid}`);
+      }
     }
   };
 
   const handleToggleWorkspace = async (patient: Patient) => {
-    if (!userProfile || !auth.currentUser) return;
+    if (!userProfile || !userProfile.uid) return;
     try {
       const workspacePatientIds = userProfile.workspacePatientIds || [];
       const newWorkspacePatientIds = workspacePatientIds.includes(patient.MA_LK) 
         ? workspacePatientIds.filter((id: string) => id !== patient.MA_LK)
         : [...workspacePatientIds, patient.MA_LK];
       
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      const targetUid = userProfile.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         workspacePatientIds: newWorkspacePatientIds,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.workspacePatientIds = newWorkspacePatientIds;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+      if (userProfile?.uid) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userProfile.uid}`);
+      }
     }
   };
 

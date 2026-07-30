@@ -22,12 +22,12 @@ import UpdateNotification from './components/UpdateNotification';
 import DrugDetailModal from './components/DrugDetailModal';
 import WelcomeSlider from './components/WelcomeSlider';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from './lib/utils';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment } from './firebase';
-import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings } from './types';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment, arrayUnion, arrayRemove } from './firebase';
+import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings, Staff } from './types';
 import { seedInitialData } from './lib/seed';
 
 // Session visit log tracker
@@ -204,6 +204,17 @@ export default function App() {
   const [permsLoading, setPermsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [staffAccountLoginInput, setStaffAccountLoginInput] = useState('');
+  const [staffLoginLoading, setStaffLoginLoading] = useState(false);
+  const [staffLoginError, setStaffLoginError] = useState<string | null>(null);
+  const [showLoginAccount, setShowLoginAccount] = useState(false);
+  const [isChangingStaffAccount, setIsChangingStaffAccount] = useState(false);
+  const [staffAccountStep, setStaffAccountStep] = useState<1 | 2>(1);
+  const [newStaffAccountInput, setNewStaffAccountInput] = useState('');
+  const [confirmStaffAccountInput, setConfirmStaffAccountInput] = useState('');
+  const [staffAccountChangeError, setStaffAccountChangeError] = useState<string | null>(null);
+  const [staffAccountChangeSuccess, setStaffAccountChangeSuccess] = useState<string | null>(null);
+  const [isSubmittingStaffAccount, setIsSubmittingStaffAccount] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [showSupportContact, setShowSupportContact] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -396,6 +407,18 @@ export default function App() {
         safeLocalStorage.setItem('read_announcements', JSON.stringify(next));
         return next;
       });
+      if (userProfile?.uid) {
+        try {
+          const annRef = doc(db, 'announcements', item.id);
+          if (item.isRead) {
+            await updateDoc(annRef, { readBy: arrayRemove(userProfile.uid) });
+          } else {
+            await updateDoc(annRef, { readBy: arrayUnion(userProfile.uid) });
+          }
+        } catch (e) {
+          console.error("Error updating announcement readBy:", e);
+        }
+      }
     } else {
       if (item.isRead) {
         await markAsUnread(item.id);
@@ -455,12 +478,13 @@ export default function App() {
 
   // Automated first-access of the day per device and user logger
   useEffect(() => {
-    if (user && userProfile && userProfile.role !== 'unapproved') {
+    const activeUid = userProfile?.uid || user?.uid;
+    if (activeUid && userProfile && userProfile.role !== 'unapproved') {
       const logDailyDeviceAccess = async () => {
         try {
           const todayStr = new Date().toLocaleDateString('sv-SE'); // Local date "YYYY-MM-DD"
           const deviceMac = getMacAddress();
-          const storageKey = `daily_access_logged_${user.uid}_${deviceMac}`;
+          const storageKey = `daily_access_logged_${activeUid}_${deviceMac}`;
           const lastLoggedDate = safeLocalStorage.getItem(storageKey);
 
           if (lastLoggedDate !== todayStr) {
@@ -470,8 +494,8 @@ export default function App() {
 
             await setDoc(doc(db, 'auth_logs', logId), {
               id: logId,
-              userId: user.uid,
-              userEmail: user.email,
+              userId: activeUid,
+              userEmail: userProfile.email || user?.email || '',
               userName: userProfile.displayName || 'Người dùng',
               type: 'login',
               timestamp: new Date().toISOString(),
@@ -767,7 +791,8 @@ export default function App() {
   }, [systemSettings.appName]);
 
   const handleSaveProfile = async () => {
-    if (!user || !userProfile) return;
+    const activeUid = userProfile?.uid || user?.uid;
+    if (!activeUid || !userProfile) return;
     try {
       const updatedData = {
         ...userProfile,
@@ -782,7 +807,7 @@ export default function App() {
         }
       });
 
-      await updateDoc(doc(db, 'users', user.uid), updatedData);
+      await setDoc(doc(db, 'users', activeUid), updatedData, { merge: true });
       setUserProfile(updatedData);
       setIsEditingProfile(false);
     } catch (error) {
@@ -791,17 +816,186 @@ export default function App() {
   };
 
   const handleSaveProfileField = async (changes: Partial<UserProfile>) => {
-    if (!user || !userProfile) return;
+    const activeUid = userProfile?.uid || user?.uid;
+    if (!activeUid || !userProfile) return;
     try {
       const updatedData = {
         ...userProfile,
         ...changes,
         updatedAt: new Date().toISOString()
       };
-      await updateDoc(doc(db, 'users', user.uid), updatedData);
+      await setDoc(doc(db, 'users', activeUid), updatedData, { merge: true });
       setUserProfile(updatedData);
     } catch (error) {
       console.error("Error saving profile field:", error);
+    }
+  };
+
+  const getAccountStrength = (val: string) => {
+    if (!val) return { score: 0, label: '', textColor: 'text-slate-400', barColor: 'bg-slate-300' };
+    let score = 0;
+    if (val.length >= 4) score += 1;
+    if (val.length >= 6) score += 1;
+    if (/[a-zA-Z]/.test(val) && /[0-9]/.test(val)) score += 1;
+    if (/[_.-]/.test(val) || val.length >= 9) score += 1;
+
+    if (score <= 1) {
+      return { score: 1, label: 'Yếu', textColor: 'text-rose-500', barColor: 'bg-rose-500' };
+    }
+    if (score === 2) {
+      return { score: 2, label: 'Trung bình', textColor: 'text-amber-500', barColor: 'bg-amber-500' };
+    }
+    if (score === 3) {
+      return { score: 3, label: 'Mạnh', textColor: 'text-blue-500', barColor: 'bg-blue-500' };
+    }
+    return { score: 4, label: 'Rất mạnh', textColor: 'text-emerald-500', barColor: 'bg-emerald-500' };
+  };
+
+  const handleStartChangeAccount = () => {
+    setIsChangingStaffAccount(true);
+    setStaffAccountStep(1);
+    setNewStaffAccountInput('');
+    setConfirmStaffAccountInput('');
+    setStaffAccountChangeError(null);
+    setStaffAccountChangeSuccess(null);
+  };
+
+  const handleCancelStaffAccountChange = () => {
+    setIsChangingStaffAccount(false);
+    setStaffAccountStep(1);
+    setNewStaffAccountInput('');
+    setConfirmStaffAccountInput('');
+    setStaffAccountChangeError(null);
+    setStaffAccountChangeSuccess(null);
+  };
+
+  const handleProceedToStep2 = async () => {
+    const val = newStaffAccountInput.trim();
+    if (!val) {
+      setStaffAccountChangeError('Vui lòng nhập tài khoản đăng nhập mới!');
+      return;
+    }
+    if (val.length < 3) {
+      setStaffAccountChangeError('Tài khoản đăng nhập phải có ít nhất 3 ký tự!');
+      return;
+    }
+    if (/\s/.test(val)) {
+      setStaffAccountChangeError('Tài khoản đăng nhập không được chứa khoảng trắng!');
+      return;
+    }
+
+    const currentAcc = userProfile?.staffAccount || (userProfile?.email.endsWith('@bv.local') ? userProfile.email.replace(/@bv\.local$/, '') : '');
+    if (val.toLowerCase() === currentAcc.toLowerCase()) {
+      setStaffAccountChangeError('Tài khoản mới phải khác tài khoản hiện tại của bạn!');
+      return;
+    }
+
+    setIsSubmittingStaffAccount(true);
+    setStaffAccountChangeError(null);
+
+    try {
+      const valLower = val.toLowerCase();
+      const activeUid = userProfile?.uid || user?.uid;
+
+      // Check staff collection
+      const staffQuery = query(collection(db, 'staff'), where('staffAccount', '==', valLower));
+      const staffSnap = await getDocs(staffQuery);
+      const existingStaff = staffSnap.docs.find(d => `staff_${d.id}` !== activeUid);
+
+      const staffUsernameQuery = query(collection(db, 'staff'), where('username', '==', valLower));
+      const staffUsernameSnap = await getDocs(staffUsernameQuery);
+      const existingUsername = staffUsernameSnap.docs.find(d => `staff_${d.id}` !== activeUid);
+
+      // Check users collection
+      const userQuery = query(collection(db, 'users'), where('staffAccount', '==', valLower));
+      const userSnap = await getDocs(userQuery);
+      const existingUser = userSnap.docs.find(d => d.id !== activeUid);
+
+      // Check email prefix
+      const emailQuery = query(collection(db, 'users'), where('email', '==', `${valLower}@bv.local`));
+      const emailSnap = await getDocs(emailQuery);
+      const existingEmailUser = emailSnap.docs.find(d => d.id !== activeUid);
+
+      if (existingStaff || existingUsername || existingUser || existingEmailUser) {
+        setStaffAccountChangeError(`Tài khoản "${val}" đã tồn tại trên hệ thống. Vui lòng chọn tên tài khoản khác!`);
+        setIsSubmittingStaffAccount(false);
+        return;
+      }
+
+      setStaffAccountStep(2);
+    } catch (err) {
+      console.warn("Error checking duplicate account:", err);
+      setStaffAccountStep(2);
+    } finally {
+      setIsSubmittingStaffAccount(false);
+    }
+  };
+
+  const handleConfirmAndSaveStaffAccount = async () => {
+    const step1Val = newStaffAccountInput.trim();
+    const step2Val = confirmStaffAccountInput.trim();
+
+    if (step1Val !== step2Val) {
+      setStaffAccountChangeError('Tài khoản xác nhận KHÔNG KHỚP với tài khoản đã nhập trước đó! Vui lòng kiểm tra lại.');
+      return;
+    }
+
+    if (!userProfile) return;
+
+    setIsSubmittingStaffAccount(true);
+    setStaffAccountChangeError(null);
+
+    try {
+      const activeUid = userProfile.uid || user?.uid;
+      if (!activeUid) {
+        setStaffAccountChangeError('Không tìm thấy UID người dùng.');
+        setIsSubmittingStaffAccount(false);
+        return;
+      }
+
+      const isBvEmail = userProfile.email.endsWith('@bv.local');
+      const updatedEmail = isBvEmail ? `${step1Val}@bv.local` : userProfile.email;
+
+      const updatedProfile: UserProfile = {
+        ...userProfile,
+        staffAccount: step1Val,
+        email: updatedEmail,
+        updatedAt: new Date().toISOString()
+      };
+
+      // 1. Update Firestore user doc
+      await setDoc(doc(db, 'users', activeUid), updatedProfile, { merge: true });
+
+      // 2. If staff user, update staff collection doc
+      if (activeUid.startsWith('staff_')) {
+        const staffId = activeUid.replace(/^staff_/, '');
+        try {
+          await updateDoc(doc(db, 'staff', staffId), {
+            staffAccount: step1Val,
+            username: step1Val,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn("Could not update staff document:", e);
+        }
+      }
+
+      // 3. Update React state & localStorage
+      setUserProfile(updatedProfile);
+      if (safeLocalStorage.getItem('staff_login_session')) {
+        safeLocalStorage.setItem('staff_login_session', JSON.stringify(updatedProfile));
+      }
+
+      setStaffAccountChangeSuccess('Đã đổi tài khoản đăng nhập thành công!');
+      setIsChangingStaffAccount(false);
+      setStaffAccountStep(1);
+      setNewStaffAccountInput('');
+      setConfirmStaffAccountInput('');
+    } catch (err: any) {
+      console.error("Error changing staff account:", err);
+      setStaffAccountChangeError('Có lỗi xảy ra khi lưu tài khoản mới. Vui lòng thử lại.');
+    } finally {
+      setIsSubmittingStaffAccount(false);
     }
   };
 
@@ -845,7 +1039,8 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
     });
 
-    if (!user) {
+    const activeUid = userProfile?.uid || user?.uid;
+    if (!activeUid) {
       setRolePermissions([]);
       setTitlePermissions([]);
       setPermsLoading(false);
@@ -861,12 +1056,12 @@ export default function App() {
     setPermsLoading(true);
 
     // Current user profile listener for real-time sync
-    const unsubUserProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+    const unsubUserProfile = onSnapshot(doc(db, 'users', activeUid), (snapshot) => {
       if (snapshot.exists()) {
         setUserProfile(snapshot.data() as UserProfile);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+      handleFirestoreError(error, OperationType.GET, `users/${activeUid}`);
     });
 
 
@@ -901,7 +1096,7 @@ export default function App() {
     // Notifications listener
     const q = query(
       collection(db, 'notifications'),
-      where('userId', '==', user.uid),
+      where('userId', '==', activeUid),
       orderBy('createdAt', 'desc'),
       limit(50)
     );
@@ -1233,6 +1428,27 @@ export default function App() {
         setIsAuthReady(true);
       }, 5000);
 
+      // Check for active staff login session
+      const savedStaffSession = safeLocalStorage.getItem('staff_login_session');
+      let savedStaffProfile: UserProfile | null = null;
+      if (savedStaffSession) {
+        try {
+          const parsed = JSON.parse(savedStaffSession);
+          if (parsed && parsed.uid) {
+            savedStaffProfile = parsed;
+          }
+        } catch (e) {
+          console.warn("Failed parsing staff session:", e);
+        }
+      }
+
+      if (savedStaffProfile && (!currentUser || currentUser.isAnonymous)) {
+        setUserProfile(savedStaffProfile);
+        clearTimeout(authTimeout);
+        setIsAuthReady(true);
+        return;
+      }
+
       if (currentUser) {
         try {
           // Try to reload to get latest info, but don't fail if network is flaky
@@ -1443,9 +1659,126 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const savedStaffSession = safeLocalStorage.getItem('staff_login_session');
+    if (savedStaffSession && !userProfile) {
+      try {
+        const parsed = JSON.parse(savedStaffSession);
+        if (parsed && parsed.uid) {
+          setUserProfile(parsed);
+        }
+      } catch (e) {
+        console.warn("Failed restoring staff session:", e);
+      }
+    }
+  }, []);
+
+  const handleStaffAccountLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const input = staffAccountLoginInput.trim();
+    if (!input) {
+      setStaffLoginError('Vui lòng nhập tài khoản nhanh (hoặc Mã / Email / SĐT)');
+      return;
+    }
+    setStaffLoginLoading(true);
+    setStaffLoginError(null);
+    try {
+      if (!auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+        } catch (anonErr) {
+          console.warn("Anonymous auth optional attempt:", anonErr);
+        }
+      }
+
+      const staffRef = collection(db, 'staff');
+      const snapshot = await getDocs(staffRef);
+      const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff));
+
+      const matchedStaff = staffList.find(s => {
+        const inputLower = input.toLowerCase();
+        const matchAcc = s.staffAccount && s.staffAccount.toLowerCase() === inputLower;
+        const matchUser = s.username && s.username.toLowerCase() === inputLower;
+        const matchId = s.id && s.id.toLowerCase() === inputLower;
+        const matchPhone = s.phone && s.phone.trim() === input;
+        const matchEmail = s.email && s.email.toLowerCase() === inputLower;
+        const matchCert = s.certificateCode && s.certificateCode.toLowerCase() === inputLower;
+        return matchAcc || matchUser || matchId || matchPhone || matchEmail || matchCert;
+      });
+
+      if (matchedStaff) {
+        if (matchedStaff.isActive === false) {
+          setStaffLoginError('Tài khoản nhân sự này hiện đang tạm ngưng hoạt động. Vui lòng liên hệ Quản trị viên.');
+          setStaffLoginLoading(false);
+          return;
+        }
+
+        const role: UserProfile['role'] = (matchedStaff.role as UserProfile['role']) || (
+          matchedStaff.type === 'Bác sĩ' 
+            ? 'operator_doctor' 
+            : matchedStaff.type === 'Dược sĩ' 
+              ? 'operator_pharmacist' 
+              : 'operator'
+        );
+
+        const staffProfile: UserProfile = {
+          uid: `staff_${matchedStaff.id}`,
+          email: matchedStaff.email || `${matchedStaff.staffAccount || matchedStaff.username || matchedStaff.id}@bv.local`,
+          displayName: matchedStaff.fullName,
+          title: matchedStaff.type,
+          position: matchedStaff.position || 'Nhân viên',
+          specialty: matchedStaff.specialty || 'Không',
+          department: matchedStaff.department || '',
+          staffAccount: matchedStaff.staffAccount || matchedStaff.username || matchedStaff.id,
+          role: role,
+          isApproved: true,
+          createdAt: matchedStaff.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        safeLocalStorage.setItem('staff_login_session', JSON.stringify(staffProfile));
+        setUserProfile(staffProfile);
+
+        try {
+          await setDoc(doc(db, 'users', staffProfile.uid), staffProfile, { merge: true });
+        } catch (e) {
+          console.warn("Could not sync staff profile to users doc:", e);
+        }
+
+        try {
+          const logId = Date.now().toString();
+          const ip = await getIpAddress();
+          const mac = getMacAddress();
+          const dev = getDeviceName();
+          await setDoc(doc(db, 'auth_logs', logId), {
+            id: logId,
+            userId: staffProfile.uid,
+            userEmail: staffProfile.email,
+            userName: staffProfile.displayName,
+            type: 'login',
+            timestamp: new Date().toISOString(),
+            ipAddress: ip,
+            macAddress: mac,
+            device: dev
+          });
+        } catch (logErr) {
+          console.warn("Auth log failed:", logErr);
+        }
+      } else {
+        setStaffLoginError('Không có tài khoản nhanh này trong hệ thống.');
+      }
+    } catch (error: any) {
+      console.error("Staff login error:", error);
+      setStaffLoginError('Lỗi đăng nhập: ' + (error?.message || 'Không xác định'));
+    } finally {
+      setStaffLoginLoading(false);
+    }
+  };
+
   const handleLogin = async () => {
     if (loginLoading) return;
     setLoginLoading(true);
+    safeLocalStorage.removeItem('staff_login_session');
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
@@ -1515,6 +1848,8 @@ export default function App() {
 
   const confirmLogout = async () => {
     setIsLogoutConfirmOpen(false);
+    safeLocalStorage.removeItem('staff_login_session');
+    setUserProfile(null);
     if (user) {
       // Log explicit logout
       const logId = Date.now().toString();
@@ -1551,7 +1886,7 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!user && !userProfile) {
     const features = [
       {
         id: 'drugs',
@@ -1754,13 +2089,78 @@ export default function App() {
               ))}
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
+              {/* Staff Account Login Section */}
+              <div className={cn(
+                "p-4 rounded-2xl border space-y-3 transition-all",
+                (isDarkMode || systemSettings.loginCardGlassMode) 
+                  ? "bg-slate-800/60 border-slate-700/80" 
+                  : "bg-slate-50 border-slate-200/80 shadow-inner"
+              )}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-primary">
+                    <Users size={15} />
+                    <span>Tài khoản nhanh</span>
+                  </div>
+                  <span className="text-[9px] font-extrabold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                    Đăng nhập nhanh
+                  </span>
+                </div>
+
+                <form onSubmit={handleStaffAccountLogin} className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Nhập Mã / Tài khoản nhanh..."
+                    value={staffAccountLoginInput}
+                    onChange={(e) => {
+                      setStaffAccountLoginInput(e.target.value);
+                      if (staffLoginError) setStaffLoginError(null);
+                    }}
+                    className={cn(
+                      "w-full px-3.5 py-2.5 rounded-xl border font-bold text-sm outline-none transition-all focus:ring-2 focus:ring-primary",
+                      (isDarkMode || systemSettings.loginCardGlassMode) 
+                        ? "bg-slate-900/90 border-slate-700 text-white placeholder:text-slate-500" 
+                        : "bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                    )}
+                  />
+                  {staffLoginError && (
+                    <p className="text-xs font-bold text-rose-500 flex items-center gap-1 px-1">
+                      <AlertTriangle size={12} className="shrink-0" />
+                      <span>{staffLoginError}</span>
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={staffLoginLoading || !staffAccountLoginInput.trim()}
+                    className={cn(
+                      "w-full py-2.5 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50",
+                      "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
+                    )}
+                  >
+                    {staffLoginLoading ? (
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <UserCheck size={16} />
+                        Vào hệ thống bằng TK Nhân sự
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              <div className="flex items-center gap-3 py-0.5">
+                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/10" : "bg-slate-200")} />
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Hoặc đăng nhập Google</span>
+                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/10" : "bg-slate-200")} />
+              </div>
+
               {regSettings.allowNewRegistration ? (
                 <button
                   onClick={handleLogin}
                   disabled={loginLoading}
                   className={cn(
-                    "w-full py-5 text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all active:scale-[0.98]",
+                    "w-full py-3.5 text-white rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98]",
                     (isDarkMode || systemSettings.loginCardGlassMode)
                       ? "bg-primary hover:bg-primary/90 shadow-none disabled:bg-slate-800"
                       : "bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200 disabled:bg-slate-300"
@@ -2075,7 +2475,8 @@ export default function App() {
     // Feature settings check (banned users)
     const settings = featureSettings[tabId] || {};
     const bannedUsers = settings.bannedUsers || [];
-    if (user && bannedUsers.includes(user.uid)) return false;
+    const activeUid = userProfile?.uid || user?.uid;
+    if (activeUid && bannedUsers.includes(activeUid)) return false;
 
     return true;
   });
@@ -2239,7 +2640,7 @@ export default function App() {
           onMarkAsRead={markAsRead}
           featureStates={featureStates}
           featureSettings={featureSettings}
-          uid={user?.uid || ''}
+          uid={userProfile?.uid || user?.uid || ''}
           onLogout={handleLogout}
           setExternalIcdSearchQuery={setExternalIcdSearchQuery}
           setExternalPatientSearchQuery={setExternalPatientSearchQuery}
@@ -2439,7 +2840,7 @@ export default function App() {
           featureStates={featureStates}
           featureSettings={featureSettings}
           userProfile={userProfile}
-          uid={user?.uid}
+          uid={userProfile?.uid || user?.uid || ''}
           notifications={notifications}
           announcements={announcements}
           onMarkAsRead={markAsRead}
@@ -2494,7 +2895,7 @@ export default function App() {
             appName={systemSettings.appName}
             featureStates={featureStates}
             featureSettings={featureSettings}
-            uid={user?.uid || ''}
+            uid={userProfile?.uid || user?.uid || ''}
             isApproved={userProfile.isApproved}
             drugDirectoryViewMode={drugDirectoryViewMode}
             setDrugDirectoryViewMode={setDrugDirectoryViewMode}
@@ -3405,21 +3806,258 @@ export default function App() {
 
               <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar max-h-[60vh]">
                 {/* Account Info */}
-                <div className={cn(
-                  "p-4 rounded-2xl border flex items-center gap-4 transition-colors",
-                  isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50 border-slate-100"
-                )}>
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg",
-                    isDarkMode ? "bg-slate-700" : "bg-primary"
-                  )}>
-                    <Users size={20} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={cn("text-[10px] font-black uppercase tracking-[0.2em] mb-0.5", isDarkMode ? "text-slate-500" : "text-slate-400")}>Tài khoản đang đăng nhập</p>
-                    <p className={cn("text-sm font-bold truncate", isDarkMode ? "text-white" : "text-slate-900")}>{userProfile.email}</p>
-                  </div>
-                </div>
+                {(() => {
+                  const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
+                  const accountString = isQuickAccount
+                    ? (userProfile.staffAccount || userProfile.uid.replace(/^staff_/, '') || userProfile.email)
+                    : userProfile.email;
+
+                  const strength = getAccountStrength(newStaffAccountInput.trim());
+
+                  return (
+                    <div className={cn(
+                      "p-4 sm:p-5 rounded-2xl border transition-all duration-200 space-y-3",
+                      isDarkMode ? "bg-slate-800/40 border-slate-700/60" : "bg-slate-50/90 border-slate-200/80"
+                    )}>
+                      {/* Card Header */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-colors",
+                            isChangingStaffAccount 
+                              ? (isDarkMode ? "bg-primary/80" : "bg-primary") 
+                              : (isDarkMode ? "bg-slate-700" : "bg-primary")
+                          )}>
+                            {isChangingStaffAccount ? <Key size={20} /> : <Users size={20} />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className={cn("text-[10px] font-black uppercase tracking-[0.18em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                              {isChangingStaffAccount ? (
+                                <span className="text-primary">Đổi tài khoản đăng nhập nhanh</span>
+                              ) : (
+                                <>Tài khoản đang đăng nhập {isQuickAccount && <span className="text-primary font-normal">(Nhanh)</span>}</>
+                              )}
+                            </p>
+                            {!isChangingStaffAccount && (
+                              <p className={cn("text-sm font-bold truncate tracking-wider mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>
+                                {showLoginAccount 
+                                  ? accountString 
+                                  : '•'.repeat(Math.max(8, Math.min(accountString.length, 16)))}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Control Buttons */}
+                        {!isChangingStaffAccount && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setShowLoginAccount(!showLoginAccount)}
+                              className={cn(
+                                "p-2 rounded-xl transition-all flex items-center justify-center",
+                                isDarkMode 
+                                  ? "bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                                  : "bg-white hover:bg-slate-200 text-slate-600 hover:text-slate-900 shadow-sm border border-slate-200"
+                              )}
+                              title={showLoginAccount ? "Ẩn tài khoản" : "Hiện tài khoản"}
+                            >
+                              {showLoginAccount ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+
+                            {isQuickAccount && (
+                              <button
+                                type="button"
+                                onClick={handleStartChangeAccount}
+                                className={cn(
+                                  "p-2 rounded-xl transition-all flex items-center justify-center shadow-sm",
+                                  isDarkMode 
+                                    ? "bg-primary/20 hover:bg-primary/30 text-primary-light border border-primary/40" 
+                                    : "bg-white hover:bg-primary/10 text-primary border border-primary/30"
+                                )}
+                                title="Đổi tài khoản đăng nhập"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline Editing Form inside Card */}
+                      {isChangingStaffAccount && (
+                        <div className="pt-3 border-t border-slate-200/60 dark:border-slate-700/60 space-y-3.5 animate-in fade-in duration-200">
+                          {/* Success / Error Banners */}
+                          {staffAccountChangeSuccess && (
+                            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                              <Check size={16} className="shrink-0" />
+                              <span>{staffAccountChangeSuccess}</span>
+                            </div>
+                          )}
+
+                          {staffAccountChangeError && (
+                            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
+                              <AlertTriangle size={16} className="shrink-0" />
+                              <span>{staffAccountChangeError}</span>
+                            </div>
+                          )}
+
+                          {/* Phase 1: Input New Account */}
+                          {staffAccountStep === 1 && (
+                            <div className="space-y-3">
+                              <div>
+                                <label className={cn("block text-xs font-semibold mb-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                  Nhập tài khoản đăng nhập mới:
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newStaffAccountInput}
+                                  onChange={(e) => {
+                                    setNewStaffAccountInput(e.target.value);
+                                    if (staffAccountChangeError) setStaffAccountChangeError(null);
+                                  }}
+                                  placeholder="Nhập tên tài khoản mới (ví dụ: tk_nam, bs_minh...)"
+                                  className={cn(
+                                    "w-full px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all outline-none focus:ring-2 focus:ring-primary/40",
+                                    isDarkMode 
+                                      ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500" 
+                                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-sm"
+                                  )}
+                                  autoFocus
+                                />
+
+                                {/* Account Strength Rating */}
+                                {newStaffAccountInput.trim().length > 0 && (
+                                  <div className="mt-2.5 space-y-1">
+                                    <div className="flex items-center justify-between text-[11px] font-bold">
+                                      <span className={isDarkMode ? "text-slate-400" : "text-slate-500"}>Đánh giá độ mạnh tài khoản:</span>
+                                      <span className={strength.textColor}>{strength.label}</span>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full">
+                                      {[1, 2, 3, 4].map((level) => (
+                                        <div
+                                          key={level}
+                                          className={cn(
+                                            "h-full rounded-full transition-all duration-300",
+                                            level <= strength.score 
+                                              ? strength.barColor 
+                                              : (isDarkMode ? "bg-slate-700/80" : "bg-slate-200")
+                                          )}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <p className={cn("text-[11px] mt-1.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                  Lưu ý: Viết liền không dấu, tối thiểu 3 ký tự.
+                                </p>
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelStaffAccountChange}
+                                  className={cn(
+                                    "px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors",
+                                    isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-white hover:bg-slate-200 text-slate-700 border border-slate-200"
+                                  )}
+                                >
+                                  Hủy
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSubmittingStaffAccount || !newStaffAccountInput.trim()}
+                                  onClick={handleProceedToStep2}
+                                  className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1.5"
+                                >
+                                  {isSubmittingStaffAccount ? <Loader2 size={14} className="animate-spin" /> : null}
+                                  <span>Tiếp tục</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Phase 2: Confirm Re-entry (Phase 1 input is hidden to verify memory) */}
+                          {staffAccountStep === 2 && (
+                            <div className="space-y-3">
+                              <div className={cn(
+                                "p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5",
+                                isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-800"
+                              )}>
+                                <Lock size={16} className="shrink-0 mt-0.5" />
+                                <div>
+                                  Vui lòng nhập lại chính xác chuỗi tài khoản bạn vừa nhập.
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className={cn("block text-xs font-semibold mb-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                  Xác nhận lại tài khoản mới:
+                                </label>
+                                <input
+                                  type="text"
+                                  value={confirmStaffAccountInput}
+                                  onChange={(e) => {
+                                    setConfirmStaffAccountInput(e.target.value);
+                                    if (staffAccountChangeError) setStaffAccountChangeError(null);
+                                  }}
+                                  placeholder="Nhập lại chính xác tài khoản mới..."
+                                  className={cn(
+                                    "w-full px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all outline-none focus:ring-2 focus:ring-primary/40",
+                                    isDarkMode 
+                                      ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500" 
+                                      : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-sm"
+                                  )}
+                                  autoFocus
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStaffAccountStep(1);
+                                    setConfirmStaffAccountInput('');
+                                    setStaffAccountChangeError(null);
+                                  }}
+                                  className={cn(
+                                    "px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                                    isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800"
+                                  )}
+                                >
+                                  ← Nhập lại
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelStaffAccountChange}
+                                    className={cn(
+                                      "px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors",
+                                      isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-white hover:bg-slate-200 text-slate-700 border border-slate-200"
+                                    )}
+                                  >
+                                    Hủy
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSubmittingStaffAccount || !confirmStaffAccountInput.trim()}
+                                    onClick={handleConfirmAndSaveStaffAccount}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1.5"
+                                  >
+                                    {isSubmittingStaffAccount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                    <span>Xác nhận đổi</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Personal Info Edit Section - REMOVED AS REQUESTED (ALREADY IN PROFILE PAGE) */}
                 <div className="space-y-6">
@@ -3429,85 +4067,101 @@ export default function App() {
                       isDarkMode ? "text-slate-500" : "text-slate-400"
                     )}>Quyền riêng tư</label>
 
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        <div className={cn(
-                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
-                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
-                        )}>
-                          <div className="flex items-center gap-3">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
-                              <ShieldCheck size={14} className="text-primary" />
-                            </div>
-                            <div>
-                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Email</p>
-                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                                {!profileEditData.hideEmail ? "Mọi người có thể thấy email của bạn" : "Email của bạn đang được ẩn"}
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const nextHideEmail = !profileEditData.hideEmail;
-                              if (!nextHideEmail) { // Turning ON public view (hideEmail becomes false)
-                                setPrivacyConfirmType('email');
-                                setIsPrivacyConfirmOpen(true);
-                              } else {
-                                setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
-                                handleSaveProfileField({ hideEmail: nextHideEmail });
-                              }
-                            }}
-                            className={cn(
-                              "w-10 h-5 rounded-full relative transition-colors",
-                              !profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
-                            )}
-                          >
+                    {(() => {
+                      const hasEmailSetting = !!(userProfile?.email?.trim() && !userProfile.email.endsWith('@bv.local'));
+                      const hasZaloSetting = !!(userProfile?.zalo?.trim());
+                      return (
+                        <div className="space-y-4">
+                          <div className="space-y-3">
                             <div className={cn(
-                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
-                              !profileEditData.hideEmail ? "left-6" : "left-1"
-                            )} />
-                          </button>
-                        </div>
+                              "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                              !hasEmailSetting ? "opacity-50 pointer-events-none select-none" : "",
+                              isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                            )}>
+                              <div className="flex items-center gap-3">
+                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                                  <ShieldCheck size={14} className="text-primary" />
+                                </div>
+                                <div>
+                                  <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Email</p>
+                                  {hasEmailSetting && (
+                                    <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                      {!profileEditData.hideEmail ? "Mọi người có thể thấy email của bạn" : "Email của bạn đang được ẩn"}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                disabled={!hasEmailSetting}
+                                onClick={() => {
+                                  if (!hasEmailSetting) return;
+                                  const nextHideEmail = !profileEditData.hideEmail;
+                                  if (!nextHideEmail) { // Turning ON public view (hideEmail becomes false)
+                                    setPrivacyConfirmType('email');
+                                    setIsPrivacyConfirmOpen(true);
+                                  } else {
+                                    setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
+                                    handleSaveProfileField({ hideEmail: nextHideEmail });
+                                  }
+                                }}
+                                className={cn(
+                                  "w-10 h-5 rounded-full relative transition-colors",
+                                  !hasEmailSetting ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : (!profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200"))
+                                )}
+                              >
+                                <div className={cn(
+                                  "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                                  !profileEditData.hideEmail && hasEmailSetting ? "left-6" : "left-1"
+                                )} />
+                              </button>
+                            </div>
 
-                        <div className={cn(
-                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
-                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
-                        )}>
-                          <div className="flex items-center gap-3">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
-                              <MessageSquare size={14} className="text-primary" />
-                            </div>
-                            <div>
-                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
-                              <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                                {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
-                              </p>
+                            <div className={cn(
+                              "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                              !hasZaloSetting ? "opacity-50 pointer-events-none select-none" : "",
+                              isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                            )}>
+                              <div className="flex items-center gap-3">
+                                <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                                  <MessageSquare size={14} className="text-primary" />
+                                </div>
+                                <div>
+                                  <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
+                                  {hasZaloSetting && (
+                                    <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                      {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                disabled={!hasZaloSetting}
+                                onClick={() => {
+                                  if (!hasZaloSetting) return;
+                                  const nextHideZalo = !profileEditData.hideZalo;
+                                  if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
+                                    setPrivacyConfirmType('zalo');
+                                    setIsPrivacyConfirmOpen(true);
+                                  } else {
+                                    setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                                    handleSaveProfileField({ hideZalo: nextHideZalo });
+                                  }
+                                }}
+                                className={cn(
+                                  "w-10 h-5 rounded-full relative transition-colors",
+                                  !hasZaloSetting ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : (!profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200"))
+                                )}
+                              >
+                                <div className={cn(
+                                  "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                                  !profileEditData.hideZalo && hasZaloSetting ? "left-6" : "left-1"
+                                )} />
+                              </button>
                             </div>
                           </div>
-                          <button
-                            onClick={() => {
-                              const nextHideZalo = !profileEditData.hideZalo;
-                              if (!nextHideZalo) { // Turning ON public view (hideZalo becomes false)
-                                setPrivacyConfirmType('zalo');
-                                setIsPrivacyConfirmOpen(true);
-                              } else {
-                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
-                                handleSaveProfileField({ hideZalo: nextHideZalo });
-                              }
-                            }}
-                            className={cn(
-                              "w-10 h-5 rounded-full relative transition-colors",
-                              !profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200")
-                            )}
-                          >
-                            <div className={cn(
-                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
-                              !profileEditData.hideZalo ? "left-6" : "left-1"
-                            )} />
-                          </button>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

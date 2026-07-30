@@ -16,6 +16,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
   const [availablePositions, setAvailablePositions] = useState<{id: string, name: string}[]>([]);
   const [availableSpecialties, setAvailableSpecialties] = useState<{id: string, name: string}[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<{id: string, name: string}[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,6 +24,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Staff>>({
     fullName: '',
+    staffAccount: '',
+    username: '',
     type: 'Bác sĩ',
     gender: 'Nam',
     dob: '',
@@ -33,6 +36,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
     email: '',
     certificateCode: '',
     department: '',
+    role: '',
     isActive: true
   });
   const [saving, setSaving] = useState(false);
@@ -65,12 +69,17 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
       setAvailableDepartments(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
     });
 
+    const unsubRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
+      setAvailableRoles(snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name || doc.id })));
+    });
+
     return () => {
       unsubscribe();
       unsubTitles();
       unsubPositions();
       unsubSpecialties();
       unsubDepartments();
+      unsubRoles();
     };
   }, []);
 
@@ -95,6 +104,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
       setSelectedStaff(null);
       setFormData({
         fullName: '',
+        staffAccount: '',
+        username: '',
         type: 'Bác sĩ',
         gender: 'Nam',
         dob: '',
@@ -105,6 +116,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
         email: '',
         certificateCode: '',
         department: '',
+        role: '',
         isActive: true
       });
     } catch (error) {
@@ -155,6 +167,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
               setIsEditing(false);
               setFormData({
                 fullName: '',
+                staffAccount: '',
+                username: '',
                 type: 'Bác sĩ',
                 gender: 'Nam',
                 dob: '',
@@ -165,6 +179,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                 email: '',
                 certificateCode: '',
                 department: '',
+                role: '',
                 isActive: true
               });
               setIsModalOpen(true);
@@ -280,6 +295,20 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   )}>
                     {person.type}
                   </span>
+                  {(person.staffAccount || person.username) && (
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[8px] font-black tracking-widest text-emerald-600 bg-emerald-500/10 border border-emerald-500/20"
+                    )}>
+                      TK: {person.staffAccount || person.username}
+                    </span>
+                  )}
+                  {person.role && (
+                    <span className={cn(
+                      "px-1.5 py-0.5 rounded-md text-[8px] font-black tracking-widest text-indigo-600 bg-indigo-500/10 border border-indigo-500/20"
+                    )}>
+                      {availableRoles.find(r => r.id === person.role)?.name || person.role}
+                    </span>
+                  )}
                   <span className={cn(
                     "px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest",
                     isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-100 text-slate-600"
@@ -385,16 +414,30 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Họ và tên</label>
                     <input 
                       type="text" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.fullName}
+                      placeholder="Nhập họ và tên nhân sự..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.fullName || ''}
                       onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                      <span>Tài khoản nhanh</span>
+                      <span className="text-[9px] text-emerald-500 font-bold lowercase italic">(Đăng nhập nhanh không cần mật khẩu)</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Nhập mã / tên tài khoản (ví dụ: bs.nam, STF102)..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.staffAccount || formData.username || ''}
+                      onChange={(e) => setFormData({...formData, staffAccount: e.target.value, username: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại nhân sự (Chức danh)</label>
                     <select 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.type}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.type || 'Bác sĩ'}
                       onChange={(e) => setFormData({...formData, type: e.target.value as any})}
                     >
                       {availableTitles.length > 0 ? (
@@ -411,8 +454,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giới tính</label>
                     <select 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.gender}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.gender || 'Nam'}
                       onChange={(e) => setFormData({...formData, gender: e.target.value as any})}
                     >
                       <option value="Nam">Nam</option>
@@ -423,8 +466,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày tháng năm sinh</label>
                     <input 
                       type="date" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.dob}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.dob || ''}
                       onChange={(e) => setFormData({...formData, dob: e.target.value})}
                     />
                   </div>
@@ -432,16 +475,17 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã chứng chỉ hành nghề</label>
                     <input 
                       type="text" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.certificateCode}
+                      placeholder="Mã CCHN..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.certificateCode || ''}
                       onChange={(e) => setFormData({...formData, certificateCode: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chuyên khoa</label>
                     <select 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.specialty}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.specialty || ''}
                       onChange={(e) => setFormData({...formData, specialty: e.target.value})}
                     >
                       <option value="">Chọn chuyên khoa...</option>
@@ -451,8 +495,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chức vụ</label>
                     <select 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.position}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.position || ''}
                       onChange={(e) => setFormData({...formData, position: e.target.value})}
                     >
                       <option value="">Chọn chức vụ...</option>
@@ -462,20 +506,50 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Khoa / Phòng</label>
                     <select 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.department}
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.department || ''}
                       onChange={(e) => setFormData({...formData, department: e.target.value})}
                     >
                       <option value="">Chọn khoa/phòng...</option>
                       {availableDepartments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
                     </select>
                   </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                      <span>Vai trò hệ thống</span>
+                      <span className="text-[9px] text-indigo-500 font-bold lowercase italic">(Phân quyền truy cập các chức năng)</span>
+                    </label>
+                    <select 
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.role || ''}
+                      onChange={(e) => setFormData({...formData, role: e.target.value})}
+                    >
+                      <option value="">-- Mặc định theo Chức danh --</option>
+                      {availableRoles.length > 0 ? (
+                        availableRoles.map(r => (
+                          <option key={r.id} value={r.id}>
+                            {r.name} ({r.id})
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="operator_doctor">Quản trị Bác sĩ (operator_doctor)</option>
+                          <option value="operator_pharmacist">Quản trị Dược sĩ (operator_pharmacist)</option>
+                          <option value="operator">Điều hành viên (operator)</option>
+                          <option value="admin">Quản trị hệ thống (admin)</option>
+                          <option value="member">Thành viên (member)</option>
+                          <option value="unapproved">Chưa duyệt (unapproved)</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số điện thoại</label>
                     <input 
                       type="text" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.phone}
+                      placeholder="Số điện thoại..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.phone || ''}
                       onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     />
                   </div>
@@ -483,8 +557,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Địa chỉ</label>
                     <input 
                       type="text" 
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.address}
+                      placeholder="Địa chỉ..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.address || ''}
                       onChange={(e) => setFormData({...formData, address: e.target.value})}
                     />
                   </div>
@@ -492,8 +567,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Email</label>
                     <input 
                       type="email" 
-                      className={cn("w-full px-4 py-3 rounded-xl border-none font-bold", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.email}
+                      placeholder="Email liên hệ..."
+                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
+                      value={formData.email || ''}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                     />
                   </div>

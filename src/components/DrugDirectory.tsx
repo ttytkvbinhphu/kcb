@@ -1283,6 +1283,9 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
     driving: "",
     drivingStatus: "Có thể dùng",
     drivingNotes: "",
+    fertility: "",
+    fertilityStatus: "Cân nhắc lợi hại",
+    fertilityNotes: "",
     interactions: "",
     incompatibilities: "",
     specificInteractions: [],
@@ -2350,22 +2353,39 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
           "Có thể dùng",
           "Cân nhắc lợi hại",
           "Không nên dùng",
+          "Không có dữ liệu",
         ]).status,
         lactationNotes: parseStatusAndNotes(clonedDrug.lactation || "", [
           "Có thể dùng",
           "Cân nhắc lợi hại",
           "Không nên dùng",
+          "Không có dữ liệu",
         ]).notes,
         driving: clonedDrug.driving || "",
         drivingStatus: parseStatusAndNotes(clonedDrug.driving || "", [
           "Có thể dùng",
           "Cân nhắc lợi hại",
           "Không nên dùng",
+          "Không có dữ liệu",
         ]).status,
         drivingNotes: parseStatusAndNotes(clonedDrug.driving || "", [
           "Có thể dùng",
           "Cân nhắc lợi hại",
           "Không nên dùng",
+          "Không có dữ liệu",
+        ]).notes,
+        fertility: clonedDrug.fertility || "",
+        fertilityStatus: parseStatusAndNotes(clonedDrug.fertility || "", [
+          "Có thể dùng",
+          "Cân nhắc lợi hại",
+          "Không nên dùng",
+          "Không có dữ liệu",
+        ]).status,
+        fertilityNotes: parseStatusAndNotes(clonedDrug.fertility || "", [
+          "Có thể dùng",
+          "Cân nhắc lợi hại",
+          "Không nên dùng",
+          "Không có dữ liệu",
         ]).notes,
         interactions: clonedDrug.interactions || "",
         incompatibilities: clonedDrug.incompatibilities || "",
@@ -2453,6 +2473,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         pregnancy: "",
         lactation: "",
         driving: "",
+        fertility: "",
         interactions: "",
         pharmacodynamics: [],
         pharmacokinetics: [],
@@ -2746,6 +2767,10 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
         driving: (
           formData.drivingStatus +
           (formData.drivingNotes ? ` - ${formData.drivingNotes}` : "")
+        ).trim(),
+        fertility: (
+          (formData.fertilityStatus || "Cân nhắc lợi hại") +
+          (formData.fertilityNotes ? ` - ${formData.fertilityNotes}` : "")
         ).trim(),
         incompatibilities: (formData.incompatibilities || "").trim(),
         sideEffectsNote: (formData.sideEffectsNote || "").trim(),
@@ -3261,6 +3286,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
             ? [{ content: restExtracted.precautions }]
             : formData.precautions,
         driving: ensureString(restExtracted.driving, formData.driving),
+        fertility: ensureString(restExtracted.fertility, formData.fertility),
         pregnancy: ensureString(restExtracted.pregnancy, formData.pregnancy),
         lactation: ensureString(restExtracted.lactation, formData.lactation),
         pharmacodynamics: ensureFormattedList(
@@ -15438,24 +15464,6 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 <AlertTriangle size={18} />
                                 Cảnh báo
                               </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const current = Array.isArray(formData.warnings) ? formData.warnings : [];
-                                  setFormData({
-                                    ...formData,
-                                    warnings: [...current, { title: "", content: "" }],
-                                  });
-                                }}
-                                className={cn(
-                                  "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer",
-                                  isDarkMode
-                                    ? "bg-rose-900/30 border-rose-800 text-rose-300 hover:bg-rose-900/50"
-                                    : "bg-white border-rose-200 text-rose-700 hover:bg-rose-50",
-                                )}
-                              >
-                                <Plus size={14} /> Thêm cảnh báo
-                              </button>
                             </div>
 
                             <div className="space-y-3 sm:space-y-4">
@@ -15826,9 +15834,30 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 </div>
                               ))}
                             </div>
+
+                            <div className="mt-4 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const current = Array.isArray(formData.warnings) ? formData.warnings : [];
+                                  setFormData({
+                                    ...formData,
+                                    warnings: [...current, { title: "", content: "" }],
+                                  });
+                                }}
+                                className={cn(
+                                  "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer",
+                                  isDarkMode
+                                    ? "bg-rose-900/30 border-rose-800 text-rose-300 hover:bg-rose-900/50"
+                                    : "bg-white border-rose-200 text-rose-700 hover:bg-rose-50",
+                                )}
+                              >
+                                <Plus size={14} /> Thêm cảnh báo
+                              </button>
+                            </div>
                           </div>
 
-                          {/* ===== CÁC CẢNH BÁO THẬN TRỌNG ĐẶC BIỆT ===== */}
+                          {/* ===== THẬN TRỌNG ===== */}
                           <div
                             className={cn(
                               "p-4 sm:p-6 rounded-3xl border transition-colors",
@@ -15847,33 +15876,8 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 )}
                               >
                                 <ShieldAlert size={18} />
-                                Các cảnh báo thận trọng đặc biệt
+                                Thận trọng
                               </label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const current = Array.isArray(
-                                    formData.precautions,
-                                  )
-                                    ? formData.precautions
-                                    : [];
-                                  setFormData({
-                                    ...formData,
-                                    precautions: [
-                                      ...current,
-                                      { title: "", content: "" },
-                                    ],
-                                  });
-                                }}
-                                className={cn(
-                                  "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer",
-                                  isDarkMode
-                                    ? "bg-amber-900/30 border-amber-800 text-amber-300 hover:bg-amber-900/50"
-                                    : "bg-white border-amber-200 text-amber-700 hover:bg-amber-50",
-                                )}
-                              >
-                                <Plus size={14} /> Thêm thận trọng
-                              </button>
                             </div>
 
                             <div className="space-y-3 sm:space-y-4">
@@ -16829,6 +16833,34 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 </div>
                               ))}
                             </div>
+
+                            <div className="mt-4 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const current = Array.isArray(
+                                    formData.precautions,
+                                  )
+                                    ? formData.precautions
+                                    : [];
+                                  setFormData({
+                                    ...formData,
+                                    precautions: [
+                                      ...current,
+                                      { title: "", content: "" },
+                                    ],
+                                  });
+                                }}
+                                className={cn(
+                                  "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all duration-200 hover:scale-105 active:scale-95 flex items-center gap-1.5 shadow-sm cursor-pointer",
+                                  isDarkMode
+                                    ? "bg-amber-900/30 border-amber-800 text-amber-300 hover:bg-amber-900/50"
+                                    : "bg-white border-amber-200 text-amber-700 hover:bg-amber-50",
+                                )}
+                              >
+                                <Plus size={14} /> Thêm thận trọng
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -16836,6 +16868,109 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                       {activeSubTab === "special_subjects" && (
                         <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
                           <div className="space-y-6">
+                            {/* Khả năng sinh sản */}
+                            <div
+                              className={cn(
+                                "p-4 sm:p-5 rounded-2xl border transition-colors space-y-3",
+                                isDarkMode
+                                  ? "bg-purple-950/10 border-purple-900/20"
+                                  : "bg-purple-50/20 border-purple-100",
+                              )}
+                            >
+                              <label
+                                className={cn(
+                                  "block text-[10px] sm:text-xs font-black uppercase tracking-widest flex items-center gap-2",
+                                  isDarkMode
+                                    ? "text-purple-400"
+                                    : "text-purple-700",
+                                )}
+                              >
+                                <Sparkles size={14} />
+                                Khả năng sinh sản
+                              </label>
+                              <div
+                                className={
+                                  canSeeQuickSelectTags
+                                    ? "grid grid-cols-1 sm:grid-cols-3 gap-3"
+                                    : "grid grid-cols-1 gap-3"
+                                }
+                              >
+                                {canSeeQuickSelectTags && (
+                                  <div className="sm:col-span-1 space-y-1">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                      Nhãn chọn nhanh
+                                    </label>
+                                    <select
+                                      value={
+                                        formData.fertilityStatus ||
+                                        "Cân nhắc lợi hại"
+                                      }
+                                      onChange={(e) =>
+                                        setFormData({
+                                          ...formData,
+                                          fertilityStatus: e.target.value,
+                                        })
+                                      }
+                                      className={cn(
+                                        "w-full px-3 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all text-xs sm:text-sm font-bold",
+                                        isDarkMode
+                                          ? "bg-slate-900 border-slate-700 text-slate-300"
+                                          : "bg-white border-slate-200",
+                                      )}
+                                    >
+                                      {[
+                                        "Có thể dùng",
+                                        "Cân nhắc lợi hại",
+                                        "Không nên dùng",
+                                        "Không có dữ liệu",
+                                      ].map((opt) => (
+                                        <option
+                                          key={opt}
+                                          value={opt}
+                                          className={
+                                            isDarkMode
+                                              ? "bg-slate-900"
+                                              : "bg-white"
+                                          }
+                                        >
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+                                <div
+                                  className={
+                                    canSeeQuickSelectTags
+                                      ? "sm:col-span-2 space-y-1"
+                                      : "space-y-1"
+                                  }
+                                >
+                                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Nội dung chi tiết
+                                  </label>
+                                  <AutoExpandingTextarea
+                                    rows={2}
+                                    value={formData.fertilityNotes || ""}
+                                    onChange={(e) =>
+                                      setFormData({
+                                        ...formData,
+                                        fertilityNotes: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Nhập ghi chú chi tiết cho khả năng sinh sản..."
+                                    className={cn(
+                                      "w-full px-3 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all resize-none text-xs sm:text-sm font-medium",
+                                      isDarkMode
+                                        ? "bg-slate-900 border-slate-700 text-slate-300"
+                                        : "bg-white border-slate-200",
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Phụ nữ có thai */}
                             <div
                               className={cn(
                                 "p-4 sm:p-5 rounded-2xl border transition-colors space-y-3",
@@ -16900,6 +17035,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                           "Có thể dùng",
                                           "Cân nhắc lợi hại",
                                           "Không nên dùng",
+                                          "Không có dữ liệu",
                                         ].map((opt) => (
                                           <option
                                             key={opt}
@@ -17030,6 +17166,7 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                   "Có thể dùng",
                                   "Cân nhắc lợi hại",
                                   "Không nên dùng",
+                                  "Không có dữ liệu",
                                 ],
                               },
                               {
@@ -17038,7 +17175,12 @@ const DrugDirectory: React.FC<DrugDirectoryProps> = ({
                                 notesKey: "drivingNotes",
                                 icon: <Car size={14} />,
                                 color: "slate",
-                                options: ["Có thể dùng", "Cân nhắc lợi hại", "Không nên dùng"],
+                                options: [
+                                  "Có thể dùng",
+                                  "Cân nhắc lợi hại",
+                                  "Không nên dùng",
+                                  "Không có dữ liệu",
+                                ],
                               },
                             ].map((field) => (
                               <div

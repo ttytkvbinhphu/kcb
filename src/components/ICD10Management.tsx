@@ -432,37 +432,67 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   };
 
   const handleTogglePin = async (icd: ICD10) => {
-    if (canManage || !userProfile || !auth.currentUser) return;
+    if (canManage || !userProfile || !userProfile.uid) return;
     try {
       const pinnedIcdCodes = userProfile.pinnedIcdCodes || [];
       const newPinnedIcdCodes = pinnedIcdCodes.includes(icd.code) 
         ? pinnedIcdCodes.filter(c => c !== icd.code)
         : [...pinnedIcdCodes, icd.code];
       
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      const targetUid = userProfile.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         pinnedIcdCodes: newPinnedIcdCodes,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.pinnedIcdCodes = newPinnedIcdCodes;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+      if (userProfile?.uid) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userProfile.uid}`);
+      }
     }
   };
 
 
   const handleToggleWorkspace = async (icd: ICD10) => {
-    if (canManage || !userProfile || !auth.currentUser) return;
+    if (canManage || !userProfile || !userProfile.uid) return;
     try {
       const workspaceIcdCodes = userProfile.workspaceIcdCodes || [];
       const newWorkspaceIcdCodes = workspaceIcdCodes.includes(icd.code) 
         ? workspaceIcdCodes.filter(c => c !== icd.code)
         : [...workspaceIcdCodes, icd.code];
       
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      const targetUid = userProfile.uid;
+      await setDoc(doc(db, 'users', targetUid), {
         workspaceIcdCodes: newWorkspaceIcdCodes,
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.workspaceIcdCodes = newWorkspaceIcdCodes;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
+      if (userProfile?.uid) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userProfile.uid}`);
+      }
     }
   };
 

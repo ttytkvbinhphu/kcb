@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc } from '../firebase';
+import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc, setDoc } from '../firebase';
 import { UserProfile, Notification, ICD10, Drug, Patient } from '../types';
+import { subscribeICD10 } from '../lib/icdStore';
 import DrugDetailModal from './DrugDetailModal';
 
 import {
@@ -327,29 +328,54 @@ const Dashboard: React.FC<DashboardProps> = ({
     return () => clearInterval(interval);
   }, [newDrugs, isApproved]);
 
+  const [allIcdList, setAllIcdList] = useState<ICD10[]>([]);
+
   useEffect(() => {
-    if (!isApproved || !uid || !userProfile?.workspaceIcdCodes || userProfile.workspaceIcdCodes.length === 0) {
+    const unsub = subscribeICD10((list) => {
+      setAllIcdList(list);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const effectiveUid = userProfile?.uid || uid || '';
+    if (!isApproved || !effectiveUid || !userProfile?.workspaceIcdCodes || userProfile.workspaceIcdCodes.length === 0) {
       setWorkspaceIcds([]);
       return;
     }
 
-    // Fetch the actual ICD-10 details for the codes in userProfile.workspaceIcdCodes
+    const targetCodes = userProfile.workspaceIcdCodes;
+
+    // Check in-memory/cache first if available
+    if (allIcdList && allIcdList.length > 0) {
+      const matched = targetCodes
+        .map(code => allIcdList.find(item => item.code === code || item.id === code))
+        .filter((item): item is ICD10 => item !== undefined);
+      if (matched.length > 0) {
+        setWorkspaceIcds(matched);
+      }
+    }
+
+    // Fetch live details from Firestore
     const q = query(
       collection(db, 'icd10'),
-      where('code', 'in', userProfile.workspaceIcdCodes.slice(0, 10)) // Firestore 'in' limit is 10
+      where('code', 'in', targetCodes.slice(0, 10))
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => doc.data() as ICD10);
-      setWorkspaceIcds(list);
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(doc => doc.data() as ICD10);
+        setWorkspaceIcds(list);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'icd10_workspace');
     });
     return () => unsubscribe();
-  }, [isApproved, uid, userProfile?.workspaceIcdCodes]);
+  }, [isApproved, uid, userProfile?.uid, userProfile?.workspaceIcdCodes, allIcdList]);
 
   useEffect(() => {
-    if (!isApproved || !uid || !userProfile?.workspacePatientIds || userProfile.workspacePatientIds.length === 0) {
+    const effectiveUid = userProfile?.uid || uid || '';
+    if (!isApproved || !effectiveUid || !userProfile?.workspacePatientIds || userProfile.workspacePatientIds.length === 0) {
       setWorkspacePatients([]);
       return;
     }
@@ -367,7 +393,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       handleFirestoreError(error, OperationType.LIST, 'patients_workspace');
     });
     return () => unsubscribe();
-  }, [isApproved, uid, userProfile?.workspacePatientIds]);
+  }, [isApproved, uid, userProfile?.uid, userProfile?.workspacePatientIds]);
 
   useEffect(() => {
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
@@ -457,18 +483,84 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleToggleActionVisibility = async (actionId: string) => {
-    if (!uid) return;
+    const targetUid = userProfile?.uid || uid;
+    if (!targetUid) return;
     try {
       const currentHidden = userProfile?.hiddenQuickActions || [];
       const newHidden = currentHidden.includes(actionId)
         ? currentHidden.filter(id => id !== actionId)
         : [...currentHidden, actionId];
 
-      await updateDoc(doc(db, 'users', uid), {
-        hiddenQuickActions: newHidden
-      });
+      await setDoc(doc(db, 'users', targetUid), {
+        hiddenQuickActions: newHidden,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.hiddenQuickActions = newHidden;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
     } catch (error) {
       console.error("Error updating action visibility:", error);
+    }
+  };
+
+  const handleRemoveWorkspaceIcd = async (codeToRemove: string) => {
+    const targetUid = userProfile?.uid || uid;
+    if (!targetUid || !userProfile) return;
+    const newWorkspaceIcdCodes = (userProfile.workspaceIcdCodes || []).filter(c => c !== codeToRemove);
+    try {
+      await setDoc(doc(db, 'users', targetUid), {
+        workspaceIcdCodes: newWorkspaceIcdCodes,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.workspaceIcdCodes = newWorkspaceIcdCodes;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
+    } catch (e) {
+      console.error("Error removing workspace ICD:", e);
+    }
+  };
+
+  const handleRemoveWorkspacePatient = async (patientMaLk: string) => {
+    const targetUid = userProfile?.uid || uid;
+    if (!targetUid || !userProfile) return;
+    const newWorkspacePatientIds = (userProfile.workspacePatientIds || []).filter(id => id !== patientMaLk);
+    try {
+      await setDoc(doc(db, 'users', targetUid), {
+        workspacePatientIds: newWorkspacePatientIds,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('staff_login_session')) {
+        try {
+          const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
+          if (currentStaff.uid === targetUid) {
+            currentStaff.workspacePatientIds = newWorkspacePatientIds;
+            localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
+          }
+        } catch (e) {
+          console.warn("Could not update staff_login_session", e);
+        }
+      }
+    } catch (e) {
+      console.error("Error removing workspace Patient:", e);
     }
   };
 
@@ -1528,10 +1620,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <Search size={14} />
                             </button>
                             <button
-                              onClick={() => {
-                                const newWorkspaceBy = (icd.workspaceBy || []).filter(id => id !== uid);
-                                updateDoc(doc(db, 'icd10', icd.code), { workspaceBy: newWorkspaceBy });
-                              }}
+                              onClick={() => handleRemoveWorkspaceIcd(icd.code)}
                               className={cn(
                                 "p-2 rounded-lg transition-all border",
                                 isDarkMode ? "bg-slate-800 border-slate-700 text-rose-500 hover:bg-rose-500 hover:text-white" : "bg-slate-50 border-slate-100 text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm"
@@ -1594,10 +1683,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <Search size={16} />
                         </button>
                         <button
-                          onClick={() => {
-                            const newWorkspaceBy = (icd.workspaceBy || []).filter(id => id !== uid);
-                            updateDoc(doc(db, 'icd10', icd.code), { workspaceBy: newWorkspaceBy });
-                          }}
+                          onClick={() => handleRemoveWorkspaceIcd(icd.code)}
                           className={cn(
                             "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all text-rose-500",
                             isDarkMode
@@ -1722,11 +1808,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               <Search size={14} />
                             </button>
                             <button
-                              onClick={async () => {
-                                if (!userProfile || !uid) return;
-                                const newWorkspacePatientIds = (userProfile.workspacePatientIds || []).filter(id => id !== patient.MA_LK);
-                                await updateDoc(doc(db, 'users', uid), { workspacePatientIds: newWorkspacePatientIds });
-                              }}
+                              onClick={() => handleRemoveWorkspacePatient(patient.MA_LK)}
                               className={cn(
                                 "p-2 rounded-lg transition-all border",
                                 isDarkMode ? "bg-slate-800 border-slate-700 text-rose-500 hover:bg-rose-50 hover:text-white" : "bg-slate-50 border-slate-100 text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm"
@@ -1787,11 +1869,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                           <Search size={16} />
                         </button>
                         <button
-                          onClick={async () => {
-                            if (!userProfile || !uid) return;
-                            const newWorkspacePatientIds = (userProfile.workspacePatientIds || []).filter(id => id !== patient.MA_LK);
-                            await updateDoc(doc(db, 'users', uid), { workspacePatientIds: newWorkspacePatientIds });
-                          }}
+                          onClick={() => handleRemoveWorkspacePatient(patient.MA_LK)}
                           className={cn(
                             "w-10 h-10 flex items-center justify-center rounded-2xl border transition-all text-rose-500",
                             isDarkMode

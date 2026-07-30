@@ -188,6 +188,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [editDrugName, setEditDrugName] = useState('');
   const [editDrugSearchQuery, setEditDrugSearchQuery] = useState('');
   const [isSavingAnnouncementEdit, setIsSavingAnnouncementEdit] = useState(false);
+
+  // Announcement recipient details modal state
+  const [selectedAnnForRecipients, setSelectedAnnForRecipients] = useState<any | null>(null);
+  const [recipientFilter, setRecipientFilter] = useState<'all' | 'read' | 'unread'>('all');
+  const [recipientSearch, setRecipientSearch] = useState('');
   const [authLogs, setAuthLogs] = useState<AuthLog[]>([]);
   const [guestLogs, setGuestLogs] = useState<GuestLog[]>([]);
   const [pendingUsers, setPendingUsers] = useState<UserProfile[]>([]);
@@ -780,7 +785,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [featureCategoryFilter, setFeatureCategoryFilter] = useState<'all' | 'features_main' | 'utilities'>('all');
 
   useEffect(() => {
-    if (activeCategory === 'hr' || activeCategory === 'features' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities'))) {
+    if (activeCategory === 'hr' || activeCategory === 'features' || activeCategory === 'notifications' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities' || homeSubTab === 'notifications'))) {
       const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
         setAllUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
       });
@@ -2265,8 +2270,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     <>
     <div className="space-y-6">
       <div className={cn(
-        "hidden lg:block relative overflow-hidden rounded-[2.5rem] p-8 lg:p-12 mb-10 transition-all",
-        isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/50"
+        "hidden lg:block relative overflow-hidden rounded-none h-[100px] px-6 lg:px-8 mb-6 transition-all flex items-center shrink-0",
+        isDarkMode ? "bg-slate-900 border-b border-slate-800" : "bg-white border-b border-slate-200/80 shadow-xs"
       )}>
         {/* Abstract Background Elements */}
         <div className={cn(
@@ -2278,98 +2283,97 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           details.gradient
         )} />
 
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-          <div className="max-w-2xl">
+        <div className="relative z-10 flex items-center justify-between gap-6 w-full h-full py-2">
+          <div className="flex items-center gap-4 min-w-0">
             {activeCategory !== 'guide' && (
-              <div className="flex items-center gap-4 mb-4">
-                <div className={cn(
-                  "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-2xl transition-transform hover:scale-110",
-                  "bg-gradient-to-br", details.gradient
-                )}>
-                  <currentCategory.icon size={28} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className={cn(
-                      "text-3xl lg:text-4xl font-black tracking-tight",
-                      isDarkMode ? "text-white" : "text-slate-900"
-                    )}>
-                      {currentCategory.label}
-                    </h2>
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
-                      isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
-                    )}>
-                      Admin Panel
-                    </span>
-                  </div>
-                  <p className={cn(
-                    "text-sm font-black uppercase tracking-[0.2em] mt-1",
-                    isDarkMode ? "text-indigo-400" : "text-indigo-600"
-                  )}>
-                    {details.desc}
-                  </p>
-                </div>
+              <div className={cn(
+                "w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-transform hover:scale-105",
+                "bg-gradient-to-br", details.gradient
+              )}>
+                <currentCategory.icon size={22} />
               </div>
             )}
-            
-            <p className={cn(
-              "text-base lg:text-lg font-medium leading-relaxed max-w-xl",
-              isDarkMode ? "text-slate-400" : "text-slate-500"
-            )}>
-              {details.longDesc}
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h2 className={cn(
+                  "text-lg lg:text-xl font-black tracking-tight truncate",
+                  isDarkMode ? "text-white" : "text-slate-900"
+                )}>
+                  {currentCategory.label}
+                </h2>
+                <span className={cn(
+                  "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest shrink-0",
+                  isDarkMode ? "bg-white/10 text-white/60" : "bg-slate-100 text-slate-500"
+                )}>
+                  Admin Panel
+                </span>
+                {details.desc && (
+                  <span className={cn(
+                    "text-xs font-black uppercase tracking-wider truncate hidden xl:inline-block border-l pl-2.5",
+                    isDarkMode ? "text-indigo-400 border-slate-800" : "text-indigo-600 border-slate-200"
+                  )}>
+                    {details.desc}
+                  </span>
+                )}
+              </div>
+              
+              <p className={cn(
+                "text-xs font-medium truncate mt-0.5 max-w-2xl",
+                isDarkMode ? "text-slate-400" : "text-slate-500"
+              )}>
+                {details.longDesc}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4 lg:self-end">
+          <div className="flex items-center gap-3 shrink-0">
             {activeCategory === 'registration' && pendingUsers.length > 0 && (
-              <div className="bg-rose-500/10 border border-rose-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-rose-500/5">
-                <div className="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center">
-                  <ShieldAlert size={24} />
+              <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl px-4 py-2 flex items-center gap-3 shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0">
+                  <ShieldAlert size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-rose-500 mb-1">Yêu cầu chờ</p>
-                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{pendingUsers.length}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-rose-500">Yêu cầu chờ</p>
+                  <p className={cn("text-base font-black leading-none mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>{pendingUsers.length}</p>
                 </div>
               </div>
             )}
             
             {activeCategory === 'home' && (
-              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-indigo-500/5">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500 text-white flex items-center justify-center">
-                  <Activity size={24} />
+              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl px-4 py-2 flex items-center gap-3 shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center shrink-0">
+                  <Activity size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 mb-1">Đang Online</p>
-                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{stats.online}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Đang Online</p>
+                  <p className={cn("text-base font-black leading-none mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>{stats.online}</p>
                 </div>
               </div>
             )}
 
             {activeCategory === 'hr' && (
-              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl p-6 flex items-center gap-4 shadow-xl shadow-emerald-500/5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center">
-                  <Users size={24} />
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl px-4 py-2 flex items-center gap-3 shadow-xs">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                  <Users size={16} />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500 mb-1">Tổng nhân sự</p>
-                  <p className={cn("text-2xl font-black", isDarkMode ? "text-white" : "text-slate-900")}>{allUsers.length}</p>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Tổng nhân sự</p>
+                  <p className={cn("text-base font-black leading-none mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>{allUsers.length}</p>
                 </div>
               </div>
             )}
+
             {activeCategory === 'version' && (
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('trigger-add-version'))}
                 className={cn(
-                  "group relative px-8 py-5 rounded-[28px] transition-all duration-300 cursor-pointer",
-                  "bg-indigo-600 text-white shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40",
-                  "hover:-translate-y-1 active:translate-y-0",
-                  "flex items-center gap-3 overflow-hidden"
+                  "group relative px-5 py-2.5 rounded-2xl transition-all duration-300 cursor-pointer",
+                  "bg-indigo-600 text-white shadow-md shadow-indigo-500/25 hover:shadow-indigo-500/40",
+                  "flex items-center gap-2"
                 )}
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-indigo-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <Plus size={24} className="relative z-10 group-hover:rotate-90 transition-transform duration-300" />
-                <span className="relative z-10 font-black text-sm uppercase tracking-widest">Thêm phiên bản mới</span>
+                <Plus size={18} className="relative z-10 group-hover:rotate-90 transition-transform duration-300" />
+                <span className="relative z-10 font-black text-xs uppercase tracking-wider">Thêm phiên bản mới</span>
               </button>
             )}
           </div>
@@ -2918,6 +2922,173 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                   )}
                                 </div>
                               </div>
+
+                              {/* Notification Recipients Avatars Bar */}
+                              {(() => {
+                                const recipients = allUsers.filter(u => {
+                                  if (u.isApproved === false || u.role === 'unapproved') return false;
+                                  const hasTargets = (ann.targetRoles && ann.targetRoles.length > 0) || (ann.targetTitles && ann.targetTitles.length > 0);
+                                  if (!hasTargets) return true;
+                                  const roleMatched = ann.targetRoles?.includes(u.role);
+                                  const titleMatched = ann.targetTitles?.includes(u.title || '');
+                                  return roleMatched || titleMatched;
+                                });
+
+                                const readCount = recipients.filter(u => ann.readBy?.includes(u.uid)).length;
+                                const maxVisible = 8;
+                                const visibleRecipients = recipients.slice(0, maxVisible);
+                                const extraCount = recipients.length - maxVisible;
+
+                                return (
+                                  <div className={cn(
+                                    "mt-3 p-3 rounded-2xl border transition-all",
+                                    isDarkMode ? "bg-slate-900/60 border-slate-800" : "bg-white border-slate-200/80 shadow-xs"
+                                  )}>
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <Users size={13} className="text-rose-500 shrink-0" />
+                                        <span className={cn(
+                                          "text-[10px] font-black uppercase tracking-wider",
+                                          isDarkMode ? "text-slate-300" : "text-slate-700"
+                                        )}>
+                                          Người nhận ({recipients.length})
+                                        </span>
+                                        {recipients.length > 0 && (
+                                          <span className={cn(
+                                            "px-1.5 py-0.5 rounded-full text-[9px] font-extrabold ml-1 border",
+                                            readCount > 0 
+                                              ? (isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-200")
+                                              : (isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200")
+                                          )}>
+                                            {readCount}/{recipients.length} đã xem
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {recipients.length > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedAnnForRecipients(ann);
+                                            setRecipientFilter('all');
+                                            setRecipientSearch('');
+                                          }}
+                                          className={cn(
+                                            "text-[9px] font-bold hover:underline flex items-center gap-1 cursor-pointer transition-colors",
+                                            isDarkMode ? "text-indigo-400 hover:text-indigo-300" : "text-indigo-600 hover:text-indigo-700"
+                                          )}
+                                        >
+                                          <Eye size={11} />
+                                          Xem danh sách
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {recipients.length > 0 ? (
+                                      <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
+                                        {visibleRecipients.map((u) => {
+                                          const isRead = ann.readBy?.includes(u.uid);
+                                          const initials = (u.displayName || u.email || 'U')
+                                            .split(' ')
+                                            .map(n => n[0])
+                                            .join('')
+                                            .slice(0, 2)
+                                            .toUpperCase();
+
+                                          const roleBg = u.role === 'admin'
+                                            ? 'bg-rose-500 text-white'
+                                            : u.role?.startsWith('operator') || u.title === 'Bác sĩ'
+                                            ? 'bg-indigo-600 text-white'
+                                            : u.title === 'Dược sĩ'
+                                            ? 'bg-emerald-600 text-white'
+                                            : u.title === 'Điều dưỡng'
+                                            ? 'bg-sky-600 text-white'
+                                            : 'bg-slate-600 text-white';
+
+                                          return (
+                                            <div
+                                              key={u.uid}
+                                              className="relative group/avatar cursor-pointer"
+                                              onClick={() => {
+                                                setSelectedAnnForRecipients(ann);
+                                                setRecipientFilter('all');
+                                                setRecipientSearch('');
+                                              }}
+                                            >
+                                              {u.photoURL ? (
+                                                <img
+                                                  src={u.photoURL}
+                                                  alt={u.displayName || u.email}
+                                                  className={cn(
+                                                    "w-7 h-7 rounded-full object-cover border-2 shadow-xs shrink-0",
+                                                    isDarkMode ? "border-slate-800" : "border-white"
+                                                  )}
+                                                />
+                                              ) : (
+                                                <div className={cn(
+                                                  "w-7 h-7 rounded-full border-2 shadow-xs shrink-0 flex items-center justify-center text-[9px] font-black uppercase",
+                                                  isDarkMode ? "border-slate-800" : "border-white",
+                                                  roleBg
+                                                )}>
+                                                  {initials}
+                                                </div>
+                                              )}
+
+                                              {/* Read Status Dot */}
+                                              {isRead ? (
+                                                <span className={cn(
+                                                  "absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 rounded-full flex items-center justify-center text-[7px] text-white font-black shadow-xs",
+                                                  isDarkMode ? "border-slate-800" : "border-white"
+                                                )} title="Đã xem">
+                                                  ✓
+                                                </span>
+                                              ) : (
+                                                <span className={cn(
+                                                  "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 border-2 rounded-full",
+                                                  isDarkMode ? "bg-slate-500 border-slate-800" : "bg-slate-400 border-white"
+                                                )} title="Chưa xem" />
+                                              )}
+
+                                              {/* Tooltip */}
+                                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/avatar:flex flex-col gap-0.5 w-max max-w-[200px] p-2 bg-slate-900/95 text-white text-[9px] rounded-xl shadow-xl z-50 pointer-events-none border border-slate-800 leading-tight">
+                                                <span className="font-extrabold text-white text-[10px] truncate">{u.displayName || 'Người dùng'}</span>
+                                                <span className="text-slate-300 text-[8px]">{u.title || u.role} {u.department ? `• ${u.department}` : ''}</span>
+                                                <span className={cn(
+                                                  "mt-0.5 font-bold text-[8px] flex items-center gap-1",
+                                                  isRead ? "text-emerald-400" : "text-amber-400"
+                                                )}>
+                                                  {isRead ? '🟢 Đã xem' : '⚪ Chưa xem'}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+
+                                        {extraCount > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setSelectedAnnForRecipients(ann);
+                                              setRecipientFilter('all');
+                                              setRecipientSearch('');
+                                            }}
+                                            className={cn(
+                                              "w-7 h-7 rounded-full border text-[9px] font-black flex items-center justify-center cursor-pointer transition-all",
+                                              isDarkMode ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/30" : "bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100"
+                                            )}
+                                          >
+                                            +{extraCount}
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[10px] text-slate-400 italic">
+                                        Chưa có danh sách người dùng matching
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               
                               <div className="mt-3 pt-3 border-t border-dashed border-slate-500/10 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-slate-400">
                                 <span className="flex items-center gap-1">
@@ -4726,6 +4897,261 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 >
                   {isSavingAnnouncementEdit ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                   Lưu thay đổi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Recipient Details Modal */}
+      <AnimatePresence>
+        {selectedAnnForRecipients && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedAnnForRecipients(null)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className={cn(
+                "w-full max-w-2xl rounded-[32px] border-2 overflow-hidden shadow-2xl relative z-10 flex flex-col max-h-[85vh]",
+                isDarkMode ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-100 text-slate-900"
+              )}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-500/10 flex justify-between items-start bg-rose-500/5">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-rose-500/10 text-rose-500">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-base leading-tight">
+                      Danh sách người nhận thông báo
+                    </h3>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5 line-clamp-1">
+                      {selectedAnnForRecipients.title || selectedAnnForRecipients.content}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnnForRecipients(null)}
+                  className={cn(
+                    "p-2 rounded-xl transition-all cursor-pointer",
+                    isDarkMode ? "text-slate-400 hover:text-slate-200 hover:bg-slate-800" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 overflow-y-auto space-y-4 flex-1">
+                {(() => {
+                  const recipients = allUsers.filter(u => {
+                    if (u.isApproved === false || u.role === 'unapproved') return false;
+                    const hasTargets = (selectedAnnForRecipients.targetRoles && selectedAnnForRecipients.targetRoles.length > 0) || (selectedAnnForRecipients.targetTitles && selectedAnnForRecipients.targetTitles.length > 0);
+                    if (!hasTargets) return true;
+                    const roleMatched = selectedAnnForRecipients.targetRoles?.includes(u.role);
+                    const titleMatched = selectedAnnForRecipients.targetTitles?.includes(u.title || '');
+                    return roleMatched || titleMatched;
+                  });
+
+                  const readList = recipients.filter(u => selectedAnnForRecipients.readBy?.includes(u.uid));
+                  const unreadList = recipients.filter(u => !selectedAnnForRecipients.readBy?.includes(u.uid));
+
+                  let filtered = recipients;
+                  if (recipientFilter === 'read') filtered = readList;
+                  if (recipientFilter === 'unread') filtered = unreadList;
+
+                  if (recipientSearch.trim()) {
+                    const q = recipientSearch.toLowerCase().trim();
+                    filtered = filtered.filter(u =>
+                      (u.displayName || '').toLowerCase().includes(q) ||
+                      (u.email || '').toLowerCase().includes(q) ||
+                      (u.department || '').toLowerCase().includes(q) ||
+                      (u.title || '').toLowerCase().includes(q)
+                    );
+                  }
+
+                  return (
+                    <>
+                      {/* Controls: Filter tabs & Search */}
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                        {/* Tabs */}
+                        <div className={cn(
+                          "p-1 rounded-2xl flex items-center gap-1 w-full sm:w-auto border",
+                          isDarkMode ? "bg-slate-800/80 border-slate-700/50" : "bg-slate-100 border-slate-200/80"
+                        )}>
+                          <button
+                            type="button"
+                            onClick={() => setRecipientFilter('all')}
+                            className={cn(
+                              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-1 sm:flex-none cursor-pointer",
+                              recipientFilter === 'all'
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900")
+                            )}
+                          >
+                            Tất cả ({recipients.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRecipientFilter('read')}
+                            className={cn(
+                              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-1 sm:flex-none cursor-pointer",
+                              recipientFilter === 'read'
+                                ? "bg-emerald-600 text-white shadow-xs"
+                                : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900")
+                            )}
+                          >
+                            Đã xem ({readList.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRecipientFilter('unread')}
+                            className={cn(
+                              "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex-1 sm:flex-none cursor-pointer",
+                              recipientFilter === 'unread'
+                                ? "bg-amber-600 text-white shadow-xs"
+                                : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900")
+                            )}
+                          >
+                            Chưa xem ({unreadList.length})
+                          </button>
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="relative w-full sm:w-56">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={recipientSearch}
+                            onChange={(e) => setRecipientSearch(e.target.value)}
+                            placeholder="Tìm nhân sự..."
+                            className={cn(
+                              "w-full pl-8 pr-3 py-1.5 rounded-xl text-xs font-semibold border focus:outline-none transition-all",
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white placeholder-slate-500" : "bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400"
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      {/* User Grid */}
+                      {filtered.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                          {filtered.map(u => {
+                            const isRead = selectedAnnForRecipients.readBy?.includes(u.uid);
+                            const initials = (u.displayName || u.email || 'U')
+                              .split(' ')
+                              .map(n => n[0])
+                              .join('')
+                              .slice(0, 2)
+                              .toUpperCase();
+
+                            const roleBg = u.role === 'admin'
+                              ? 'bg-rose-500 text-white'
+                              : u.role?.startsWith('operator') || u.title === 'Bác sĩ'
+                              ? 'bg-indigo-600 text-white'
+                              : u.title === 'Dược sĩ'
+                              ? 'bg-emerald-600 text-white'
+                              : u.title === 'Điều dưỡng'
+                              ? 'bg-sky-600 text-white'
+                              : 'bg-slate-600 text-white';
+
+                            return (
+                              <div
+                                key={u.uid}
+                                className={cn(
+                                  "p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all",
+                                  isDarkMode ? "bg-slate-800/50 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:border-indigo-200"
+                                )}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  {u.photoURL ? (
+                                    <img
+                                      src={u.photoURL}
+                                      alt={u.displayName || u.email}
+                                      className={cn(
+                                        "w-10 h-10 rounded-full object-cover border-2 shadow-xs shrink-0",
+                                        isDarkMode ? "border-slate-800" : "border-white"
+                                      )}
+                                    />
+                                  ) : (
+                                    <div className={cn(
+                                      "w-10 h-10 rounded-full border-2 shadow-xs shrink-0 flex items-center justify-center text-xs font-black uppercase",
+                                      isDarkMode ? "border-slate-800" : "border-white",
+                                      roleBg
+                                    )}>
+                                      {initials}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className={cn("font-extrabold text-xs truncate", isDarkMode ? "text-slate-100" : "text-slate-900")}>
+                                      {u.displayName || 'Người dùng'}
+                                    </div>
+                                    <div className={cn("text-[10px] font-semibold truncate", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                                      {u.title || (roles.find(r => r.id === u.role)?.name || u.role)} {u.department ? `• ${u.department}` : ''}
+                                    </div>
+                                    <div className={cn("text-[9px] truncate", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                      {u.email}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0">
+                                  {isRead ? (
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded-full text-[9px] font-black border flex items-center gap-1",
+                                      isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-600 border-emerald-200"
+                                    )}>
+                                      <CheckCircle2 size={11} />
+                                      Đã xem
+                                    </span>
+                                  ) : (
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded-full text-[9px] font-bold border flex items-center gap-1",
+                                      isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                                    )}>
+                                      Chưa xem
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="py-12 text-center text-slate-400 text-xs font-semibold">
+                          Không tìm thấy người dùng nào phù hợp
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Footer */}
+              <div className={cn(
+                "p-4 border-t border-slate-500/10 flex justify-end",
+                isDarkMode ? "bg-slate-900/80" : "bg-slate-50"
+              )}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnnForRecipients(null)}
+                  className={cn(
+                    "px-5 py-2 font-extrabold text-xs rounded-xl transition-all cursor-pointer",
+                    isDarkMode ? "bg-slate-800 text-slate-200 hover:bg-slate-700" : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  )}
+                >
+                  Đóng
                 </button>
               </div>
             </motion.div>

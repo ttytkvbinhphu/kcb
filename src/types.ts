@@ -156,6 +156,7 @@ export interface Drug {
   pregnancy?: string;
   lactation?: string;
   driving?: string;
+  fertility?: string;
   interactions?: string;
   incompatibilities?: string;
   sideEffectsNote?: string;
@@ -172,6 +173,8 @@ export interface Drug {
   lactationNotes?: string;
   drivingStatus?: string;
   drivingNotes?: string;
+  fertilityStatus?: string;
+  fertilityNotes?: string;
   isWHOGMP?: boolean;
   isEUGMP?: boolean;
   isTCCS?: boolean;
@@ -247,6 +250,8 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  staffAccount?: string;
+  username?: string;
   photoURL?: string;
   title?: 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng' | string;
   position?: 'Giám đốc' | 'Phó giám đốc' | 'Trưởng khoa' | 'Phó khoa' | 'Nhân viên' | string;
@@ -560,6 +565,8 @@ export interface PatientSubclinical {
 export interface Staff {
   id: string;
   fullName: string;
+  staffAccount?: string; // Tài khoản nhân sự
+  username?: string; // Tên đăng nhập nhân sự
   type: 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng';
   gender: 'Nam' | 'Nữ';
   dob: string;
@@ -570,6 +577,7 @@ export interface Staff {
   email?: string;
   certificateCode?: string; // Mã chứng chỉ hành nghề
   department?: string; // Khoa/Phòng
+  role?: string; // Vai trò hệ thống
   isActive: boolean;
   createdAt: string;
 }
@@ -640,6 +648,7 @@ export interface Announcement {
   drugName?: string;
   showInWorkspace?: boolean;
   showInHeader?: boolean;
+  readBy?: string[];
 }
 
 export interface AuthLog {

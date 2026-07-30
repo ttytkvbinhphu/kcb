@@ -120,11 +120,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   canSeePregnancyTrimesters = true,
   canSeeQuickSelectTags = true,
   canSeeIntakeTime = true,
-  canSeeAgeContraindications = true,
+  canSeeAgeContraindications: propCanSeeAgeContraindications,
   canSeeInteractionSuggestions = true,
   onEdit,
   drugGroups = [],
 }) => {
+  const canSeeAgeContraindications =
+    propCanSeeAgeContraindications !== undefined
+      ? propCanSeeAgeContraindications
+      : userPowerPoints >= 5;
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -672,14 +676,14 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                 <div className="absolute inset-x-0 bottom-0 h-px bg-slate-100/10 dark:bg-slate-800" />
                 <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
 
-                <div className={cn("relative z-10", showPdfPreview ? "pr-24 lg:pr-32" : "pr-28 sm:pr-36 lg:pr-40")}>
+                <div className={cn("relative z-10", showPdfPreview ? "pr-24 lg:pr-32" : "pr-20 sm:pr-48 lg:pr-56")}>
                   {/* Nhóm nút chức năng - góc trên phải */}
                   <div
                     className={cn(
-                      "absolute z-20 transition-all duration-300 flex flex-col items-end gap-1.5 sm:gap-2",
+                      "absolute z-20 transition-all duration-300 flex flex-col sm:flex-row-reverse items-end sm:items-center gap-1.5 sm:gap-2 top-1/2 -translate-y-1/2",
                       showPdfPreview
-                        ? "top-1/2 -translate-y-1/2 right-2 sm:right-4"
-                        : "top-3 right-3 sm:top-4 sm:right-5 lg:top-5 lg:right-6"
+                        ? "right-2 sm:right-4"
+                        : "right-3 sm:right-5 lg:right-6"
                     )}
                   >
                     {/* Hàng nút trên: Toàn màn hình (PC) & Đóng (Esc) */}
@@ -705,7 +709,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                       <button
                         onClick={onClose}
                         className={cn(
-                          "p-2 rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
+                          "w-9 h-9 sm:w-auto sm:h-auto p-2 rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
                           isDarkMode
                             ? "bg-slate-800/80 text-slate-300 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30 border-slate-700/60"
                             : "bg-white/90 text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 border-slate-200"
@@ -722,14 +726,14 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         type="button"
                         onClick={() => setShowPdfPreview(true)}
                         className={cn(
-                          "transition-all duration-200 flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
+                          "w-9 h-9 sm:w-auto sm:h-auto px-0 sm:px-3 py-0 sm:py-1.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
                           isDarkMode
-                            ? "px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border-rose-500/30"
-                            : "px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200"
+                            ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border-rose-500/30"
+                            : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200"
                         )}
                         title="Xem tờ hướng dẫn (PDF)"
                       >
-                        <FileText size={15} />
+                        <FileText size={16} />
                         <span className="hidden sm:inline text-[11px] font-bold">Xem PDF</span>
                       </button>
                     )}
@@ -921,10 +925,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                       x: { duration: 0.3, ease: [0.4, 0, 0.2, 1] },
                       opacity: { duration: 0.2 },
                     }}
-                    drag={isMobile ? "x" : false}
+                    drag={isMobile && !activeCopyTag ? "x" : false}
                     dragConstraints={{ left: 0, right: 0 }}
                     dragElastic={
-                      isMobile
+                      isMobile && !activeCopyTag
                         ? {
                             left: currentIndex === detailTabs.length - 1 ? 0 : 1,
                             right: currentIndex === 0 ? 0 : 1,
@@ -932,7 +936,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         : 0
                     }
                     onDragEnd={(e, { offset, velocity }) => {
-                      if (!isMobile) return;
+                      if (!isMobile || activeCopyTag) return;
                       const swipe =
                         Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 500;
                       if (swipe) {
@@ -950,13 +954,254 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                     {activeDetailTab === "indications" && (
                       <div className="space-y-6 relative">
                         {activeCopyTag && (
-                          <div 
-                            className="fixed inset-0 z-[190] bg-transparent cursor-default" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveCopyTag(null);
-                            }} 
-                          />
+                          <>
+                            {/* Desktop click-outside backdrop */}
+                            <div 
+                              className="fixed inset-0 z-[190] bg-transparent cursor-default hidden sm:block" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCopyTag(null);
+                              }} 
+                            />
+
+                            {/* Mobile Bottom Sheet Backdrop */}
+                            <div 
+                              className="fixed inset-0 z-[290] bg-slate-950/60 backdrop-blur-xs block sm:hidden animate-in fade-in duration-150"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCopyTag(null);
+                              }}
+                              onTouchStart={(e) => e.stopPropagation()}
+                              onTouchMove={(e) => e.stopPropagation()}
+                              onTouchEnd={(e) => e.stopPropagation()}
+                            />
+
+                            {/* Mobile Bottom Sheet Container */}
+                            <div 
+                              className={cn(
+                                "fixed inset-x-0 bottom-0 z-[300] block sm:hidden rounded-t-[28px] border-t p-5 shadow-2xl flex flex-col gap-3.5 animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto",
+                                isDarkMode
+                                  ? "bg-slate-900 border-slate-800 text-white shadow-black/80"
+                                  : "bg-white border-slate-200 text-slate-800 shadow-slate-900/20"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                              onTouchStart={(e) => e.stopPropagation()}
+                              onTouchMove={(e) => e.stopPropagation()}
+                              onTouchEnd={(e) => e.stopPropagation()}
+                            >
+                              {/* Drag handle bar */}
+                              <div className={cn("w-12 h-1.5 rounded-full mx-auto -mt-1 mb-0.5 shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-300")} />
+
+                              {/* Header */}
+                              <div className={cn(
+                                "flex items-center justify-between border-b pb-3 shrink-0",
+                                isDarkMode ? "border-slate-800" : "border-slate-100"
+                              )}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={cn(
+                                    "p-2 rounded-xl shrink-0",
+                                    activeCopyTag.isDouble
+                                      ? "bg-amber-500/10 text-amber-500"
+                                      : "bg-indigo-500/10 text-indigo-500"
+                                  )}>
+                                    {activeCopyTag.isDouble ? <Link2 size={16} /> : <Copy size={16} />}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h4 className={cn("text-xs font-black uppercase tracking-wider", isDarkMode ? "text-slate-100" : "text-slate-900")}>
+                                      {activeCopyTag.isDouble ? "Sao chép ICD-10 kép" : "Sao chép ICD-10"}
+                                    </h4>
+                                    <div className={cn(
+                                      "font-mono text-xs font-extrabold truncate mt-0.5",
+                                      activeCopyTag.isDouble
+                                        ? (isDarkMode ? "text-amber-400" : "text-amber-600")
+                                        : (isDarkMode ? "text-indigo-400" : "text-indigo-600")
+                                    )}>
+                                      {activeCopyTag.code}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveCopyTag(null)}
+                                  className={cn(
+                                    "p-2 rounded-xl transition-colors cursor-pointer shrink-0 ml-2",
+                                    isDarkMode ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                                  )}
+                                >
+                                  <X size={18} />
+                                </button>
+                              </div>
+
+                              {/* Description / Pair info */}
+                              {activeCopyTag.isDouble ? (
+                                <div className={cn(
+                                  "p-3 rounded-2xl border text-xs space-y-1.5 shrink-0",
+                                  isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-amber-50/50 border-amber-200/60"
+                                )}>
+                                  {activeCopyTag.dCode && (
+                                    <div className="flex items-start gap-1.5">
+                                      <span className={cn("font-mono font-extrabold shrink-0", isDarkMode ? "text-amber-400" : "text-amber-600")}>† {activeCopyTag.dCode}:</span>
+                                      <span className={cn("font-medium", isDarkMode ? "text-slate-300" : "text-slate-700")}>{activeCopyTag.dDesc || "Mã chính"}</span>
+                                    </div>
+                                  )}
+                                  {activeCopyTag.aCode && (
+                                    <div className="flex items-start gap-1.5">
+                                      <span className={cn("font-mono font-extrabold shrink-0", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>* {activeCopyTag.aCode}:</span>
+                                      <span className={cn("font-medium", isDarkMode ? "text-slate-300" : "text-slate-700")}>{activeCopyTag.aDesc || "Mã biểu hiện"}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                activeCopyTag.desc ? (
+                                  <div className={cn(
+                                    "text-xs font-medium px-1 line-clamp-2 leading-relaxed shrink-0",
+                                    isDarkMode ? "text-slate-300" : "text-slate-600"
+                                  )}>
+                                    {activeCopyTag.desc}
+                                  </div>
+                                ) : null
+                              )}
+
+                              {/* Copy Actions */}
+                              <div className="flex flex-col gap-2 shrink-0">
+                                <button
+                                  onClick={() => handleCopyText(activeCopyTag.code, "code")}
+                                  className={cn(
+                                    "flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-left transition-all cursor-pointer border",
+                                    isDarkMode
+                                      ? "bg-slate-800/60 border-slate-700/60 text-slate-200 hover:bg-slate-800"
+                                      : "bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100"
+                                  )}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Copy size={14} className="text-indigo-500 shrink-0" />
+                                    <span>Sao chép Mã</span>
+                                  </span>
+                                  {copiedType === "code" ? (
+                                    <span className="text-emerald-500 text-xs font-extrabold flex items-center gap-1 shrink-0">
+                                      <Check size={14} />
+                                      Đã chép!
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono text-xs font-bold text-slate-400 shrink-0">{activeCopyTag.code}</span>
+                                  )}
+                                </button>
+
+                                {activeCopyTag.desc && (
+                                  <button
+                                    onClick={() => handleCopyText(activeCopyTag.desc, "desc")}
+                                    className={cn(
+                                      "flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-left transition-all cursor-pointer border",
+                                      isDarkMode
+                                        ? "bg-slate-800/60 border-slate-700/60 text-slate-200 hover:bg-slate-800"
+                                        : "bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100"
+                                    )}
+                                  >
+                                    <span className="flex items-center gap-2 min-w-0">
+                                      <Copy size={14} className="text-emerald-500 shrink-0" />
+                                      <span>Sao chép Tên</span>
+                                    </span>
+                                    {copiedType === "desc" ? (
+                                      <span className="text-emerald-500 text-xs font-extrabold flex items-center gap-1 shrink-0">
+                                        <Check size={14} />
+                                        Đã chép!
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs font-medium text-slate-400 truncate max-w-[160px]">{activeCopyTag.desc}</span>
+                                    )}
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => handleCopyText(activeCopyTag.fullName, "fullName")}
+                                  className={cn(
+                                    "flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-left transition-all cursor-pointer border",
+                                    isDarkMode
+                                      ? "bg-slate-800/60 border-slate-700/60 text-slate-200 hover:bg-slate-800"
+                                      : "bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100"
+                                  )}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Copy size={14} className="text-rose-500 shrink-0" />
+                                    <span>Sao chép Tên + Mã</span>
+                                  </span>
+                                  {copiedType === "fullName" ? (
+                                    <span className="text-emerald-500 text-xs font-extrabold flex items-center gap-1 shrink-0">
+                                      <Check size={14} />
+                                      Đã chép!
+                                    </span>
+                                  ) : (
+                                    <Copy size={14} className="text-slate-400 shrink-0" />
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* Section: Thuốc khác cùng ICD-10 */}
+                              <div className={cn(
+                                "pt-3 mt-1 border-t flex flex-col gap-2 shrink-0",
+                                isDarkMode ? "border-slate-800" : "border-slate-100"
+                              )}>
+                                <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider px-1">
+                                  <span className={cn("flex items-center gap-1.5", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                                    <Pill size={14} className="text-emerald-500 shrink-0" />
+                                    Thuốc khác cùng ICD-10
+                                  </span>
+                                  <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-xs font-bold border",
+                                    isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
+                                  )}>
+                                    {otherDrugsWithIcd.length}
+                                  </span>
+                                </div>
+
+                                {otherDrugsWithIcd.length === 0 ? (
+                                  <div className={cn(
+                                    "text-xs font-medium italic px-2 py-2.5 rounded-xl text-center",
+                                    isDarkMode ? "bg-slate-800/40 text-slate-500" : "bg-slate-50 text-slate-400"
+                                  )}>
+                                    Không có thuốc nào khác cùng mã
+                                  </div>
+                                ) : (
+                                  <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                                    {otherDrugsWithIcd.map((otherDrug, odIdx) => (
+                                      <button
+                                        key={`${otherDrug.id || otherDrug.name}-${odIdx}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveCopyTag(null);
+                                          setActiveDrug(otherDrug);
+                                        }}
+                                        className={cn(
+                                          "w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer",
+                                          isDarkMode
+                                            ? "bg-slate-800/40 border-slate-800 hover:bg-emerald-950/40 hover:border-emerald-800/50"
+                                            : "bg-slate-50/80 border-slate-200/80 hover:bg-emerald-50 hover:border-emerald-200"
+                                        )}
+                                      >
+                                        <div className="min-w-0">
+                                          <div className={cn(
+                                            "text-xs font-bold truncate",
+                                            isDarkMode ? "text-slate-200 group-hover/drug-item:text-emerald-400" : "text-slate-800 group-hover/drug-item:text-emerald-600"
+                                          )}>
+                                            {otherDrug.name}
+                                          </div>
+                                          {otherDrug.activeIngredients && otherDrug.activeIngredients.length > 0 && (
+                                            <div className={cn(
+                                              "text-[10px] truncate mt-0.5",
+                                              isDarkMode ? "text-slate-400" : "text-slate-500"
+                                            )}>
+                                              {otherDrug.activeIngredients.map((ai) => ai.name).join(", ")}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <ExternalLink size={13} className="text-slate-400 group-hover/drug-item:text-emerald-500 shrink-0" />
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </>
                         )}
                         {drug.mechanismOfAction && (
                           <div
@@ -996,11 +1241,14 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                   ? isDarkMode ? "bg-amber-950/20" : "bg-amber-50/70"
                                   : isDarkMode ? "bg-slate-900/40" : "bg-slate-50/80";
 
+                            const isCardCopyActive = activeCopyTag?.id.startsWith(`single-${i}-`) || activeCopyTag?.id.startsWith(`double-${i}-`);
+
                             return (
                               <div
                                 key={i}
                                 className={cn(
-                                  "rounded-[24px] border transition-all",
+                                  "rounded-[24px] border transition-all relative",
+                                  isCardCopyActive ? "z-[210]" : "z-10",
                                   isDarkMode
                                     ? "bg-slate-800 border-slate-700"
                                     : "bg-white border-slate-200 shadow-sm",
@@ -1250,10 +1498,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   </div>
                                                   {/* Tooltip for ICD-10 tag */}
                                                   <div className={cn(
-                                                    "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[240px] px-2.5 py-1.5 bg-slate-900/95 backdrop-blur-md text-white text-[9px] font-bold rounded-lg shadow-xl z-[150] pointer-events-none border border-slate-700/50 flex items-center gap-1.5 leading-normal transition-all duration-300 translate-y-1 group-hover/icd-tag:translate-y-0",
-                                                    isCopyActive
-                                                      ? "opacity-0 invisible"
-                                                      : "opacity-0 invisible group-hover/icd-tag:opacity-100 group-hover/icd-tag:visible"
+                                                    "hidden sm:flex absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[240px] px-2.5 py-1.5 bg-slate-900/95 backdrop-blur-md text-white text-[9px] font-bold rounded-lg shadow-xl z-[150] border border-slate-700/50 items-center gap-1.5 leading-normal transition-all duration-300 translate-y-1",
+                                                    activeCopyTag
+                                                      ? "opacity-0 invisible pointer-events-none"
+                                                      : "opacity-0 invisible pointer-events-none group-hover/icd-tag:opacity-100 group-hover/icd-tag:visible group-hover/icd-tag:translate-y-0"
                                                   )}>
                                                     {isDefault ? (
                                                       <ThumbsUp size={10} className="text-emerald-400 shrink-0 fill-emerald-400" />
@@ -1277,15 +1525,38 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   </div>
                                                   {icdObj && renderIcdRules(icdObj)}
 
-                                                  {/* 3 Copy buttons popup + Other drugs list */}
+                                                  {/* 3 Copy buttons popup + Other drugs list (Desktop only) */}
                                                   {isCopyActive && (
                                                     <div
-                                                      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[200] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 flex flex-col gap-2 min-w-[220px] max-w-[320px] animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-default"
+                                                      className={cn(
+                                                        "hidden sm:flex sm:flex-col absolute sm:bottom-auto sm:top-full sm:left-1/2 sm:-translate-x-1/2 mt-2 z-[220] border rounded-2xl shadow-2xl p-3 gap-2 sm:min-w-[240px] sm:max-w-[320px] animate-in fade-in sm:slide-in-from-top-2 duration-150 cursor-default",
+                                                        isDarkMode
+                                                          ? "bg-slate-900 border-slate-800 text-white shadow-black/50"
+                                                          : "bg-white border-slate-200 text-slate-800 shadow-slate-300/40"
+                                                      )}
                                                       onClick={(e) => e.stopPropagation()}
                                                     >
-                                                      <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 px-1 border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                                                        <span>Sao chép ICD-10</span>
-                                                        <span className="font-mono text-[10px] text-blue-500 font-extrabold">{code}</span>
+                                                      <div className={cn(
+                                                        "flex items-center justify-between text-[9px] font-black uppercase tracking-widest px-1 border-b pb-1.5",
+                                                        isDarkMode ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
+                                                      )}>
+                                                        <div className="flex items-center gap-2">
+                                                          <span>Sao chép ICD-10</span>
+                                                          <span className="font-mono text-[10px] text-blue-500 font-extrabold">{code}</span>
+                                                        </div>
+                                                        <button
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setActiveCopyTag(null);
+                                                          }}
+                                                          className={cn(
+                                                            "p-0.5 rounded-md transition-colors cursor-pointer",
+                                                            isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-400 hover:text-slate-600"
+                                                          )}
+                                                        >
+                                                          <X size={14} />
+                                                        </button>
                                                       </div>
                                                       
                                                       <div className="flex flex-col gap-1">
@@ -1294,7 +1565,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                             e.stopPropagation();
                                                             handleCopyText(code, "code");
                                                           }}
-                                                          className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                          className={cn(
+                                                            "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                            isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                          )}
                                                         >
                                                           <span>Sao chép Mã</span>
                                                           {copiedType === "code" ? (
@@ -1309,7 +1583,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                             e.stopPropagation();
                                                             handleCopyText(desc || "", "desc");
                                                           }}
-                                                          className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                          className={cn(
+                                                            "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                            isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                          )}
                                                         >
                                                           <span>Sao chép Tên</span>
                                                           {copiedType === "desc" ? (
@@ -1324,7 +1601,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                             e.stopPropagation();
                                                             handleCopyText(fullName, "fullName");
                                                           }}
-                                                          className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                          className={cn(
+                                                            "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                            isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                          )}
                                                         >
                                                           <span>Sao chép Tên + Mã</span>
                                                           {copiedType === "fullName" ? (
@@ -1336,19 +1616,31 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                       </div>
 
                                                       {/* Section: Thuốc khác cùng ICD-10 */}
-                                                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-1.5">
-                                                        <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+                                                      <div className={cn(
+                                                        "pt-2 border-t flex flex-col gap-1.5",
+                                                        isDarkMode ? "border-slate-800" : "border-slate-100"
+                                                      )}>
+                                                        <div className={cn(
+                                                          "flex items-center justify-between text-[9px] font-black uppercase tracking-wider px-1",
+                                                          isDarkMode ? "text-slate-400" : "text-slate-500"
+                                                        )}>
                                                           <span className="flex items-center gap-1">
                                                             <Pill size={11} className="text-emerald-500" />
                                                             Thuốc khác cùng ICD-10
                                                           </span>
-                                                          <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-bold text-slate-600 dark:text-slate-400">
+                                                          <span className={cn(
+                                                            "px-1.5 py-0.2 rounded-full text-[9px] font-bold",
+                                                            isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-600"
+                                                          )}>
                                                             {otherDrugsWithIcd.length}
                                                           </span>
                                                         </div>
 
                                                         {otherDrugsWithIcd.length === 0 ? (
-                                                          <div className="text-[10px] font-medium text-slate-400 dark:text-slate-500 italic px-1 py-1">
+                                                          <div className={cn(
+                                                            "text-[10px] font-medium italic px-1 py-1",
+                                                            isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                          )}>
                                                             Không có thuốc nào khác cùng mã
                                                           </div>
                                                         ) : (
@@ -1361,14 +1653,25 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                                   setActiveCopyTag(null);
                                                                   setActiveDrug(otherDrug);
                                                                 }}
-                                                                className="w-full text-left p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800/50 transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer"
+                                                                className={cn(
+                                                                  "w-full text-left p-1.5 rounded-lg border transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer",
+                                                                  isDarkMode
+                                                                    ? "hover:bg-emerald-950/40 border-transparent hover:border-emerald-800/50"
+                                                                    : "hover:bg-emerald-50 border-transparent hover:border-emerald-200"
+                                                                )}
                                                               >
                                                                 <div className="min-w-0">
-                                                                  <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate group-hover/drug-item:text-emerald-600 dark:group-hover/drug-item:text-emerald-400">
+                                                                  <div className={cn(
+                                                                    "text-[11px] font-bold truncate group-hover/drug-item:text-emerald-600 dark:group-hover/drug-item:text-emerald-400",
+                                                                    isDarkMode ? "text-slate-200" : "text-slate-800"
+                                                                  )}>
                                                                     {otherDrug.name}
                                                                   </div>
                                                                   {otherDrug.activeIngredients && otherDrug.activeIngredients.length > 0 && (
-                                                                    <div className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                                                                    <div className={cn(
+                                                                      "text-[9px] truncate",
+                                                                      isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                                    )}>
                                                                       {otherDrug.activeIngredients.map((ai) => ai.name).join(", ")}
                                                                     </div>
                                                                   )}
@@ -1380,8 +1683,11 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                         )}
                                                       </div>
 
-                                                      {/* Pointer triangle facing down */}
-                                                      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-white dark:border-t-slate-900" />
+                                                      {/* Pointer triangle facing up (desktop only) */}
+                                                      <div className={cn(
+                                                        "hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent",
+                                                        isDarkMode ? "border-b-slate-900" : "border-b-white"
+                                                      )} />
                                                     </div>
                                                   )}
                                                 </div>
@@ -1473,10 +1779,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
                                                 {/* Tooltip for Double ICD-10 tag */}
                                                 <div className={cn(
-                                                  "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[280px] px-3 py-2 bg-slate-900/95 backdrop-blur-md text-white text-[9px] font-bold rounded-lg shadow-xl z-[150] pointer-events-none border border-slate-700/50 flex flex-col gap-1 leading-normal transition-all duration-300 translate-y-1",
-                                                  isDoubleCopyActive
-                                                    ? "opacity-0 invisible"
-                                                    : "opacity-0 invisible group-hover/double-tag:opacity-100 group-hover/double-tag:visible group-hover/double-tag:translate-y-0"
+                                                  "hidden sm:flex sm:flex-col absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[280px] px-3 py-2 bg-slate-900/95 backdrop-blur-md text-white text-[9px] font-bold rounded-lg shadow-xl z-[150] border border-slate-700/50 gap-1 leading-normal transition-all duration-300 translate-y-1",
+                                                  activeCopyTag
+                                                    ? "opacity-0 invisible pointer-events-none"
+                                                    : "opacity-0 invisible pointer-events-none group-hover/double-tag:opacity-100 group-hover/double-tag:visible group-hover/double-tag:translate-y-0"
                                                 )}>
                                                   <div className="flex items-center gap-1 text-amber-400 font-black border-b border-slate-800 pb-1 mb-1">
                                                     <Link2 size={10} />
@@ -1495,15 +1801,38 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                   <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95" />
                                                 </div>
 
-                                                {/* 3 Copy buttons popup for double tags + Other drugs list */}
+                                                {/* 3 Copy buttons popup for double tags + Other drugs list (Desktop only) */}
                                                 {isDoubleCopyActive && (
                                                   <div
-                                                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-[200] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 flex flex-col gap-2 min-w-[240px] max-w-[340px] animate-in fade-in slide-in-from-bottom-2 duration-150 cursor-default"
+                                                    className={cn(
+                                                      "hidden sm:flex sm:flex-col absolute sm:bottom-auto sm:top-full sm:left-1/2 sm:-translate-x-1/2 mt-2 z-[220] border rounded-2xl shadow-2xl p-3 gap-2 sm:min-w-[240px] sm:max-w-[340px] animate-in fade-in sm:slide-in-from-top-2 duration-150 cursor-default",
+                                                      isDarkMode
+                                                        ? "bg-slate-900 border-slate-800 text-white shadow-black/50"
+                                                        : "bg-white border-slate-200 text-slate-800 shadow-slate-300/40"
+                                                    )}
                                                     onClick={(e) => e.stopPropagation()}
                                                   >
-                                                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 px-1 border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                                                      <span>Sao chép ICD-10 kép</span>
-                                                      <span className="font-mono text-[10px] text-amber-500 font-extrabold">{dCode} + {aCode}</span>
+                                                    <div className={cn(
+                                                      "flex items-center justify-between text-[9px] font-black uppercase tracking-widest px-1 border-b pb-1.5",
+                                                      isDarkMode ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
+                                                    )}>
+                                                      <div className="flex items-center gap-2">
+                                                        <span>Sao chép ICD-10 kép</span>
+                                                        <span className="font-mono text-[10px] text-amber-500 font-extrabold">{dCode} + {aCode}</span>
+                                                      </div>
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setActiveCopyTag(null);
+                                                        }}
+                                                        className={cn(
+                                                          "p-0.5 rounded-md transition-colors cursor-pointer",
+                                                          isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-400 hover:text-slate-600"
+                                                        )}
+                                                      >
+                                                        <X size={14} />
+                                                      </button>
                                                     </div>
                                                     
                                                     <div className="flex flex-col gap-1">
@@ -1512,7 +1841,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                           e.stopPropagation();
                                                           handleCopyText(`${dCode} + ${aCode}`, "code");
                                                         }}
-                                                        className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                        className={cn(
+                                                          "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                          isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                        )}
                                                       >
                                                         <span>Sao chép Mã</span>
                                                         {copiedType === "code" ? (
@@ -1527,7 +1859,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                           e.stopPropagation();
                                                           handleCopyText(`${dDesc} + ${aDesc}`, "desc");
                                                         }}
-                                                        className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                        className={cn(
+                                                          "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                          isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                        )}
                                                       >
                                                         <span>Sao chép Tên</span>
                                                         {copiedType === "desc" ? (
@@ -1542,7 +1877,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                           e.stopPropagation();
                                                           handleCopyText(`${dCode} - ${dDesc} + ${aCode} - ${aDesc}`, "fullName");
                                                         }}
-                                                        className="flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-300 cursor-pointer"
+                                                        className={cn(
+                                                          "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                          isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                        )}
                                                       >
                                                         <span>Sao chép Tên + Mã</span>
                                                         {copiedType === "fullName" ? (
@@ -1554,19 +1892,31 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                     </div>
 
                                                     {/* Section: Thuốc khác cùng ICD-10 */}
-                                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-1.5">
-                                                      <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
+                                                    <div className={cn(
+                                                      "pt-2 border-t flex flex-col gap-1.5",
+                                                      isDarkMode ? "border-slate-800" : "border-slate-100"
+                                                    )}>
+                                                      <div className={cn(
+                                                        "flex items-center justify-between text-[9px] font-black uppercase tracking-wider px-1",
+                                                        isDarkMode ? "text-slate-400" : "text-slate-500"
+                                                      )}>
                                                         <span className="flex items-center gap-1">
                                                           <Pill size={11} className="text-emerald-500" />
                                                           Thuốc khác cùng ICD-10
                                                         </span>
-                                                        <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-bold text-slate-600 dark:text-slate-400">
+                                                        <span className={cn(
+                                                          "px-1.5 py-0.2 rounded-full text-[9px] font-bold",
+                                                          isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-600"
+                                                        )}>
                                                           {otherDrugsWithIcd.length}
                                                         </span>
                                                       </div>
 
                                                       {otherDrugsWithIcd.length === 0 ? (
-                                                        <div className="text-[10px] font-medium text-slate-400 dark:text-slate-500 italic px-1 py-1">
+                                                        <div className={cn(
+                                                          "text-[10px] font-medium italic px-1 py-1",
+                                                          isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                        )}>
                                                           Không có thuốc nào khác cùng mã
                                                         </div>
                                                       ) : (
@@ -1579,14 +1929,25 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                                 setActiveCopyTag(null);
                                                                 setActiveDrug(otherDrug);
                                                               }}
-                                                              className="w-full text-left p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800/50 transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer"
+                                                              className={cn(
+                                                                "w-full text-left p-1.5 rounded-lg border transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer",
+                                                                isDarkMode
+                                                                  ? "hover:bg-emerald-950/40 border-transparent hover:border-emerald-800/50"
+                                                                  : "hover:bg-emerald-50 border-transparent hover:border-emerald-200"
+                                                              )}
                                                             >
                                                               <div className="min-w-0">
-                                                                <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate group-hover/drug-item:text-emerald-600 dark:group-hover/drug-item:text-emerald-400">
+                                                                <div className={cn(
+                                                                  "text-[11px] font-bold truncate group-hover/drug-item:text-emerald-600 dark:group-hover/drug-item:text-emerald-400",
+                                                                  isDarkMode ? "text-slate-200" : "text-slate-800"
+                                                                )}>
                                                                   {otherDrug.name}
                                                                 </div>
                                                                 {otherDrug.activeIngredients && otherDrug.activeIngredients.length > 0 && (
-                                                                  <div className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                                                                  <div className={cn(
+                                                                    "text-[9px] truncate",
+                                                                    isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                                  )}>
                                                                     {otherDrug.activeIngredients.map((ai) => ai.name).join(", ")}
                                                                   </div>
                                                                 )}
@@ -1598,8 +1959,11 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                       )}
                                                     </div>
 
-                                                    {/* Pointer triangle facing down */}
-                                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-white dark:border-t-slate-900" />
+                                                    {/* Pointer triangle facing up (desktop only) */}
+                                                    <div className={cn(
+                                                      "hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent",
+                                                      isDarkMode ? "border-b-slate-900" : "border-b-white"
+                                                    )} />
                                                   </div>
                                                 )}
                                               </div>
@@ -1758,7 +2122,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               : "bg-white border-slate-200 text-slate-600 shadow-xs",
                                           )}>
                                             <Calendar size={11} className="shrink-0 text-rose-400" />
-                                            <span>{display}</span>
+                                            <span>Mốc sinh: {display}</span>
                                           </div>
                                         </div>
                                       ) : null;
@@ -2264,7 +2628,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     );
                                   })()}
 
-                                  {/* Cử dùng trong ngày / Lộ trình */}
+                                  {/* Cử dùng trong ngày / Liệu trình */}
                                   {canSeeDosageSuggestions &&
                                     (() => {
                                       const currentSchedules: any[] =
@@ -2451,7 +2815,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                             )}
                                           >
                                             <div className="text-[10px] font-black uppercase text-emerald-500 tracking-widest px-0.5">
-                                              Lộ trình & Cử dùng
+                                              Liệu trình & Cử dùng:
                                             </div>
                                             {showDisplayTabs && (
                                               <div
@@ -2560,7 +2924,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                                         )}
                                                       >
                                                         {schedule.name ||
-                                                          `Lộ trình ${sIdx + 1}`}
+                                                          `Liệu trình ${sIdx + 1}`}
                                                       </div>
                                                     ) : (
                                                       <div></div>
@@ -3663,7 +4027,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               : "bg-white border-slate-200 text-slate-600 shadow-xs",
                                           )}>
                                             <Calendar size={11} className="shrink-0 text-rose-400" />
-                                            <span>{display}</span>
+                                            <span>Mốc sinh: {display}</span>
                                           </div>
                                         </div>
                                       ) : null;
@@ -3862,6 +4226,41 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                           {item.content}
                                         </p>
 
+                                        {/* Gợi ý mốc tuổi & mốc sinh (chỉ có điểm quyền lực phù hợp mới xem được) */}
+                                        {(() => {
+                                          const cfg = item.ageConfig as any;
+                                          if (item.type !== "Age" || !cfg) return null;
+                                          const valBefore = typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
+                                          const valAfter = typeof cfg.value === "number" ? cfg.value : null;
+                                          if (valBefore === null && valAfter === null) return null;
+
+                                          const calcDate = (val: number) => {
+                                            const d = new Date();
+                                            if (cfg.unit === "months") d.setMonth(d.getMonth() - val);
+                                            else d.setFullYear(d.getFullYear() - val);
+                                            return d.toLocaleDateString("vi-VN");
+                                          };
+
+                                          const dateBefore = valBefore !== null ? calcDate(valBefore) : null;
+                                          const dateAfter = valAfter !== null ? calcDate(valAfter) : null;
+
+                                          const display = [dateAfter, dateBefore].filter(Boolean).join(" – ");
+
+                                          return display && canSeeAgeContraindications ? (
+                                            <div className="mt-2">
+                                              <div className={cn(
+                                                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold",
+                                                isDarkMode
+                                                  ? "bg-slate-800 border-slate-700 text-slate-300"
+                                                  : "bg-white border-slate-200 text-slate-600 shadow-xs",
+                                              )}>
+                                                <Calendar size={11} className="shrink-0 text-amber-500" />
+                                                <span>Mốc sinh: {display}</span>
+                                              </div>
+                                            </div>
+                                          ) : null;
+                                        })()}
+
                                         {/* Gợi ý ICD-10 */}
                                         {canSeeIcdSuggestions &&
                                           item.icd10s &&
@@ -3940,7 +4339,94 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {/* Khả năng sinh sản */}
+                          <div
+                            className={cn(
+                              "p-5 rounded-2xl border shadow-sm",
+                              isDarkMode
+                                ? "bg-purple-900/10 border-purple-900/20"
+                                : "bg-purple-50 border-purple-100",
+                            )}
+                          >
+                            {(() => {
+                              const storedValue = drug.fertility || "";
+                              const match = storedValue.match(
+                                /^([^-\n\r]+)(?:\s*-\s*(.*))?$/,
+                              );
+                              const status = match ? match[1].trim() : "";
+                              const notes =
+                                match && match[2]
+                                  ? match[2].trim()
+                                  : storedValue
+                                    ? storedValue
+                                    : "";
+                              const hasValidStatus = [
+                                "Có thể dùng",
+                                "Cân nhắc lợi hại",
+                                "Không nên dùng",
+                                "Không có dữ liệu",
+                              ].includes(status);
+                              const canShowStatusBadge =
+                                canSeeQuickSelectTags && hasValidStatus;
+                              const displayStatus = canShowStatusBadge
+                                ? status
+                                : "";
+                              const displayNotes = canShowStatusBadge
+                                ? notes
+                                : storedValue;
+
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between gap-2 mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <Sparkles
+                                        className="text-purple-500 shadow-sm shrink-0"
+                                        size={18}
+                                      />
+                                      <h6 className="text-[10px] font-black uppercase text-purple-600 leading-none">
+                                        Khả năng sinh sản
+                                      </h6>
+                                    </div>
+                                    {displayStatus && (
+                                      <span
+                                        className={cn(
+                                          "px-2 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider border",
+                                          displayStatus === "Không nên dùng"
+                                            ? isDarkMode
+                                              ? "bg-rose-950/40 border-rose-900/30 text-rose-400"
+                                              : "bg-rose-50 border-rose-100 text-rose-700"
+                                            : displayStatus === "Có thể dùng"
+                                              ? isDarkMode
+                                                ? "bg-blue-950/40 border-blue-900/30 text-blue-400"
+                                                : "bg-blue-50 border-blue-100 text-blue-700"
+                                              : displayStatus === "Không có dữ liệu"
+                                                ? isDarkMode
+                                                  ? "bg-slate-800 border-slate-700 text-slate-400"
+                                                  : "bg-slate-100 border-slate-200 text-slate-600"
+                                                : isDarkMode
+                                                  ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
+                                                  : "bg-amber-50 border-amber-100 text-amber-700",
+                                        )}
+                                      >
+                                        {displayStatus}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p
+                                    className={cn(
+                                      "text-[11px] leading-relaxed font-medium",
+                                      isDarkMode ? "text-white" : "text-black",
+                                    )}
+                                  >
+                                    {displayNotes || "Không có thông tin."}
+                                  </p>
+                                </>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Phụ nữ có thai */}
                           <div
                             className={cn(
                               "p-5 rounded-2xl border shadow-sm",
@@ -4079,6 +4565,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             })()}
                           </div>
 
+                          {/* Phụ nữ cho con bú */}
                           <div
                             className={cn(
                               "p-5 rounded-2xl border shadow-sm",
@@ -4103,6 +4590,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 "Có thể dùng",
                                 "Cân nhắc lợi hại",
                                 "Không nên dùng",
+                                "Không có dữ liệu",
                               ].includes(status);
                               const canShowStatusBadge =
                                 canSeeQuickSelectTags && hasValidStatus;
@@ -4137,9 +4625,13 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               ? isDarkMode
                                                 ? "bg-blue-950/40 border-blue-900/30 text-blue-400"
                                                 : "bg-blue-50 border-blue-100 text-blue-700"
-                                              : isDarkMode
-                                                ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
-                                                : "bg-amber-50 border-amber-100 text-amber-700",
+                                              : displayStatus === "Không có dữ liệu"
+                                                ? isDarkMode
+                                                  ? "bg-slate-800 border-slate-700 text-slate-400"
+                                                  : "bg-slate-100 border-slate-200 text-slate-600"
+                                                : isDarkMode
+                                                  ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
+                                                  : "bg-amber-50 border-amber-100 text-amber-700",
                                         )}
                                       >
                                         {displayStatus}
@@ -4159,6 +4651,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             })()}
                           </div>
 
+                          {/* Lái xe & Vận hành máy móc */}
                           <div
                             className={cn(
                               "p-5 rounded-2xl border shadow-sm",
@@ -4183,6 +4676,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 "Có thể dùng",
                                 "Cân nhắc lợi hại",
                                 "Không nên dùng",
+                                "Không có dữ liệu",
                               ].includes(status);
                               const canShowStatusBadge =
                                 canSeeQuickSelectTags && hasValidStatus;
@@ -4217,9 +4711,13 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                               ? isDarkMode
                                                 ? "bg-blue-950/40 border-blue-900/30 text-blue-400"
                                                 : "bg-blue-50 border-blue-100 text-blue-700"
-                                              : isDarkMode
-                                                ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
-                                                : "bg-amber-50 border-amber-100 text-amber-700",
+                                              : displayStatus === "Không có dữ liệu"
+                                                ? isDarkMode
+                                                  ? "bg-slate-800 border-slate-700 text-slate-400"
+                                                  : "bg-slate-100 border-slate-200 text-slate-600"
+                                                : isDarkMode
+                                                  ? "bg-amber-950/40 border-amber-900/30 text-amber-400"
+                                                  : "bg-amber-50 border-amber-100 text-amber-700",
                                         )}
                                       >
                                         {displayStatus}
