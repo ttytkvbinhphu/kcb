@@ -309,8 +309,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             }
           }}
           className={cn(
-            "w-full flex items-center gap-2 px-2 py-2 rounded-lg transition-all duration-300 overflow-hidden",
-            isCollapsed ? "justify-center" : "px-2",
+            "w-full flex items-center gap-2 py-2 rounded-lg transition-all duration-300 overflow-hidden",
+            isCollapsed ? "justify-center px-0 gap-0" : "px-2",
             isEditMode && "border border-dashed border-primary/30 bg-primary/5",
             isActive
               ? (isAdminMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" :
@@ -318,7 +318,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               : (isDarkMode ? "text-slate-400 hover:bg-slate-800 hover:text-white" : "text-slate-500 hover:bg-primary-light/50 hover:text-primary")
           )}
         >
-          <div className={cn("flex items-center gap-2 min-w-0 flex-1 overflow-hidden", isCollapsed ? "justify-center" : "")}>
+          <div className={cn("flex items-center min-w-0 transition-all duration-300", isCollapsed ? "justify-center flex-none w-full gap-0" : "flex-1 gap-2 overflow-hidden")}>
             <div className={cn(
               "flex items-center justify-center shrink-0 transition-all duration-300",
               isCollapsed ? "w-9 h-9 rounded-xl" : "w-6 h-6",
@@ -337,7 +337,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <span className={cn(
               "font-bold text-[14px] whitespace-nowrap transition-all duration-300 ease-in-out truncate overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
+              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
             )}>
               {item.label}
             </span>
@@ -345,7 +345,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <div className={cn(
             "flex items-center gap-1.5 shrink-0 ml-auto transition-all duration-300 ease-in-out overflow-hidden",
-            isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[100px]"
+            isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[100px]"
           )}>
             {isMaintenance && !isAdminMode && (
               <div className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tighter whitespace-nowrap">
@@ -565,8 +565,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 setActiveTab('dashboard');
               }}
               className={cn(
-                "w-full p-2 rounded-lg border flex items-center gap-2 transition-all duration-300 group/back mb-3 overflow-hidden",
-                isCollapsed ? "justify-center" : "",
+                "w-full p-2 rounded-lg border flex items-center transition-all duration-300 group/back mb-3 overflow-hidden",
+                isCollapsed ? "justify-center px-0 gap-0" : "gap-2",
                 isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
               )}
               title={isCollapsed ? "Thoát AdminCP" : undefined}
@@ -576,7 +576,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <span className={cn(
                 "text-[14px] font-black uppercase tracking-widest text-rose-500 truncate whitespace-nowrap transition-all duration-300 ease-in-out overflow-hidden",
-                isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
+                isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
               )}>
                 Thoát AdminCP
               </span>
@@ -590,8 +590,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               window.dispatchEvent(new CustomEvent('reset-profile-view'));
             }}
             className={cn(
-              "w-full p-2.5 rounded-xl border flex items-center gap-2.5 transition-all duration-300 group/profile mb-2 overflow-hidden",
-              isCollapsed ? "justify-center" : "",
+              "w-full p-2.5 rounded-xl border flex items-center transition-all duration-300 group/profile mb-2 overflow-hidden",
+              isCollapsed ? "justify-center px-0 gap-0" : "gap-2.5",
               isOwnProfileActive
                 ? "bg-primary text-white border-primary shadow-lg shadow-primary/25 ring-2 ring-primary/30"
                 : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80 text-slate-300" : "bg-white border-slate-100 shadow-sm hover:border-slate-200 hover:bg-slate-50 text-slate-900")
@@ -618,7 +618,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
             <div className={cn(
               "flex-1 min-w-0 text-left whitespace-nowrap transition-all duration-300 ease-in-out overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
+              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
             )}>
               <p className={cn(
                 "text-[9px] font-black uppercase tracking-wider truncate",
@@ -638,30 +638,30 @@ const Sidebar: React.FC<SidebarProps> = ({
         
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-6 mt-2">
           <div>
-            <div className={cn("px-2 mb-2 flex items-center gap-2 overflow-hidden transition-all duration-300", isCollapsed ? "justify-center" : "")}>
-              <div className={cn(
-                "h-px flex-1 transition-all duration-300", 
-                isCollapsed ? "opacity-0 w-0 flex-none" : "opacity-100",
-                isAdminMode 
-                  ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
-                  : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
-              )} />
-              <p className={cn(
-                "text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap transition-all duration-300 ease-in-out",
-                isAdminMode 
-                  ? (isDarkMode ? "text-indigo-400" : "text-indigo-500") 
-                  : (isDarkMode ? "text-slate-500" : "text-slate-400")
-              )}>
-                {isCollapsed ? "•" : (isAdminMode ? "Admin Control Panel" : "Tính năng Y tế")}
-              </p>
-              <div className={cn(
-                "h-px flex-1 transition-all duration-300", 
-                isCollapsed ? "opacity-0 w-0 flex-none" : "opacity-100",
-                isAdminMode 
-                  ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
-                  : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
-              )} />
-            </div>
+            {!isCollapsed && (
+              <div className="px-2 mb-2 flex items-center gap-2 overflow-hidden transition-all duration-300">
+                <div className={cn(
+                  "h-px flex-1 transition-all duration-300", 
+                  isAdminMode 
+                    ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
+                    : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
+                )} />
+                <p className={cn(
+                  "text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap transition-all duration-300 ease-in-out",
+                  isAdminMode 
+                    ? (isDarkMode ? "text-indigo-400" : "text-indigo-500") 
+                    : (isDarkMode ? "text-slate-500" : "text-slate-400")
+                )}>
+                  {isAdminMode ? "Admin Control Panel" : "Tính năng Y tế"}
+                </p>
+                <div className={cn(
+                  "h-px flex-1 transition-all duration-300", 
+                  isAdminMode 
+                    ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
+                    : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
+                )} />
+              </div>
+            )}
             <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="space-y-0.5">
               {items.map(renderItem)}
             </Reorder.Group>
@@ -692,8 +692,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             id="sidebar-user-guide-card"
             onClick={onOpenUserGuide}
             className={cn(
-              "p-2.5 rounded-xl border transition-all duration-300 cursor-pointer group flex items-center gap-2 overflow-hidden relative",
-              isCollapsed ? "justify-center p-2" : "",
+              "p-2.5 rounded-xl border transition-all duration-300 cursor-pointer group flex items-center overflow-hidden relative",
+              isCollapsed ? "justify-center p-2 gap-0 px-0" : "gap-2",
               isDarkMode 
                 ? "bg-slate-900/40 hover:bg-slate-900/80 border-slate-800 text-white" 
                 : "bg-indigo-50/40 hover:bg-indigo-50/70 border-indigo-100/30 text-slate-900"
@@ -712,7 +712,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <div className={cn(
               "min-w-0 flex-1 transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
+              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
             )}>
               <p className={cn(
                 "text-[10px] font-black uppercase tracking-wider leading-none",
@@ -739,8 +739,8 @@ const Sidebar: React.FC<SidebarProps> = ({
               }
             }}
             className={cn(
-              "w-full px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center gap-2 transition-all duration-300 overflow-hidden cursor-pointer group",
-              isCollapsed ? "justify-center" : "",
+              "w-full px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center transition-all duration-300 overflow-hidden cursor-pointer group",
+              isCollapsed ? "justify-center px-0 gap-0" : "gap-2",
               activeTab === 'admin_version' 
                 ? "bg-primary/10 text-primary border border-primary/20"
                 : isDarkMode 
@@ -756,7 +756,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <History size={12} className={cn("shrink-0 transition-transform group-hover:scale-110", activeTab === 'admin_version' ? "text-primary" : "text-primary")} />
             <div className={cn(
               "flex-1 flex items-center justify-between min-w-0 whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none" : "opacity-100 max-w-[180px]"
+              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
             )}>
               <span className="text-[10px] font-black uppercase tracking-tight leading-none">Phiên bản</span>
               <span className="truncate text-[10px] leading-tight font-black opacity-60 ml-2 group-hover:opacity-100">{latestVersion?.versionName || 'v1.0.0'}</span>

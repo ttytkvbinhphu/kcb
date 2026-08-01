@@ -12,6 +12,7 @@ export interface Drug {
   mechanismOfAction?: string; // Cơ chế tác dụng chung của thuốc
   mechanismOfActionLabel?: string; // Tùy chỉnh tiêu đề của cơ chế tác dụng
   pharmacology?: string; // Thông tin dược lý chi tiết
+  pharmacologicalGroup?: string; // Nhóm dược lý
   indications: { title?: string; content: string; icd10s?: string[]; doubleIcd10s?: { dagger: string; asterisk: string }[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[]; notRecommendedIcd10s?: string[]; betterAlternativeIcd10s?: string[]; isRecommended?: boolean; isNotRecommended?: boolean; }[];
   contraindications: { 
     content: string; 
@@ -265,6 +266,7 @@ export interface UserProfile {
   zalo?: string;
   hideZalo?: boolean;
   hasSeenWelcome?: boolean;
+  hasSeenQuickAccountWarning?: boolean;
   isHidden?: boolean;
   pinnedIcdCodes?: string[];
   workspaceIcdCodes?: string[];
@@ -567,7 +569,7 @@ export interface Staff {
   fullName: string;
   staffAccount?: string; // Tài khoản nhân sự
   username?: string; // Tên đăng nhập nhân sự
-  type: 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng';
+  type: 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng' | 'Y sĩ' | 'Kỹ thuật viên' | 'Không' | string;
   gender: 'Nam' | 'Nữ';
   dob: string;
   address?: string;
@@ -580,6 +582,8 @@ export interface Staff {
   role?: string; // Vai trò hệ thống
   isActive: boolean;
   createdAt: string;
+  quickLoginCount?: number; // Số lần truy cập tài khoản nhanh
+  lastQuickLoginAt?: string; // Thời gian truy cập tài khoản nhanh gần nhất
 }
 
 export interface CalendarEvent {
@@ -654,9 +658,12 @@ export interface Announcement {
 export interface AuthLog {
   id: string;
   userId: string;
+  staffId?: string;
+  staffAccount?: string;
   userEmail: string;
   userName: string;
   type: 'login' | 'logout';
+  loginType?: 'quick_account' | 'google' | 'system' | string;
   timestamp: string;
   ipAddress?: string;
   macAddress?: string;
@@ -706,4 +713,12 @@ export interface VersionLog {
   readBy?: string[];
   createdBy: string;
   createdAt: string;
+}
+
+export interface QuickAccountWarningConfig {
+  enabled: boolean;
+  title: string;
+  content: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }

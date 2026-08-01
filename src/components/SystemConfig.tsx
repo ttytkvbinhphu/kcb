@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -128,6 +129,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [roles, setRoles] = useState<ConfigItem[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [titlePermissions, setTitlePermissions] = useState<TitlePermission[]>([]);
+  const [allStaff, setAllStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [newItemName, setNewItemName] = useState('');
@@ -174,6 +176,14 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const [drugSearchQuery, setDrugSearchQuery] = useState('');
   const [isSavingReg, setIsSavingReg] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+
+  // Quick Account First Login Warning states
+  const [notifSubTab, setNotifSubTab] = useState<'general' | 'quick_warn'>('general');
+  const [quickWarnEnabled, setQuickWarnEnabled] = useState(true);
+  const [quickWarnTitle, setQuickWarnTitle] = useState('⚠️ CẢNH BÁO TÀI KHOẢN NHANH');
+  const [quickWarnContent, setQuickWarnContent] = useState('Bạn đang sử dụng **Tài khoản nhanh** (tài khoản dùng chung/tạm thời trên hệ thống).\n\n⚠️ **Vui lòng lưu ý:**\n1. **Không lưu trữ dữ liệu cá nhân nhạy cảm:** Mọi thông tin trên tài khoản này có thể được chia sẻ hoặc quản lý bởi hệ thống.\n2. **Khuyên dùng tài khoản cá nhân:** Đăng ký hoặc sử dụng tài khoản chính thức để bảo vệ quyền lợi và dữ liệu công việc của bạn.\n3. **Cập nhật thông tin:** Bạn có thể đổi tên hiển thị, mật khẩu hoặc cập nhật tài khoản bất kỳ lúc nào trong Trang cá nhân.');
+  const [isSavingQuickWarn, setIsSavingQuickWarn] = useState(false);
+  const [quickWarnSaveSuccess, setQuickWarnSaveSuccess] = useState(false);
 
   // Announcement editing state
   const [editingAnnouncement, setEditingAnnouncement] = useState<any | null>(null);
@@ -272,6 +282,17 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       handleFirestoreError(error, OperationType.GET, 'announcements');
     });
 
+    const unsubQuickWarn = onSnapshot(doc(db, 'system_config', 'quick_account_warning'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        if (data.enabled !== undefined) setQuickWarnEnabled(data.enabled);
+        if (data.title !== undefined) setQuickWarnTitle(data.title);
+        if (data.content !== undefined) setQuickWarnContent(data.content);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_config/quick_account_warning');
+    });
+
     const unsubAuthLogs = onSnapshot(
       query(collection(db, 'auth_logs'), orderBy('timestamp', 'desc'), limit(50)),
       (snapshot) => {
@@ -332,6 +353,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       unsubFeatures();
       unsubReg();
       unsubAnnouncements();
+      unsubQuickWarn();
       unsubAuthLogs();
       unsubGuestLogs();
       unsubPendingUsers();
@@ -339,6 +361,25 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       unsubGuide();
     };
   }, []);
+
+  const saveQuickWarnConfig = async () => {
+    setIsSavingQuickWarn(true);
+    try {
+      await setDoc(doc(db, 'system_config', 'quick_account_warning'), {
+        enabled: quickWarnEnabled,
+        title: quickWarnTitle.trim() || '⚠️ CẢNH BÁO TÀI KHOẢN NHANH',
+        content: quickWarnContent.trim(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: uid
+      }, { merge: true });
+      setQuickWarnSaveSuccess(true);
+      setTimeout(() => setQuickWarnSaveSuccess(false), 3000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'system_config/quick_account_warning');
+    } finally {
+      setIsSavingQuickWarn(false);
+    }
+  };
 
   const updateFeatureState = async (featureId: string, state: 'open' | 'closed' | 'maintenance') => {
     const newStates = { ...featureStates, [featureId]: state };
@@ -494,6 +535,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     const unsubTitlePerms = onSnapshot(collection(db, 'title_permissions'), (snapshot) => {
       setTitlePermissions(snapshot.docs.map(doc => doc.data() as TitlePermission));
     });
+    const unsubStaff = onSnapshot(collection(db, 'staff'), (snapshot) => {
+      setAllStaff(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     setLoading(false);
     return () => {
@@ -504,8 +548,75 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       unsubRoles();
       unsubPerms();
       unsubTitlePerms();
+      unsubStaff();
     };
   }, []);
+
+  const getItemMemberCount = (itemName: string, category: string) => {
+    const normName = itemName.trim().toLowerCase();
+    
+    if (category === 'titles') {
+      const staffCount = allStaff.filter(s => {
+        const title = (s.title || s.type || '').toLowerCase();
+        return title === normName || title.includes(normName);
+      }).length;
+
+      const userCount = allUsers.filter(u => {
+        const title = (u.title || '').toLowerCase();
+        const inStaff = allStaff.some(s => s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase());
+        return !inStaff && (title === normName || title.includes(normName));
+      }).length;
+
+      return staffCount + userCount;
+    }
+
+    if (category === 'positions') {
+      const staffCount = allStaff.filter(s => {
+        const pos = (s.position || '').toLowerCase();
+        return pos === normName || pos.includes(normName);
+      }).length;
+
+      const userCount = allUsers.filter(u => {
+        const pos = (u.position || '').toLowerCase();
+        const inStaff = allStaff.some(s => s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase());
+        return !inStaff && (pos === normName || pos.includes(normName));
+      }).length;
+
+      return staffCount + userCount;
+    }
+
+    if (category === 'specialties') {
+      const staffCount = allStaff.filter(s => {
+        const spec = (s.specialty || '').toLowerCase();
+        return spec === normName || spec.includes(normName);
+      }).length;
+
+      const userCount = allUsers.filter(u => {
+        const spec = (u.specialty || '').toLowerCase();
+        const inStaff = allStaff.some(s => s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase());
+        return !inStaff && (spec === normName || spec.includes(normName));
+      }).length;
+
+      return staffCount + userCount;
+    }
+
+    if (category === 'departments') {
+      const staffCount = allStaff.filter(s => {
+        const dept = (s.department || '').toLowerCase();
+        return dept === normName || dept.includes(normName);
+      }).length;
+
+      const userCount = allUsers.filter(u => {
+        const dept = (u.department || '').toLowerCase();
+        const inStaff = allStaff.some(s => s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase());
+        return !inStaff && (dept === normName || dept.includes(normName));
+      }).length;
+
+      return staffCount + userCount;
+    }
+
+    return 0;
+  };
 
   const togglePermission = async (id: string, tabId: string) => {
     const isRole = permissionType === 'role';
@@ -576,6 +687,42 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       setConfirmDelete(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${id}`);
+    }
+  };
+
+  const moveItemOrder = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentItems.length) return;
+
+    const collectionName = `config_${effectiveCategory}`;
+    const newList = [...currentItems];
+    const temp = newList[index];
+    newList[index] = newList[targetIndex];
+    newList[targetIndex] = temp;
+
+    try {
+      const updatePromises = newList.map((item, idx) => {
+        if (item.order !== idx) {
+          return setDoc(doc(db, collectionName, item.id), { ...item, order: idx }, { merge: true });
+        }
+        return Promise.resolve();
+      });
+      await Promise.all(updatePromises);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, collectionName);
+    }
+  };
+
+  const sortAlphabetically = async () => {
+    const collectionName = `config_${effectiveCategory}`;
+    const sorted = [...currentItems].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+    try {
+      const updatePromises = sorted.map((item, idx) =>
+        setDoc(doc(db, collectionName, item.id), { ...item, order: idx }, { merge: true })
+      );
+      await Promise.all(updatePromises);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, collectionName);
     }
   };
 
@@ -2526,11 +2673,50 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           )}
 
           {activeCategory === 'notifications' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="space-y-6">
+              {/* Sub-navigation tabs for Notifications category */}
               <div className={cn(
-                "lg:col-span-1 p-8 rounded-[32px] border-2 transition-all h-fit",
-                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                "flex items-center gap-2 p-1.5 rounded-2xl border w-fit",
+                isDarkMode ? "bg-slate-900/60 border-slate-800" : "bg-slate-100/80 border-slate-200/80"
               )}>
+                <button
+                  type="button"
+                  onClick={() => setNotifSubTab('general')}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
+                    notifSubTab === 'general'
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
+                      : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                  )}
+                >
+                  <MessageSquare size={15} /> Thông báo hệ thống & Tin nhắn
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNotifSubTab('quick_warn')}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 relative cursor-pointer",
+                    notifSubTab === 'quick_warn'
+                      ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black"
+                      : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-600 hover:text-slate-900")
+                  )}
+                >
+                  <ShieldAlert size={15} className={notifSubTab === 'quick_warn' ? 'text-slate-950' : 'text-amber-500'} /> 
+                  Cảnh báo "Tài khoản nhanh" (Lần đầu)
+                  {quickWarnEnabled && (
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse ml-0.5" />
+                  )}
+                </button>
+              </div>
+
+              {/* TAB 1: GENERAL ANNOUNCEMENTS */}
+              {notifSubTab === 'general' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className={cn(
+                    "lg:col-span-1 p-8 rounded-[32px] border-2 transition-all h-fit",
+                    isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+                  )}>
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6 flex items-center gap-2">
                   <MessageSquare size={18} /> Tạo thông báo mới
                 </h3>
@@ -3119,6 +3305,175 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               </div>
             </div>
           )}
+
+          {/* TAB 2: QUICK ACCOUNT FIRST LOGIN WARNING CONFIG & PREVIEW */}
+          {notifSubTab === 'quick_warn' && (
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+              {/* Left Form: Configuration */}
+              <div className={cn(
+                "xl:col-span-6 p-6 sm:p-8 rounded-[32px] border-2 transition-all space-y-6",
+                isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
+              )}>
+                <div className="flex items-center justify-between border-b pb-4 border-slate-500/10">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-amber-500/15 rounded-2xl text-amber-500 border border-amber-500/20">
+                      <ShieldAlert size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-wider">Cấu hình Cảnh báo Lần đầu</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Hiển thị cho "Tài khoản nhanh" khi lần đầu đăng nhập</p>
+                    </div>
+                  </div>
+
+                  {/* Enable/Disable Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setQuickWarnEnabled(!quickWarnEnabled)}
+                    className={cn(
+                      "px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer border",
+                      quickWarnEnabled
+                        ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                        : (isDarkMode ? "bg-slate-800 text-slate-500 border-slate-700" : "bg-slate-100 text-slate-400 border-slate-200")
+                    )}
+                  >
+                    <div className={cn("w-2.5 h-2.5 rounded-full", quickWarnEnabled ? "bg-amber-500 animate-pulse" : "bg-slate-400")} />
+                    {quickWarnEnabled ? "Đang bật" : "Đã tắt"}
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Tiêu đề */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center gap-1.5">
+                      <Type size={12} /> Tiêu đề thông báo cảnh báo
+                    </label>
+                    <input
+                      type="text"
+                      value={quickWarnTitle}
+                      onChange={(e) => setQuickWarnTitle(e.target.value)}
+                      placeholder="VD: ⚠️ CẢNH BÁO TÀI KHOẢN NHANH"
+                      className={cn(
+                        "w-full px-4 py-3 rounded-2xl text-xs font-bold border transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/30",
+                        isDarkMode ? "bg-slate-800/80 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                      )}
+                    />
+                  </div>
+
+                  {/* Nội dung cảnh báo */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5"><FileText size={12} /> Nội dung cảnh báo (Hỗ trợ Markdown)</span>
+                      <span className="text-[9px] text-slate-400 font-normal">Sử dụng **đậm**, 1. 2. danh sách, v.v.</span>
+                    </label>
+                    <AutoExpandingTextarea
+                      value={quickWarnContent}
+                      onChange={(e) => setQuickWarnContent(e.target.value)}
+                      placeholder="Nhập nội dung cảnh báo chi tiết..."
+                      rows={8}
+                      className={cn(
+                        "w-full px-4 py-3 rounded-2xl text-xs font-medium border transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/30 leading-relaxed",
+                        isDarkMode ? "bg-slate-800/80 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                      )}
+                    />
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="pt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={saveQuickWarnConfig}
+                      disabled={isSavingQuickWarn}
+                      className="flex-1 py-3 px-6 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingQuickWarn ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : quickWarnSaveSuccess ? (
+                        <CheckCircle2 size={16} className="text-slate-950" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      {quickWarnSaveSuccess ? "Đã lưu thành công!" : "Lưu cấu hình Cảnh báo"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickWarnTitle('⚠️ CẢNH BÁO TÀI KHOẢN NHANH');
+                        setQuickWarnContent('Bạn đang sử dụng **Tài khoản nhanh** (tài khoản dùng chung/tạm thời trên hệ thống).\n\n⚠️ **Vui lòng lưu ý:**\n1. **Không lưu trữ dữ liệu cá nhân nhạy cảm:** Mọi thông tin trên tài khoản này có thể được chia sẻ hoặc quản lý bởi hệ thống.\n2. **Khuyên dùng tài khoản cá nhân:** Đăng ký hoặc sử dụng tài khoản chính thức để bảo vệ quyền lợi và dữ liệu công việc của bạn.\n3. **Cập nhật thông tin:** Bạn có thể đổi tên hiển thị, mật khẩu hoặc cập nhật tài khoản bất kỳ lúc nào trong Trang cá nhân.');
+                      }}
+                      className={cn(
+                        "py-3 px-4 rounded-2xl text-xs font-bold transition-all border cursor-pointer",
+                        isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700" : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
+                      )}
+                      title="Khôi phục mẫu mặc định"
+                    >
+                      Mặc định
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Preview Box */}
+              <div className={cn(
+                "xl:col-span-6 p-6 sm:p-8 rounded-[32px] border-2 transition-all space-y-4 flex flex-col justify-between",
+                isDarkMode ? "bg-slate-900/40 border-slate-800" : "bg-slate-50/60 border-slate-200/80"
+              )}>
+                <div>
+                  <div className="flex items-center justify-between mb-4 border-b pb-3 border-slate-500/10">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                      <Eye size={16} className="text-indigo-500" /> Xem trước giao diện người dùng nhận được
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500">
+                      Live Preview
+                    </span>
+                  </div>
+
+                  {/* Mock Modal Box */}
+                  <div className={cn(
+                    "rounded-3xl border p-6 shadow-xl relative overflow-hidden transition-all",
+                    isDarkMode ? "bg-slate-900 border-amber-500/30 text-white" : "bg-white border-amber-200 text-slate-900"
+                  )}>
+                    {/* Header preview */}
+                    <div className="flex items-center gap-3.5 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">
+                        <AlertTriangle size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 inline-block mb-1">
+                          Đăng nhập lần đầu • Tài khoản Nhanh
+                        </span>
+                        <h4 className="text-sm font-black truncate">
+                          {quickWarnTitle || '⚠️ CẢNH BÁO TÀI KHOẢN NHANH'}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Content Preview */}
+                    <div className={cn(
+                      "p-4 rounded-xl border text-xs leading-relaxed space-y-2 max-h-60 overflow-y-auto mb-4",
+                      isDarkMode ? "bg-slate-800/80 border-slate-700 text-slate-200" : "bg-amber-50/50 border-amber-100 text-slate-800"
+                    )}>
+                      <div className="prose prose-xs dark:prose-invert max-w-none">
+                        <ReactMarkdown>{quickWarnContent || ''}</ReactMarkdown>
+                      </div>
+                    </div>
+
+                    {/* Mock Action Button */}
+                    <div className="w-full py-3 px-4 bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl text-center shadow-md flex items-center justify-center gap-2">
+                      <CheckCircle2 size={16} /> Tôi đã hiểu & Đã đọc cảnh báo
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-indigo-500 font-medium leading-relaxed flex items-center gap-2.5">
+                  <Info size={18} className="shrink-0" />
+                  <span>Khi người dùng đăng nhập bằng Tài khoản Nhanh lần đầu tiên, cửa sổ cảnh báo này sẽ hiển thị trung tâm màn hình và yêu cầu xác nhận trước khi truy cập ứng dụng.</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
           {activeCategory === 'general' && (
             <div className="space-y-8">
@@ -4408,6 +4763,35 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </button>
                   </div>
 
+                  {['titles', 'positions', 'specialties', 'departments'].includes(effectiveCategory) && (
+                    <div className={cn(
+                      "flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl mb-2 border",
+                      isDarkMode ? "bg-indigo-900/10 border-indigo-900/30" : "bg-indigo-50/80 border-indigo-100"
+                    )}>
+                      <div className="flex items-center gap-2">
+                        <ArrowUpDown className="text-indigo-500 shrink-0" size={16} />
+                        <p className={cn("text-[11px] font-bold leading-tight", isDarkMode ? "text-indigo-300" : "text-indigo-800")}>
+                          <b>Sắp xếp thứ tự hiển thị</b> — Sử dụng nút mũi tên ↑ ↓ để di chuyển thứ tự ưu tiên hiển thị của các {effectiveCategory === 'titles' ? 'chức danh' : effectiveCategory === 'positions' ? 'chức vụ' : effectiveCategory === 'specialties' ? 'chuyên khoa' : 'khoa/phòng'}.
+                        </p>
+                      </div>
+                      {currentItems.length > 1 && (
+                        <button
+                          onClick={sortAlphabetically}
+                          title="Sắp xếp danh sách theo bảng chữ cái A-Z"
+                          className={cn(
+                            "px-3 py-1.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 self-start sm:self-auto border cursor-pointer",
+                            isDarkMode
+                              ? "bg-indigo-950/50 border-indigo-800/50 text-indigo-300 hover:bg-indigo-900/50 hover:text-white"
+                              : "bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-600 hover:text-white shadow-xs"
+                          )}
+                        >
+                          <ArrowUpDown size={12} />
+                          Sắp xếp A-Z
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {effectiveCategory === 'roles' && (
                     <div className={cn(
                       "flex items-center gap-2 px-4 py-3 rounded-2xl mb-2 border",
@@ -4460,9 +4844,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               ) : (
                                 <div className="flex flex-col min-w-0">
                                   <span className={cn("font-bold truncate", isDarkMode ? "text-white" : "text-slate-900")}>{item.name}</span>
-                                  {effectiveCategory === 'departments' && (
-                                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-wider">
-                                      {allUsers.filter(u => u.department === item.name).length} nhân sự
+                                  {['titles', 'positions', 'specialties', 'departments'].includes(effectiveCategory) && (
+                                    <span className="text-[10px] font-black uppercase text-indigo-500 tracking-wider flex items-center gap-1 mt-0.5">
+                                      <Users size={11} className="shrink-0" />
+                                      {getItemMemberCount(item.name, effectiveCategory)} nhân sự
                                     </span>
                                   )}
                                 </div>
@@ -4507,6 +4892,40 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                           isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700"
                                         )}
                                       />
+                                    </div>
+                                  )}
+                                  {!editingItem && ['titles', 'positions', 'specialties', 'departments'].includes(effectiveCategory) && (
+                                    <div className="flex items-center gap-1 shrink-0 mr-1">
+                                      <button
+                                        disabled={index === 0}
+                                        onClick={() => moveItemOrder(index, 'up')}
+                                        title="Di chuyển lên"
+                                        className={cn(
+                                          "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                          index === 0
+                                            ? "opacity-20 cursor-not-allowed border-transparent text-slate-400"
+                                            : (isDarkMode
+                                                ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-500"
+                                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 shadow-xs")
+                                        )}
+                                      >
+                                        <ChevronUp size={15} />
+                                      </button>
+                                      <button
+                                        disabled={index === currentItems.length - 1}
+                                        onClick={() => moveItemOrder(index, 'down')}
+                                        title="Di chuyển xuống"
+                                        className={cn(
+                                          "p-1.5 rounded-lg border transition-all cursor-pointer",
+                                          index === currentItems.length - 1
+                                            ? "opacity-20 cursor-not-allowed border-transparent text-slate-400"
+                                            : (isDarkMode
+                                                ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-500"
+                                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 shadow-xs")
+                                        )}
+                                      >
+                                        <ChevronDown size={15} />
+                                      </button>
                                     </div>
                                   )}
                                   <button

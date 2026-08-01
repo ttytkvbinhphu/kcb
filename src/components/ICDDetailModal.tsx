@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ClipboardList, Info, Pill, BookOpen, AlertCircle, Check } from 'lucide-react';
+import { X, ClipboardList, Info, Pill, BookOpen, AlertCircle, Check, Star, Copy } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface ICDDetailModalProps {
@@ -21,7 +21,7 @@ interface ICDDetailModalProps {
     chapterName?: string;
     blockName?: string;
   } | null;
-  suggestions: string[];
+  suggestions: Array<string | { drugName: string; status?: 'default' | 'alternative' | 'not_recommended' | 'normal'; isPrimary?: boolean }>;
   isDarkMode?: boolean;
   onShowDrugDetail?: (drugName: string) => void;
 }
@@ -34,6 +34,23 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
   isDarkMode = false,
   onShowDrugDetail
 }) => {
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleCopyCode = (text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text);
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 1500);
+  };
+
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -84,12 +101,22 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                     Chi tiết mã ICD-10
                   </h3>
                   <div className="flex items-center gap-2">
-                    <span className={cn(
-                      "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border",
-                      isDarkMode ? "bg-emerald-950/40 text-emerald-450 border-emerald-500/30" : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                    )}>
-                      {icd.code}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyCode(icd.code)}
+                      title="Nhấn để sao chép mã ICD-10"
+                      className={cn(
+                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border flex items-center gap-1 cursor-pointer transition-all hover:scale-105 active:scale-95",
+                        isDarkMode ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30 hover:bg-emerald-900/50" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80"
+                      )}
+                    >
+                      <span>{icd.code}</span>
+                      {copiedCode ? (
+                        <Check size={10} className="text-emerald-500" />
+                      ) : (
+                        <Copy size={10} className="opacity-60" />
+                      )}
+                    </button>
                     {icd.isAppendixA2 && (
                       <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-indigo-600 text-white shadow-sm">
                         Không là bệnh chính
@@ -291,31 +318,91 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
 
                   {suggestions.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {suggestions.map((drugName, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => onShowDrugDetail?.(drugName)}
-                          className={cn(
-                            "group flex items-center justify-between p-4 rounded-2xl border transition-all active:scale-[0.98]",
-                            isDarkMode 
-                              ? "bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-primary/50" 
-                              : "bg-white hover:bg-slate-50 border-slate-200 hover:border-primary/30 shadow-sm"
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                              isDarkMode ? "bg-slate-700 text-slate-400 group-hover:text-primary" : "bg-slate-50 text-slate-400 group-hover:text-primary"
-                            )}>
-                              <Pill size={16} />
+                      {suggestions.map((item, idx) => {
+                        const drugName = typeof item === 'string' ? item : item.drugName;
+                        const status = typeof item === 'string' ? 'normal' : (item.status || 'normal');
+                        const isPrimary = typeof item === 'string' ? false : (item.isPrimary || false);
+
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => onShowDrugDetail?.(drugName)}
+                            title={
+                              (isPrimary ? "Chỉ định thường dùng (Sao vàng) • " : "") +
+                              (status === 'default' ? 'Khuyến khích chọn' :
+                              status === 'alternative' ? 'Chọn mã khác tốt hơn mã này' :
+                              status === 'not_recommended' ? 'Mã không khuyến khích chọn' :
+                              'Gợi ý thuốc')
+                            }
+                            className={cn(
+                              "group flex items-center justify-between p-4 rounded-2xl border transition-all active:scale-[0.98]",
+                              isPrimary
+                                ? (isDarkMode 
+                                    ? "bg-emerald-950/30 hover:bg-emerald-900/40 border-amber-400/80 ring-1 ring-amber-400/30" 
+                                    : "bg-emerald-50/70 hover:bg-emerald-100/80 border-amber-400 ring-1 ring-amber-300/50")
+                                : status === 'default'
+                                  ? (isDarkMode 
+                                      ? "bg-emerald-950/30 hover:bg-emerald-900/40 border-emerald-500/40" 
+                                      : "bg-emerald-50/70 hover:bg-emerald-100/80 border-emerald-200")
+                                  : status === 'alternative'
+                                    ? (isDarkMode 
+                                        ? "bg-amber-950/30 hover:bg-amber-900/40 border-amber-500/40" 
+                                        : "bg-amber-50/70 hover:bg-amber-100/80 border-amber-200")
+                                    : status === 'not_recommended'
+                                      ? (isDarkMode 
+                                          ? "bg-rose-950/30 hover:bg-rose-900/40 border-rose-500/40" 
+                                          : "bg-rose-50/70 hover:bg-rose-100/80 border-rose-200")
+                                      : (isDarkMode 
+                                          ? "bg-slate-800 hover:bg-slate-700 border-slate-700 hover:border-primary/50" 
+                                          : "bg-white hover:bg-slate-50 border-slate-200 hover:border-primary/30 shadow-xs")
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                isPrimary ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" :
+                                status === 'default' ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" :
+                                status === 'alternative' ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" :
+                                status === 'not_recommended' ? "bg-rose-500/20 text-rose-600 dark:text-rose-400" :
+                                (isDarkMode ? "bg-slate-700 text-slate-400 group-hover:text-primary" : "bg-slate-50 text-slate-400 group-hover:text-primary")
+                              )}>
+                                <Pill size={16} />
+                              </div>
+                              <div className="flex flex-col text-left">
+                                <div className="flex items-center gap-1.5">
+                                  {isPrimary ? (
+                                    <Star size={12} className="fill-amber-400 text-amber-400 shrink-0" />
+                                  ) : (
+                                    <span className={cn(
+                                      "w-1.5 h-1.5 rounded-full shrink-0",
+                                      status === 'default' ? "bg-emerald-500" :
+                                      status === 'alternative' ? "bg-amber-500" :
+                                      status === 'not_recommended' ? "bg-rose-500" :
+                                      "bg-slate-400"
+                                    )} />
+                                  )}
+                                  <span className={cn("text-sm font-bold", isDarkMode ? "text-slate-200" : "text-slate-900")}>
+                                    {drugName}
+                                  </span>
+                                </div>
+                                {status !== 'normal' && (
+                                  <span className={cn(
+                                    "text-[10px] font-extrabold uppercase tracking-wider mt-0.5",
+                                    status === 'default' ? "text-emerald-600 dark:text-emerald-400" :
+                                    status === 'alternative' ? "text-amber-600 dark:text-amber-400" :
+                                    "text-rose-600 dark:text-rose-400"
+                                  )}>
+                                    {status === 'default' ? 'Khuyến khích chọn' :
+                                     status === 'alternative' ? 'Chọn mã khác tốt hơn mã này' :
+                                     'Mã không khuyến khích chọn'}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span className={cn("text-sm font-bold", isDarkMode ? "text-slate-200" : "text-slate-900")}>
-                              {drugName}
-                            </span>
-                          </div>
-                          <Check size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
-                      ))}
+                            <Check size={14} className="text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className={cn(

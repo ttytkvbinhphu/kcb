@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, Globe, GraduationCap, Eye, EyeOff, MoreVertical } from 'lucide-react';
+import { 
+  Users, ShieldCheck, ShieldAlert, Trash2, Search, Mail, User as UserIcon, 
+  CheckCircle2, XCircle, Edit3, X, Save, Loader2, Phone, Briefcase, Award, 
+  Globe, GraduationCap, Eye, EyeOff, MoreVertical, ChevronRight, ChevronLeft, 
+  LayoutGrid, List, UserCheck, UserX, Stethoscope, Pill, Syringe, Microscope 
+} from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, handleFirestoreError, OperationType, query, where, getDocs } from '../firebase';
 import { UserProfile } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -20,6 +25,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<'All' | 'Chưa duyệt' | 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng' | 'Y sĩ' | 'Kỹ thuật viên' | 'Admin'>('All');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '', department: '', zalo: '' });
   
@@ -34,17 +40,31 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [systemSettings, setSystemSettings] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [activeMenuUserId, setActiveMenuUserId] = useState<string | null>(null);
+
+  // Pagination & View Mode
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(12);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    try {
+      const saved = localStorage.getItem('user_view_mode');
+      return saved === 'list' ? 'list' : 'grid';
+    } catch {
+      return 'grid';
+    }
+  });
 
   useEffect(() => {
-    const handleOutsideClick = () => {
-      setActiveMenuUserId(null);
-    };
-    document.addEventListener('click', handleOutsideClick);
-    return () => {
-      document.removeEventListener('click', handleOutsideClick);
-    };
-  }, []);
+    try {
+      localStorage.setItem('user_view_mode', viewMode);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [viewMode]);
+
+  // Reset page to 1 when search, tab, or itemsPerPage changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab, itemsPerPage]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -57,10 +77,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
 
     // Fetch config data
     const unsubTitles = onSnapshot(collection(db, 'config_titles'), (snapshot) => {
-      setConfigTitles(snapshot.docs.map(doc => doc.data().name).sort());
+      const items = snapshot.docs.map(doc => ({ name: doc.data().name, order: doc.data().order ?? 0 }));
+      items.sort((a, b) => a.order - b.order);
+      setConfigTitles(items.map(i => i.name));
     });
     const unsubPositions = onSnapshot(collection(db, 'config_positions'), (snapshot) => {
-      setConfigPositions(snapshot.docs.map(doc => doc.data().name).sort());
+      const items = snapshot.docs.map(doc => ({ name: doc.data().name, order: doc.data().order ?? 0 }));
+      items.sort((a, b) => a.order - b.order);
+      setConfigPositions(items.map(i => i.name));
     });
     const unsubSpecialties = onSnapshot(collection(db, 'config_specialties'), (snapshot) => {
       setConfigSpecialties(snapshot.docs.map(doc => doc.data().name).sort());
@@ -95,13 +119,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       await setDoc(doc(db, 'users', user.uid), {
         ...user,
         isApproved: newApprovedStatus,
-        // If unapproving, force role back to 'unapproved'
         role: !newApprovedStatus ? 'unapproved' : user.role
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
     }
   };
+
   const toggleHidden = async (user: UserProfile) => {
     try {
       await setDoc(doc(db, 'users', user.uid), {
@@ -112,7 +136,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
       handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
     }
   };
-
 
   const changeRole = async (user: UserProfile, newRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member') => {
     try {
@@ -135,7 +158,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     if (!confirmUid) return;
     setIsDeleting(true);
     try {
-      // Collections and their respective field names for owner/creator UID
       const cascadingCollections = [
         { name: 'prescriptions', field: 'doctorUid' },
         { name: 'adr_reports', field: 'reporterUid' },
@@ -149,14 +171,12 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         { name: 'auth_logs', field: 'userId' }
       ];
 
-      // Sequential deletion to avoid batch limits for heavy users
       for (const col of cascadingCollections) {
         try {
           const q = query(collection(db, col.name), where(col.field, '==', confirmUid));
           const snapshot = await getDocs(q);
           for (const d of snapshot.docs) {
             try {
-              // If it's a social post, we also need to delete its interactions
               if (col.name === 'social_posts') {
                 const likesQ = query(collection(db, 'social_likes'), where('postId', '==', d.id));
                 const likesSnap = await getDocs(likesQ);
@@ -180,7 +200,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         }
       }
 
-      // Finally delete the user profile itself
       await deleteDoc(doc(db, 'users', confirmUid));
 
       setIsConfirmOpen(false);
@@ -225,11 +244,71 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    (u.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (u.displayName || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-  );
-  
+  const getUserTypeCategory = (user: UserProfile) => {
+    if (!user.isApproved) return 'Chưa duyệt';
+    const text = ((user.title || '') + ' ' + (user.specialty || '') + ' ' + (user.position || '')).toLowerCase();
+    if (text.includes('bác sĩ') || user.role === 'operator_doctor') return 'Bác sĩ';
+    if (text.includes('dược sĩ') || user.role === 'operator_pharmacist') return 'Dược sĩ';
+    if (text.includes('điều dưỡng')) return 'Điều dưỡng';
+    if (text.includes('kỹ thuật')) return 'Kỹ thuật viên';
+    if (text.includes('y sĩ')) return 'Y sĩ';
+    if (user.role === 'admin') return 'Admin';
+    return 'Khác';
+  };
+
+  const getUserIcon = (user: UserProfile) => {
+    const text = ((user.title || '') + ' ' + (user.specialty || '') + ' ' + (user.position || '')).toLowerCase();
+    if (text.includes('bác sĩ') || user.role === 'operator_doctor') return <Stethoscope size={18} />;
+    if (text.includes('dược sĩ') || user.role === 'operator_pharmacist') return <Pill size={18} />;
+    if (text.includes('điều dưỡng')) return <Syringe size={18} />;
+    if (text.includes('kỹ thuật')) return <Microscope size={18} />;
+    if (text.includes('y sĩ')) return <Briefcase size={18} />;
+    return <UserIcon size={18} />;
+  };
+
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      (user.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (user.displayName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (user.zalo || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (user.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (activeTab === 'All') return true;
+    if (activeTab === 'Chưa duyệt') return !user.isApproved;
+    const category = getUserTypeCategory(user);
+    if (activeTab === 'Admin') return user.role === 'admin';
+    return category === activeTab;
+  });
+
+  const totalItems = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const validPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const startIndex = (validPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (validPage > 3) pages.push('...');
+      
+      const start = Math.max(2, validPage - 1);
+      const end = Math.min(totalPages - 1, validPage + 1);
+      
+      for (let i = start; i <= end; i++) pages.push(i);
+      
+      if (validPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   const getPositionColor = (pos: string) => {
     const p = (pos || '').toLowerCase();
     if (p.includes('giám đốc')) return isDarkMode ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200';
@@ -237,561 +316,560 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     if (p.includes('phó khoa') || p.includes('phó phòng')) return isDarkMode ? 'bg-teal-500/10 text-teal-400 border-teal-500/20' : 'bg-teal-50 text-teal-700 border-teal-200';
     if (p.includes('điều dưỡng trưởng')) return isDarkMode ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-50 text-rose-700 border-rose-200';
     if (p.includes('nhân viên') || !pos) return isDarkMode ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-50 text-slate-500 border-slate-100';
-    
-    // Default for other positions
     return isDarkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-indigo-50 text-indigo-700 border-indigo-100';
   };
 
-  const unapprovedUsers = users.filter(u => !u.isApproved);
-
   return (
     <div className={cn(
-      "p-1 lg:p-8 max-w-full mx-auto pb-24 lg:pb-12 transition-colors",
+      "p-2 lg:p-6 max-w-full mx-auto pb-24 lg:pb-12 transition-colors",
       isDarkMode ? "bg-slate-950/30" : "bg-white"
     )}>
-      <div className="mb-2 lg:mb-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6 lg:gap-8">
-        <div className="space-y-1 lg:space-y-2 hidden lg:block">
-          <div className={cn(
-            "inline-flex items-center gap-2 px-3 lg:px-4 py-1 lg:py-1.5 rounded-full text-[9px] lg:text-xs font-black uppercase tracking-[0.2em] transition-all",
-            isDarkMode ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" : "bg-indigo-50 text-indigo-600 border border-indigo-100"
-          )}>
-            <Users size={12} className="lg:w-3.5 lg:h-3.5" />
-            Hệ thống nhân sự
-          </div>
-          <p className={cn(
-            "max-w-2xl text-xs lg:text-lg font-medium leading-relaxed transition-colors opacity-80",
-            isDarkMode ? "text-slate-400" : "text-slate-500"
-          )}>Điều phối quyền truy cập, phê duyệt tài khoản và quản lý thông tin chuyên môn.</p>
+      {/* Top Header */}
+      <div className="mb-6 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input
+            type="text"
+            placeholder="Tìm kiếm người dùng theo tên, email, sđt..."
+            className={cn(
+              "w-full pl-10 pr-4 py-2.5 rounded-2xl border text-xs font-bold outline-none transition-all focus:ring-2 focus:ring-primary/20",
+              isDarkMode 
+                ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
+                : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
+            )}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        
-        <div className="relative w-full lg:w-[360px] group">
+
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar">
           <div className={cn(
-            "absolute inset-0 rounded-2xl blur-xl transition-opacity opacity-0 group-focus-within:opacity-20",
-            isDarkMode ? "bg-indigo-500" : "bg-indigo-400"
-          )} />
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-            <input
-              type="text"
-              placeholder="Tìm theo tên, email..."
+            "flex p-1 rounded-xl shrink-0",
+            isDarkMode ? "bg-slate-800" : "bg-slate-100"
+          )}>
+            {(['All', 'Chưa duyệt', 'Bác sĩ', 'Dược sĩ', 'Điều dưỡng', 'Y sĩ', 'Kỹ thuật viên', 'Admin'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                  activeTab === tab 
+                    ? (isDarkMode ? "bg-slate-700 text-primary shadow-sm" : "bg-white text-primary shadow-sm")
+                    : (isDarkMode ? "text-slate-500 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                )}
+              >
+                {tab === 'All' ? 'Tất cả' : tab}
+              </button>
+            ))}
+          </div>
+
+          <div className={cn(
+            "flex p-1 rounded-xl shrink-0 border border-transparent",
+            isDarkMode ? "bg-slate-800" : "bg-slate-100"
+          )}>
+            <button
+              onClick={() => setViewMode('grid')}
+              title="Chế độ lưới"
               className={cn(
-                "w-full pl-11 pr-4 py-3 lg:py-4 border-2 rounded-2xl focus:ring-0 focus:border-indigo-500 transition-all shadow-sm outline-none font-medium text-sm",
-                isDarkMode 
-                  ? "bg-slate-900 border-slate-800 text-white placeholder:text-slate-600" 
-                  : "bg-white border-slate-100 text-slate-900 placeholder:text-slate-400"
+                "p-1.5 rounded-lg transition-all flex items-center justify-center",
+                viewMode === 'grid'
+                  ? (isDarkMode ? "bg-slate-700 text-primary shadow-sm" : "bg-white text-primary shadow-sm")
+                  : (isDarkMode ? "text-slate-500 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
               )}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              title="Chế độ danh sách"
+              className={cn(
+                "p-1.5 rounded-lg transition-all flex items-center justify-center",
+                viewMode === 'list'
+                  ? (isDarkMode ? "bg-slate-700 text-primary shadow-sm" : "bg-white text-primary shadow-sm")
+                  : (isDarkMode ? "text-slate-500 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+              )}
+            >
+              <List size={16} />
+            </button>
           </div>
         </div>
       </div>
 
-
-      <div className={cn(
-        "rounded-[24px] lg:rounded-[32px] border transition-all overflow-hidden",
-        isDarkMode 
-          ? "bg-slate-900/50 border-slate-800 shadow-none" 
-          : "bg-white border-slate-100 shadow-2xl shadow-slate-200/50"
-      )}>
-        {/* Mobile View: Card List */}
-        <div className={cn(
-          "lg:hidden divide-y",
-          isDarkMode ? "divide-slate-800" : "divide-slate-100"
-        )}>
-          {loading ? (
-            <div className="p-12 text-center">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-4" />
-              <p className="text-xs font-bold text-slate-400">Đang tải dữ liệu...</p>
-            </div>
-          ) : filteredUsers.length > 0 ? (
-            filteredUsers.map((user) => (
-              <div key={user.uid} className="p-4 space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0 overflow-hidden",
-                    !user.photoURL && (
-                      user.role === 'admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600" : 
-                      user.role === 'unapproved' ? "bg-gradient-to-br from-amber-500 to-rose-600" :
-                      user.role === 'operator_doctor' ? "bg-gradient-to-br from-emerald-500 to-teal-600" :
-                      user.role === 'operator_pharmacist' ? "bg-gradient-to-br from-teal-500 to-cyan-600" :
-                      "bg-gradient-to-br from-slate-500 to-slate-600"
-                    )
-                  )}>
-                    {user.photoURL ? (
-                      <img 
-                        src={getBustedPhotoURL(user.photoURL, user.photoSyncToken)} 
-                        alt={user.displayName} 
-                        className="w-full h-full object-cover" 
-                        referrerPolicy="no-referrer" 
-                      />
-                    ) : (
-                      user.displayName?.[0] || 'U'
+      {/* Content Area */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 space-y-3">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-xs text-slate-500 font-bold animate-pulse">Đang tải danh sách người dùng...</p>
+        </div>
+      ) : filteredUsers.length > 0 ? (
+        <>
+          {viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {paginatedUsers.map((user) => {
+                const category = getUserTypeCategory(user);
+                return (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={user.uid}
+                    onClick={() => startEditing(user)}
+                    className={cn(
+                      "group relative p-4 rounded-2xl border transition-all hover:shadow-md cursor-pointer overflow-hidden",
+                      category === 'Bác sĩ'
+                        ? (isDarkMode ? "bg-gradient-to-b from-blue-950/30 via-slate-800 to-slate-800 border-blue-900/40 hover:border-blue-700/60" : "bg-gradient-to-b from-blue-50/70 via-white to-white border-blue-100 hover:border-blue-300 shadow-sm")
+                        : category === 'Dược sĩ'
+                          ? (isDarkMode ? "bg-gradient-to-b from-emerald-950/30 via-slate-800 to-slate-800 border-emerald-900/40 hover:border-emerald-700/60" : "bg-gradient-to-b from-emerald-50/70 via-white to-white border-emerald-100 hover:border-emerald-300 shadow-sm")
+                          : category === 'Điều dưỡng'
+                            ? (isDarkMode ? "bg-gradient-to-b from-rose-950/30 via-slate-800 to-slate-800 border-rose-900/40 hover:border-rose-700/60" : "bg-gradient-to-b from-rose-50/70 via-white to-white border-rose-100 hover:border-rose-300 shadow-sm")
+                            : category === 'Kỹ thuật viên'
+                              ? (isDarkMode ? "bg-gradient-to-b from-purple-950/30 via-slate-800 to-slate-800 border-purple-900/40 hover:border-purple-700/60" : "bg-gradient-to-b from-purple-50/70 via-white to-white border-purple-100 hover:border-purple-300 shadow-sm")
+                              : category === 'Y sĩ'
+                                ? (isDarkMode ? "bg-gradient-to-b from-amber-950/30 via-slate-800 to-slate-800 border-amber-900/40 hover:border-amber-700/60" : "bg-gradient-to-b from-amber-50/70 via-white to-white border-amber-100 hover:border-amber-300 shadow-sm")
+                                : category === 'Chưa duyệt'
+                                  ? (isDarkMode ? "bg-gradient-to-b from-rose-950/40 via-slate-800 to-slate-800 border-rose-900/50 hover:border-rose-700/60" : "bg-gradient-to-b from-rose-50/80 via-white to-white border-rose-200 hover:border-rose-300 shadow-sm")
+                                  : category === 'Admin'
+                                    ? (isDarkMode ? "bg-gradient-to-b from-indigo-950/30 via-slate-800 to-slate-800 border-indigo-900/40 hover:border-indigo-700/60" : "bg-gradient-to-b from-indigo-50/70 via-white to-white border-indigo-100 hover:border-indigo-300 shadow-sm")
+                                    : (isDarkMode ? "bg-slate-800/80 border-slate-700/80 hover:border-slate-600" : "bg-slate-100/70 border-slate-200/80 hover:border-slate-300 shadow-xs")
                     )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <h4 className={cn("font-black text-sm truncate", isDarkMode ? "text-white" : "text-slate-900")}>
-                        {user.displayName}
-                      </h4>
-                      {user.title && (
-                        <span className={cn(
-                          "px-1.5 py-0.5 text-[8px] font-black uppercase rounded",
-                          isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500"
+                  >
+                    <div className={cn(
+                      "absolute top-0 left-0 right-0 h-1 bg-gradient-to-r",
+                      category === 'Bác sĩ'
+                        ? "from-blue-500 via-indigo-500 to-cyan-500"
+                        : category === 'Dược sĩ'
+                          ? "from-emerald-500 via-teal-500 to-green-500"
+                          : category === 'Điều dưỡng'
+                            ? "from-rose-500 via-red-500 to-pink-500"
+                            : category === 'Kỹ thuật viên'
+                              ? "from-purple-500 via-violet-500 to-indigo-500"
+                              : category === 'Y sĩ'
+                                ? "from-amber-500 via-orange-500 to-teal-500"
+                                : category === 'Chưa duyệt'
+                                  ? "from-amber-500 to-rose-500"
+                                  : category === 'Admin'
+                                    ? "from-indigo-500 via-purple-500 to-pink-500"
+                                    : "from-teal-500 via-cyan-500 to-sky-500"
+                    )} />
+
+                    <div className="flex items-start justify-between gap-2.5 mb-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md transition-transform group-hover:scale-105 shrink-0 overflow-hidden font-bold text-sm",
+                          !user.photoURL && (
+                            category === 'Bác sĩ' ? "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/25" :
+                            category === 'Dược sĩ' ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/25" :
+                            category === 'Điều dưỡng' ? "bg-gradient-to-br from-rose-500 to-red-600 shadow-rose-500/25" :
+                            category === 'Kỹ thuật viên' ? "bg-gradient-to-br from-violet-500 to-purple-600 shadow-purple-500/25" :
+                            category === 'Y sĩ' ? "bg-gradient-to-br from-amber-500 to-teal-600 shadow-amber-500/25" :
+                            category === 'Admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-500/25" :
+                            "bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/25"
+                          )
                         )}>
-                          {user.title}
+                          {user.photoURL ? (
+                            <img src={getBustedPhotoURL(user.photoURL, user.photoSyncToken)} alt={user.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            getUserIcon(user)
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <h3 className="text-base font-black tracking-tight group-hover:text-primary transition-colors truncate">
+                              {user.displayName}
+                            </h3>
+                          </div>
+                          <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {user.title && (
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border shadow-xs inline-block",
+                                isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-600 border-slate-200"
+                              )}>
+                                {user.title}
+                              </span>
+                            )}
+                            {user.position && (
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border shadow-xs inline-block",
+                                getPositionColor(user.position)
+                              )}>
+                                {user.position}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={() => toggleHidden(user)}
+                          title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
+                          className={cn(
+                            "p-1.5 rounded-lg text-slate-400 hover:text-amber-500 transition-colors",
+                            isDarkMode ? "hover:bg-slate-700" : "hover:bg-slate-100"
+                          )}
+                        >
+                          {user.isHidden ? <EyeOff size={16} className="text-amber-500" /> : <Eye size={16} />}
+                        </button>
+                        <button 
+                          onClick={() => startEditing(user)}
+                          title="Chỉnh sửa hồ sơ"
+                          className={cn(
+                            "p-1.5 rounded-lg text-slate-400 hover:text-primary transition-colors",
+                            isDarkMode ? "hover:bg-slate-700" : "hover:bg-slate-100"
+                          )}
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => deleteUser(user.uid, user.displayName || user.email)}
+                          disabled={isMasterAdmin(user.email)}
+                          title="Xóa người dùng"
+                          className={cn(
+                            "p-1.5 rounded-lg text-slate-400 hover:text-red-500 transition-colors disabled:opacity-30",
+                            isDarkMode ? "hover:bg-red-900/20" : "hover:bg-red-50"
+                          )}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap my-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => toggleApproval(user)}
+                        disabled={isMasterAdmin(user.email)}
+                        className={cn(
+                          "px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border transition-all flex items-center gap-1",
+                          user.isApproved 
+                            ? (isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600") 
+                            : (isDarkMode ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-rose-50 border-rose-200 text-rose-600")
+                        )}
+                      >
+                        {user.isApproved ? <UserCheck size={10} /> : <UserX size={10} />}
+                        {user.isApproved ? 'Đã duyệt' : 'Chờ duyệt'}
+                      </button>
+
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded-md text-[8px] font-black tracking-widest border",
+                        user.role === 'admin' 
+                          ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") 
+                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
+                      )}>
+                        {configRoles.find(r => r.id === user.role)?.name || user.role}
+                      </span>
+
+                      {user.isHidden && (
+                        <span className="px-1.5 py-0.5 rounded-md text-[8px] font-black tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                          Đã ẩn
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[10px] font-medium text-slate-400 truncate">{user.email}</p>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Mail size={8} className={user.hideEmail ? "text-rose-500" : "text-emerald-500"} />
-                        <Phone size={8} className={user.hideZalo ? "text-rose-500" : "text-emerald-500"} />
+
+                    <div className={cn(
+                      "mt-2 pt-3 border-t grid grid-cols-2 gap-x-3 gap-y-2",
+                      isDarkMode ? "border-slate-700" : "border-slate-100"
+                    )}>
+                      <div className="space-y-0.5">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Email</p>
+                        <p className="text-[11px] font-bold truncate">{user.email || '---'}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Chuyên môn</p>
+                        <p className="text-[11px] font-bold truncate">{user.specialty || '---'}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Khoa / Phòng</p>
+                        <p className="text-[11px] font-bold break-words whitespace-normal">{user.department || '---'}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Zalo / SĐT</p>
+                        <p className="text-[11px] font-bold truncate">{user.zalo || '---'}</p>
                       </div>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => toggleApproval(user)}
-                    disabled={isMasterAdmin(user.email)}
-                    className={cn(
-                      "px-2 py-1 rounded-lg font-black text-[8px] uppercase tracking-wider border transition-all",
-                      user.isApproved 
-                        ? (isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-600") 
-                        : (isDarkMode ? "bg-rose-500/10 border-rose-500/20 text-rose-400" : "bg-rose-50 border-rose-100 text-rose-600")
-                    )}
-                  >
-                    {user.isApproved ? 'Đã duyệt' : 'Đang chờ duyệt'}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <div className={cn(
-                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
-                    isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                  )}>
-                    {user.specialty || 'Không'}
-                  </div>
-                  <div className={cn(
-                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
-                    isDarkMode ? "bg-teal-500/10 text-teal-400 border-teal-500/20" : "bg-teal-50 text-teal-700 border-teal-100"
-                  )}>
-                    {user.department || 'Chưa phân khoa'}
-                  </div>
-                  <div className={cn(
-                    "px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border",
-                    getPositionColor(user.position || '')
-                  )}>
-                    {user.position || 'Nhân viên'}
-                  </div>
-                </div>
-
-                <div className={cn(
-                  "flex items-center justify-between pt-2 border-t",
-                  isDarkMode ? "border-slate-800" : "border-slate-50"
-                )}>
-                  <select 
-                    value={user.role || 'member'}
-                    onChange={(e) => changeRole(user, e.target.value as any)}
-                    disabled={isMasterAdmin(user.email)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border transition-all outline-none",
-                      user.role === 'admin' ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") :
-                      user.role === 'unapproved' ? (isDarkMode ? "bg-amber-900/40 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700") :
-                      (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
-                    )}
-                  >
-                    {configRoles.map(role => (
-                      <option key={role.id} value={role.id}>{role.name}</option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleHidden(user);
-                      }}
-                      className={cn(
-                        "p-2 rounded-lg border transition-all",
-                        user.isHidden
-                          ? (isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-500" : "bg-amber-50 border-amber-100 text-amber-600")
-                          : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-white border-slate-100 text-slate-400")
-                      )}
-                      title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
-                    >
-                      {user.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                    
-                    <div className="relative inline-block text-left">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuUserId(activeMenuUserId === user.uid ? null : user.uid);
-                        }}
-                        className={cn(
-                          "p-2 rounded-lg border transition-all flex items-center justify-center",
-                          activeMenuUserId === user.uid
-                            ? (isDarkMode ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-500 text-indigo-600")
-                            : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-200")
-                        )}
-                        title="Thao tác"
-                      >
-                        <MoreVertical size={14} />
-                      </button>
-                      <AnimatePresence>
-                        {activeMenuUserId === user.uid && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            transition={{ duration: 0.15 }}
-                            className={cn(
-                              "absolute right-0 mt-2 w-32 rounded-xl shadow-2xl border z-[90] overflow-hidden py-1.5 text-left backdrop-blur-md",
-                              isDarkMode
-                                ? "bg-slate-900/95 border-slate-800 shadow-slate-950/80"
-                                : "bg-white/95 border-slate-200 shadow-slate-200/50"
-                            )}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuUserId(null);
-                                startEditing(user);
-                              }}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors",
-                                isDarkMode
-                                  ? "text-slate-300 hover:bg-slate-800 hover:text-indigo-400"
-                                  : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
-                              )}
-                            >
-                              <Edit3 size={14} className="text-indigo-500" />
-                              <span>Sửa</span>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuUserId(null);
-                                deleteUser(user.uid, user.displayName || user.email);
-                              }}
-                              disabled={isMasterAdmin(user.email)}
-                              className={cn(
-                                "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors disabled:opacity-30",
-                                isDarkMode
-                                  ? "text-slate-300 hover:bg-rose-950/20 hover:text-rose-400"
-                                  : "text-slate-600 hover:bg-rose-50 hover:text-rose-600"
-                              )}
-                            >
-                              <Trash2 size={14} className="text-rose-500" />
-                              <span>Xóa</span>
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="p-12 text-center">
-              <UserIcon size={32} className="mx-auto text-slate-200 mb-2" />
-              <p className="text-xs font-bold text-slate-300">Không tìm thấy nhân sự</p>
+                  </motion.div>
+                );
+              })}
             </div>
-          )}
-        </div>
-
-        {/* Desktop View: Table */}
-        <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className={cn(
-                "border-b transition-colors",
-                isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50/50 border-slate-100"
-              )}>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Thành viên</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Chức danh</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Chuyên môn</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Khoa/Phòng</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Chức vụ</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Vai trò</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em]",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Trạng thái</th>
-                <th className={cn(
-                  "px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-right",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className={cn(
-              "divide-y transition-colors",
-              isDarkMode ? "divide-slate-800" : "divide-slate-50"
+          ) : (
+            <div className={cn(
+              "overflow-x-auto rounded-2xl border transition-colors custom-scrollbar",
+              isDarkMode ? "bg-slate-800/80 border-slate-700/80" : "bg-white border-slate-200/80 shadow-xs"
             )}>
-              <AnimatePresence>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-8 py-24 text-center">
-                      <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-4" />
-                      <p className={cn("font-bold text-sm", isDarkMode ? "text-slate-500" : "text-slate-400")}>Đang đồng bộ dữ liệu...</p>
-                    </td>
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className={cn(
+                    "border-b font-black uppercase text-[10px] tracking-wider whitespace-nowrap",
+                    isDarkMode ? "bg-slate-800/90 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-500"
+                  )}>
+                    <th className="py-3.5 px-4">Người dùng</th>
+                    <th className="py-3.5 px-3">Chức danh</th>
+                    <th className="py-3.5 px-3">Chuyên môn / Chức vụ</th>
+                    <th className="py-3.5 px-3">Khoa / Phòng</th>
+                    <th className="py-3.5 px-3">Vai trò</th>
+                    <th className="py-3.5 px-3 text-center">Trạng thái</th>
+                    <th className="py-3.5 px-4 text-right">Thao tác</th>
                   </tr>
-                ) : filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => (
-                    <motion.tr 
-                      key={user.uid}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className={cn(
-                        "transition-all group",
-                        isDarkMode ? "hover:bg-slate-800/40" : "hover:bg-slate-50/80"
-                      )}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm shrink-0 transition-all group-hover:scale-105 overflow-hidden",
-                            !user.photoURL && (
-                            user.role === 'admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20" : 
-                            user.role === 'unapproved' ? "bg-gradient-to-br from-amber-500 to-rose-600 shadow-lg shadow-amber-500/20" :
-                            user.role === 'operator_doctor' ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/20" :
-                            user.role === 'operator_pharmacist' ? "bg-gradient-to-br from-teal-500 to-cyan-600 shadow-lg shadow-teal-500/20" :
-                            "bg-gradient-to-br from-slate-500 to-slate-600 shadow-lg shadow-slate-500/20"
-                            )
-                          )}>
-                            {user.photoURL ? (
-                              <img 
-                                src={getBustedPhotoURL(user.photoURL, user.photoSyncToken)} 
-                                alt={user.displayName} 
-                                className="w-full h-full object-cover" 
-                                referrerPolicy="no-referrer" 
-                              />
-                            ) : (
-                              user.displayName?.[0] || 'U'
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className={cn(
-                                "font-black text-sm transition-colors truncate",
-                                isDarkMode ? "text-white" : "text-slate-900"
-                              )}>{user.displayName}</p>
+                </thead>
+                <tbody className={cn("divide-y", isDarkMode ? "divide-slate-700/60" : "divide-slate-100")}>
+                  {paginatedUsers.map((user) => {
+                    const category = getUserTypeCategory(user);
+                    return (
+                      <tr
+                        key={user.uid}
+                        onClick={() => startEditing(user)}
+                        className={cn(
+                          "group transition-colors cursor-pointer",
+                          isDarkMode ? "hover:bg-slate-700/50" : "hover:bg-slate-50/80"
+                        )}
+                      >
+                        {/* Avatar & Name & Email */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-xs font-bold text-xs overflow-hidden",
+                              !user.photoURL && (
+                                category === 'Bác sĩ' ? "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/20" :
+                                category === 'Dược sĩ' ? "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/20" :
+                                category === 'Điều dưỡng' ? "bg-gradient-to-br from-rose-500 to-red-600 shadow-rose-500/20" :
+                                category === 'Kỹ thuật viên' ? "bg-gradient-to-br from-violet-500 to-purple-600 shadow-purple-500/20" :
+                                category === 'Y sĩ' ? "bg-gradient-to-br from-amber-500 to-teal-600 shadow-amber-500/20" :
+                                category === 'Admin' ? "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-500/20" :
+                                "bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20"
+                              )
+                            )}>
+                              {user.photoURL ? (
+                                <img src={getBustedPhotoURL(user.photoURL, user.photoSyncToken)} alt={user.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                getUserIcon(user)
+                              )}
                             </div>
-                            <div className="flex items-center gap-3 mt-1">
-                              <p className={cn("text-[10px] font-bold opacity-60 truncate", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn("font-bold text-sm truncate group-hover:text-primary transition-colors", isDarkMode ? "text-white" : "text-slate-900")}>
+                                  {user.displayName}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-medium truncate max-w-[200px]">
                                 {user.email}
-                              </p>
-                              <div className="flex items-center gap-1.5 shrink-0 border-l pl-3 border-slate-200 dark:border-slate-800">
-                                <div title={user.hideEmail ? "Email: Riêng tư" : "Email: Công khai"} className={cn(
-                                  "p-1 rounded-md transition-colors",
-                                  user.hideEmail ? "text-rose-500 bg-rose-500/10" : "text-emerald-500 bg-emerald-500/10"
-                                )}>
-                                  <Mail size={10} />
-                                </div>
-                                <div title={user.hideZalo ? "Zalo: Riêng tư" : "Zalo: Công khai"} className={cn(
-                                  "p-1 rounded-md transition-colors",
-                                  user.hideZalo ? "text-rose-500 bg-rose-500/10" : "text-emerald-500 bg-emerald-500/10"
-                                )}>
-                                  <Phone size={10} />
-                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          isDarkMode ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-50 text-slate-500 border-slate-100"
-                        )}>
-                          {user.title || 'Chưa có'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          isDarkMode ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-emerald-50 text-emerald-700 border-emerald-100"
-                        )}>
-                          {user.specialty || 'Không'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          isDarkMode ? "bg-teal-500/10 text-teal-400 border-teal-500/20" : "bg-teal-50 text-teal-700 border-teal-100"
-                        )}>
-                          {user.department || 'Chưa phân khoa'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
-                          getPositionColor(user.position || '')
-                        )}>
-                          {user.position || 'Nhân viên'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <select 
-                          value={user.role || 'member'}
-                          onChange={(e) => changeRole(user, e.target.value as any)}
-                          disabled={isMasterAdmin(user.email)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest border-2 focus:ring-0 transition-all cursor-pointer outline-none",
-                            user.role === 'admin' 
-                              ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") 
-                              : user.role === 'unapproved'
-                                ? (isDarkMode ? "bg-amber-900/40 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700")
-                                : (['operator', 'operator_doctor', 'operator_pharmacist'].includes(user.role || ''))
-                                  ? (isDarkMode ? "bg-emerald-900/40 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-700") 
-                                  : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
-                          )}
-                        >
-                          {configRoles.map(role => (
-                            <option key={role.id} value={role.id}>{role.name}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={() => toggleApproval(user)}
-                          disabled={isMasterAdmin(user.email)}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all border-2",
-                            user.isApproved 
-                              ? (isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-100 text-emerald-600 hover:bg-emerald-100") 
-                              : (isDarkMode ? "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20" : "bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100")
-                          )}
-                        >
-                          {user.isApproved ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                          {user.isApproved ? 'Đã duyệt' : 'Đang chờ duyệt'}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleHidden(user);
-                            }}
-                            className={cn(
-                              "p-2 rounded-lg transition-all border-2",
-                              user.isHidden
-                                ? (isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:border-amber-500/50" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
-                                : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-amber-600 hover:border-amber-200")
-                            )}
-                            title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
-                          >
-                            {user.isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                          
-                          <div className="relative inline-block text-left">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuUserId(activeMenuUserId === user.uid ? null : user.uid);
-                              }}
-                              className={cn(
-                                "p-2 rounded-lg transition-all border-2 flex items-center justify-center",
-                                activeMenuUserId === user.uid
-                                  ? (isDarkMode ? "bg-indigo-500/10 border-indigo-500 text-indigo-400" : "bg-indigo-50 border-indigo-500 text-indigo-600")
-                                  : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50" : "bg-white border-slate-100 text-slate-400 hover:text-indigo-600 hover:border-indigo-200")
-                              )}
-                              title="Thao tác"
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                            <AnimatePresence>
-                              {activeMenuUserId === user.uid && (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                  transition={{ duration: 0.15 }}
-                                  className={cn(
-                                    "absolute right-0 mt-2 w-32 rounded-xl shadow-2xl border z-[90] overflow-hidden py-1.5 text-left backdrop-blur-md",
-                                    isDarkMode
-                                      ? "bg-slate-900/95 border-slate-800 shadow-slate-950/80"
-                                      : "bg-white/95 border-slate-200 shadow-slate-200/50"
-                                  )}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveMenuUserId(null);
-                                      startEditing(user);
-                                    }}
-                                    className={cn(
-                                      "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors",
-                                      isDarkMode
-                                        ? "text-slate-300 hover:bg-slate-800 hover:text-indigo-400"
-                                        : "text-slate-600 hover:bg-slate-50 hover:text-indigo-600"
-                                    )}
-                                  >
-                                    <Edit3 size={14} className="text-indigo-500" />
-                                    <span>Sửa</span>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveMenuUserId(null);
-                                      deleteUser(user.uid, user.displayName || user.email);
-                                    }}
-                                    disabled={isMasterAdmin(user.email)}
-                                    className={cn(
-                                      "w-full flex items-center gap-2 px-3 py-2 text-xs font-black tracking-wide transition-colors disabled:opacity-30",
-                                      isDarkMode
-                                        ? "text-slate-300 hover:bg-rose-950/20 hover:text-rose-400"
-                                        : "text-slate-600 hover:bg-rose-50 hover:text-rose-600"
-                                    )}
-                                  >
-                                    <Trash2 size={14} className="text-rose-500" />
-                                    <span>Xóa</span>
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-8 py-24 text-center">
-                      <UserIcon size={32} className="mx-auto text-slate-200 mb-2" />
-                      <p className={cn("font-black text-sm", isDarkMode ? "text-slate-600" : "text-slate-300")}>Không tìm thấy nhân sự</p>
-                    </td>
-                  </tr>
-                )}
-              </AnimatePresence>
-            </tbody>
-          </table>
-        </div>
-      </div>
+                        </td>
 
+                        {/* Chức danh */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span className={cn(
+                            "inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider",
+                            isDarkMode ? "bg-slate-700 text-slate-300" : "bg-slate-100 text-slate-600"
+                          )}>
+                            {user.title || 'Chưa có'}
+                          </span>
+                        </td>
+
+                        {/* Chuyên môn / Chức vụ */}
+                        <td className="py-3 px-3">
+                          <div className="space-y-0.5">
+                            <div className={cn("font-semibold text-xs truncate max-w-[150px]", isDarkMode ? "text-slate-200" : "text-slate-800")}>
+                              {user.specialty || '---'}
+                            </div>
+                            {user.position && (
+                              <div className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                                {user.position}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Khoa / Phòng */}
+                        <td className="py-3 px-3">
+                          <div className={cn("font-semibold text-xs break-words whitespace-normal min-w-[140px]", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                            {user.department || '---'}
+                          </div>
+                        </td>
+
+                        {/* Vai trò */}
+                        <td className="py-3 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <select 
+                            value={user.role || 'member'}
+                            onChange={(e) => changeRole(user, e.target.value as any)}
+                            disabled={isMasterAdmin(user.email)}
+                            className={cn(
+                              "px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border transition-all cursor-pointer outline-none",
+                              user.role === 'admin' 
+                                ? (isDarkMode ? "bg-indigo-900/40 border-indigo-500/30 text-indigo-400" : "bg-indigo-50 border-indigo-200 text-indigo-700") 
+                                : user.role === 'unapproved'
+                                  ? (isDarkMode ? "bg-amber-900/40 border-amber-500/30 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-700")
+                                  : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
+                            )}
+                          >
+                            {configRoles.map(role => (
+                              <option key={role.id} value={role.id}>{role.name}</option>
+                            ))}
+                          </select>
+                        </td>
+
+                        {/* Trạng thái (Phê duyệt status) */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => toggleApproval(user)}
+                            disabled={isMasterAdmin(user.email)}
+                            className={cn(
+                              "inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md border transition-all",
+                              user.isApproved 
+                                ? (isDarkMode ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-emerald-600 bg-emerald-50 border-emerald-200") 
+                                : (isDarkMode ? "text-rose-400 bg-rose-500/10 border-rose-500/20" : "text-rose-600 bg-rose-50 border-rose-200")
+                            )}
+                          >
+                            {user.isApproved ? <UserCheck size={10} /> : <UserX size={10} />}
+                            {user.isApproved ? 'Đã duyệt' : 'Chờ duyệt'}
+                          </button>
+                        </td>
+
+                        {/* Thao tác (No Eye button!) */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => toggleHidden(user)}
+                              title={user.isHidden ? "Hiện người dùng" : "Ẩn người dùng"}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors",
+                                user.isHidden
+                                  ? "text-amber-500 bg-amber-500/10"
+                                  : (isDarkMode ? "hover:bg-slate-700 text-slate-400" : "hover:bg-slate-100 text-slate-500")
+                              )}
+                            >
+                              {user.isHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                            <button
+                              onClick={() => startEditing(user)}
+                              title="Chỉnh sửa"
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors text-amber-500",
+                                isDarkMode ? "hover:bg-slate-700" : "hover:bg-amber-50"
+                              )}
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                            <button
+                              onClick={() => deleteUser(user.uid, user.displayName || user.email)}
+                              disabled={isMasterAdmin(user.email)}
+                              title="Xóa"
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors text-rose-500 disabled:opacity-30",
+                                isDarkMode ? "hover:bg-slate-700" : "hover:bg-rose-50"
+                              )}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination Bar */}
+          <div className={cn(
+            "mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-2xl border transition-colors",
+            isDarkMode ? "bg-slate-800/80 border-slate-700/80" : "bg-white border-slate-200/80 shadow-xs"
+          )}>
+            {/* Info & Rows Selector */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs font-semibold text-slate-500">
+              <span>
+                Hiển thị <span className={cn("font-bold", isDarkMode ? "text-white" : "text-slate-900")}>{totalItems === 0 ? 0 : startIndex + 1}</span> - <span className={cn("font-bold", isDarkMode ? "text-white" : "text-slate-900")}>{endIndex}</span> / <span className={cn("font-bold text-primary")}>{totalItems}</span> người dùng
+              </span>
+              <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 hidden sm:block" />
+              <div className="flex items-center gap-1.5">
+                <span>Hiển thị:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className={cn(
+                    "px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer",
+                    isDarkMode ? "bg-slate-700 border-slate-600 text-white" : "bg-slate-50 border-slate-200 text-slate-700"
+                  )}
+                >
+                  <option value={6}>6 / trang</option>
+                  <option value={12}>12 / trang</option>
+                  <option value={24}>24 / trang</option>
+                  <option value={48}>48 / trang</option>
+                  <option value={100}>100 / trang</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Navigation controls */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={validPage === 1}
+                title="Trang trước"
+                className={cn(
+                  "p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed border",
+                  isDarkMode 
+                    ? "bg-slate-700/60 border-slate-600/80 text-slate-300 hover:bg-slate-700 hover:text-white" 
+                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {getPageNumbers().map((page, idx) => (
+                typeof page === 'number' ? (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentPage(page)}
+                    className={cn(
+                      "w-8 h-8 rounded-xl text-xs font-black transition-all flex items-center justify-center border",
+                      validPage === page
+                        ? "bg-primary border-primary text-white shadow-sm shadow-primary/30 scale-105"
+                        : isDarkMode
+                          ? "bg-slate-700/60 border-slate-600/80 text-slate-300 hover:bg-slate-700 hover:text-white"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    )}
+                  >
+                    {page}
+                  </button>
+                ) : (
+                  <span key={idx} className="w-6 text-center text-xs text-slate-400 font-bold select-none">
+                    {page}
+                  </span>
+                )
+              ))}
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={validPage === totalPages}
+                title="Trang sau"
+                className={cn(
+                  "p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed border",
+                  isDarkMode 
+                    ? "bg-slate-700/60 border-slate-600/80 text-slate-300 hover:bg-slate-700 hover:text-white" 
+                    : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                )}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className={cn(
+          "flex flex-col items-center justify-center py-20 space-y-4 rounded-[40px] border-2 border-dashed",
+          isDarkMode ? "border-slate-800 bg-slate-900/30" : "border-slate-200 bg-slate-50/50"
+        )}>
+          <UserIcon size={40} className="text-slate-300" />
+          <p className="text-sm font-bold text-slate-400">Không tìm thấy người dùng phù hợp</p>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
       <AnimatePresence>
         {editingUser && (
           <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
@@ -1045,6 +1123,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
           </p>
         </div>
       </div>
+
       {/* Confirm Deletion Modal */}
       <ConfirmModal
         isOpen={isConfirmOpen}

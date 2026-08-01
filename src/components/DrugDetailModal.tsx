@@ -775,7 +775,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           "absolute -top-1 -right-1 z-10 text-white rounded-full text-[8.5px] font-black px-1.5 py-0.5 shadow-md flex items-center justify-center border border-white dark:border-slate-800 lg:hidden leading-none scale-90 origin-top-right",
                           drug.isUpdated === "updating" ? "bg-amber-500" : "bg-indigo-500"
                         )}>
-                          {drug.isUpdated === "updating" ? "Đang CN" : "Mới CN"}
+                          {drug.isUpdated === "updating" ? "Đang CN" : "Đã CN"}
                         </span>
                       ) : null}
                       {drug.isRx && (
@@ -806,7 +806,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               : "bg-indigo-500/20 text-indigo-500 border-indigo-500/30"
                           )}>
                             <Sparkles size={10} />
-                            {drug.isUpdated === "updating" ? "ĐANG CẬP NHẬT" : "MỚI CẬP NHẬT"}
+                            {drug.isUpdated === "updating" ? "ĐANG CẬP NHẬT" : "ĐÃ CẬP NHẬT"}
                           </span>
                         )}
                         {!showPdfPreview && drug.isClosed && (
@@ -5200,7 +5200,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 <h4 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 mb-4">
                                   <BookOpen size={16} /> Dược lý học
                                 </h4>
-                                {(drug.atcCode || drugGroupNames.length > 0) && (
+                                {(drug.atcCode || drug.pharmacologicalGroup || drugGroupNames.length > 0) && (
                                   <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                                     {drug.atcCode && (
                                       <div className="flex items-center gap-2">
@@ -5217,7 +5217,22 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                         </span>
                                       </div>
                                     )}
-                                    {drug.atcCode && drugGroupNames.length > 0 && (
+                                    {drug.pharmacologicalGroup && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-50">Nhóm dược lý</span>
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-wider border",
+                                            isDarkMode
+                                              ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400"
+                                              : "bg-indigo-100 border-indigo-200 text-indigo-800",
+                                          )}
+                                        >
+                                          {drug.pharmacologicalGroup}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {(drug.atcCode || drug.pharmacologicalGroup) && drugGroupNames.length > 0 && (
                                       <span className={cn("w-px h-4 shrink-0", isDarkMode ? "bg-slate-700" : "bg-slate-200")} />
                                     )}
                                     {drugGroupNames.length > 0 && (

@@ -1223,7 +1223,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                    <div className="flex items-center gap-3">
                                      <div className={cn(
                                        "p-2 rounded-xl transition-all shadow-sm", 
-                                       !hideEmail && hasEmailInfo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                       !hideEmail && hasEmailInfo ? "bg-primary text-white" : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-200 text-slate-500")
                                      )}>
                                        {!hideEmail && hasEmailInfo ? <Globe size={14} /> : <Lock size={14} />}
                                      </div>
@@ -1271,7 +1271,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                    <div className="flex items-center gap-3">
                                      <div className={cn(
                                        "p-2 rounded-xl transition-all shadow-sm", 
-                                       !hideZalo && hasZaloInfo ? "bg-primary text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-400"
+                                       !hideZalo && hasZaloInfo ? "bg-primary text-white" : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-200 text-slate-500")
                                      )}>
                                        {!hideZalo && hasZaloInfo ? <Globe size={14} /> : <Lock size={14} />}
                                      </div>
@@ -1400,7 +1400,10 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                                   Email công vụ
                                   {selectedProfile.hideEmail && selectedProfile.uid === userProfile.uid && (
-                                    <span className="text-[8px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 lowercase flex items-center gap-1">
+                                    <span className={cn(
+                                      "text-[8px] px-1.5 py-0.5 rounded lowercase flex items-center gap-1",
+                                      isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500"
+                                    )}>
                                       <Lock size={8} /> Đang ẩn
                                     </span>
                                   )}
@@ -1416,7 +1419,10 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                                   Số Zalo liên hệ
                                   {selectedProfile.hideZalo && selectedProfile.uid === userProfile.uid && (
-                                    <span className="text-[8px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 lowercase flex items-center gap-1">
+                                    <span className={cn(
+                                      "text-[8px] px-1.5 py-0.5 rounded lowercase flex items-center gap-1",
+                                      isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500"
+                                    )}>
                                       <Lock size={8} /> Đang ẩn
                                     </span>
                                   )}
@@ -1463,7 +1469,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                       <h3 className={cn("text-lg font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-800")}>
                         {selectedProfile.uid === userProfile.uid ? 'Dòng trạng thái của bạn' : `Hoạt động của ${selectedProfile.displayName}`}
                       </h3>
-                      <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800 ml-2" />
+                      <div className={cn("h-px flex-1 ml-2", isDarkMode ? "bg-slate-800" : "bg-slate-100")} />
                     </div>
                     
                     <div className="space-y-6">

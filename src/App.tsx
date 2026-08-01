@@ -22,12 +22,12 @@ import UpdateNotification from './components/UpdateNotification';
 import DrugDetailModal from './components/DrugDetailModal';
 import WelcomeSlider from './components/WelcomeSlider';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { cn } from './lib/utils';
+import { cn, getBustedPhotoURL } from './lib/utils';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment, arrayUnion, arrayRemove } from './firebase';
-import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings, Staff } from './types';
+import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings, Staff, QuickAccountWarningConfig } from './types';
 import { seedInitialData } from './lib/seed';
 
 // Session visit log tracker
@@ -237,6 +237,14 @@ export default function App() {
   const isInitialAnnouncementsLoad = useRef(true);
   const existingNotificationIds = useRef<string[]>([]);
   const existingAnnouncementIds = useRef<string[]>([]);
+
+  // Quick Account First Login Warning state
+  const [quickWarningConfig, setQuickWarningConfig] = useState<QuickAccountWarningConfig>({
+    enabled: true,
+    title: '⚠️ CẢNH BÁO TÀI KHOẢN NHANH',
+    content: 'Bạn đang sử dụng **Tài khoản nhanh** (tài khoản dùng chung/tạm thời trên hệ thống).\n\n⚠️ **Vui lòng lưu ý:**\n1. **Không lưu trữ dữ liệu cá nhân nhạy cảm:** Mọi thông tin trên tài khoản này có thể được chia sẻ hoặc quản lý bởi hệ thống.\n2. **Khuyên dùng tài khoản cá nhân:** Đăng ký hoặc sử dụng tài khoản chính thức để bảo vệ quyền lợi và dữ liệu công việc của bạn.\n3. **Cập nhật thông tin:** Bạn có thể đổi tên hiển thị, mật khẩu hoặc cập nhật tài khoản bất kỳ lúc nào trong Trang cá nhân.'
+  });
+  const [showQuickAccountWarnModal, setShowQuickAccountWarnModal] = useState(false);
 
   const addToastPopup = (id: string, title: string, message: string, category: string, item: any) => {
     const newToast = { id, title, message, category, item, timestamp: Date.now() };
@@ -1039,6 +1047,15 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
     });
 
+    const unsubQuickWarn = onSnapshot(doc(db, 'system_config', 'quick_account_warning'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as QuickAccountWarningConfig;
+        setQuickWarningConfig(prev => ({ ...prev, ...data }));
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'system_config/quick_account_warning');
+    });
+
     const activeUid = userProfile?.uid || user?.uid;
     if (!activeUid) {
       setRolePermissions([]);
@@ -1050,6 +1067,7 @@ export default function App() {
         unsubReg();
         unsubFeatures();
         unsubFeatureSettings();
+        unsubQuickWarn();
       };
     }
 
@@ -1200,8 +1218,37 @@ export default function App() {
       unsubReg();
       unsubFeatures();
       unsubFeatureSettings();
+      unsubQuickWarn();
     };
   }, [user, userProfile?.role, userProfile?.title, userProfile?.uid]);
+
+  // Trigger Quick Account First Login Warning Modal
+  useEffect(() => {
+    if (!userProfile) return;
+    const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
+    if (!isQuickAccount) return;
+    if (quickWarningConfig.enabled === false) return;
+
+    const hasSeenInLocal = safeLocalStorage.getItem(`has_seen_quick_warn_${userProfile.uid}`);
+    if (!userProfile.hasSeenQuickAccountWarning && !hasSeenInLocal) {
+      setShowQuickAccountWarnModal(true);
+    }
+  }, [userProfile, quickWarningConfig]);
+
+  const handleAcknowledgeQuickWarn = async () => {
+    if (userProfile?.uid) {
+      safeLocalStorage.setItem(`has_seen_quick_warn_${userProfile.uid}`, 'true');
+      try {
+        await updateDoc(doc(db, 'users', userProfile.uid), {
+          hasSeenQuickAccountWarning: true
+        });
+      } catch (e) {
+        console.warn("Error updating quick account warning status in Firestore:", e);
+      }
+      setUserProfile(prev => prev ? { ...prev, hasSeenQuickAccountWarning: true } : null);
+    }
+    setShowQuickAccountWarnModal(false);
+  };
 
   const markAsRead = async (id: string) => {
     try {
@@ -1750,12 +1797,26 @@ export default function App() {
           const ip = await getIpAddress();
           const mac = getMacAddress();
           const dev = getDeviceName();
+
+          // Increment staff quickLoginCount in Firestore
+          try {
+            await updateDoc(doc(db, 'staff', matchedStaff.id), {
+              quickLoginCount: increment(1),
+              lastQuickLoginAt: new Date().toISOString()
+            });
+          } catch (countErr) {
+            console.warn("Could not increment quickLoginCount:", countErr);
+          }
+
           await setDoc(doc(db, 'auth_logs', logId), {
             id: logId,
             userId: staffProfile.uid,
+            staffId: matchedStaff.id,
+            staffAccount: matchedStaff.staffAccount || matchedStaff.username || matchedStaff.id,
             userEmail: staffProfile.email,
             userName: staffProfile.displayName,
             type: 'login',
+            loginType: 'quick_account',
             timestamp: new Date().toISOString(),
             ipAddress: ip,
             macAddress: mac,
@@ -1848,9 +1909,17 @@ export default function App() {
 
   const confirmLogout = async () => {
     setIsLogoutConfirmOpen(false);
+    const loggingUid = userProfile?.uid || user?.uid;
+    const loggingEmail = userProfile?.email || user?.email || '';
+    const loggingName = userProfile?.displayName || user?.displayName || 'Người dùng';
+    const loggingStaffAcc = userProfile?.staffAccount;
+    const isStaff = loggingUid ? (loggingUid.startsWith('staff_') || !!loggingStaffAcc) : false;
+    const staffId = isStaff && loggingUid ? loggingUid.replace(/^staff_/, '') : undefined;
+
     safeLocalStorage.removeItem('staff_login_session');
     setUserProfile(null);
-    if (user) {
+
+    if (loggingUid) {
       // Log explicit logout
       const logId = Date.now().toString();
       try {
@@ -1859,10 +1928,13 @@ export default function App() {
         const dev = getDeviceName();
         await setDoc(doc(db, 'auth_logs', logId), {
           id: logId,
-          userId: user.uid,
-          userEmail: user.email,
-          userName: userProfile?.displayName || user.displayName || 'Người dùng',
+          userId: loggingUid,
+          staffId: staffId,
+          staffAccount: loggingStaffAcc,
+          userEmail: loggingEmail,
+          userName: loggingName,
           type: 'logout',
+          loginType: isStaff ? 'quick_account' : 'google',
           timestamp: new Date().toISOString(),
           ipAddress: ip,
           macAddress: mac,
@@ -3823,12 +3895,23 @@ export default function App() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-colors",
+                            "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-colors overflow-hidden border",
                             isChangingStaffAccount 
-                              ? (isDarkMode ? "bg-primary/80" : "bg-primary") 
-                              : (isDarkMode ? "bg-slate-700" : "bg-primary")
+                              ? (isDarkMode ? "bg-primary/80 border-primary/40" : "bg-primary border-primary") 
+                              : (isDarkMode ? "bg-slate-700 border-slate-600" : "bg-primary border-primary/20")
                           )}>
-                            {isChangingStaffAccount ? <Key size={20} /> : <Users size={20} />}
+                            {isChangingStaffAccount ? (
+                              <Key size={20} />
+                            ) : userProfile.photoURL ? (
+                              <img 
+                                src={getBustedPhotoURL(userProfile.photoURL, userProfile.photoSyncToken) || userProfile.photoURL} 
+                                alt={userProfile.displayName || "Avatar"} 
+                                className="w-full h-full object-cover" 
+                                referrerPolicy="no-referrer" 
+                              />
+                            ) : (
+                              <User size={20} />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className={cn("text-[10px] font-black uppercase tracking-[0.18em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
@@ -3840,9 +3923,9 @@ export default function App() {
                             </p>
                             {!isChangingStaffAccount && (
                               <p className={cn("text-sm font-bold truncate tracking-wider mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>
-                                {showLoginAccount 
-                                  ? accountString 
-                                  : '•'.repeat(Math.max(8, Math.min(accountString.length, 16)))}
+                                {isQuickAccount 
+                                  ? (showLoginAccount ? accountString : '•'.repeat(Math.max(8, Math.min(accountString.length, 16))))
+                                  : accountString}
                               </p>
                             )}
                           </div>
@@ -3851,19 +3934,21 @@ export default function App() {
                         {/* Control Buttons */}
                         {!isChangingStaffAccount && (
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => setShowLoginAccount(!showLoginAccount)}
-                              className={cn(
-                                "p-2 rounded-xl transition-all flex items-center justify-center",
-                                isDarkMode 
-                                  ? "bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white" 
-                                  : "bg-white hover:bg-slate-200 text-slate-600 hover:text-slate-900 shadow-sm border border-slate-200"
-                              )}
-                              title={showLoginAccount ? "Ẩn tài khoản" : "Hiện tài khoản"}
-                            >
-                              {showLoginAccount ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+                            {isQuickAccount && (
+                              <button
+                                type="button"
+                                onClick={() => setShowLoginAccount(!showLoginAccount)}
+                                className={cn(
+                                  "p-2 rounded-xl transition-all flex items-center justify-center",
+                                  isDarkMode 
+                                    ? "bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                                    : "bg-white hover:bg-slate-200 text-slate-600 hover:text-slate-900 shadow-sm border border-slate-200"
+                                )}
+                                title={showLoginAccount ? "Ẩn tài khoản" : "Hiện tài khoản"}
+                              >
+                                {showLoginAccount ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            )}
 
                             {isQuickAccount && (
                               <button
@@ -4696,6 +4781,63 @@ export default function App() {
               })}
             </AnimatePresence>
           </div>
+
+          {/* Quick Account First Login Warning Modal */}
+          <AnimatePresence>
+            {showQuickAccountWarnModal && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-slate-950/75 backdrop-blur-md"
+                />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  className={cn(
+                    "relative w-full max-w-lg rounded-[28px] sm:rounded-[32px] shadow-2xl overflow-hidden border transition-colors flex flex-col z-10 p-6 sm:p-8",
+                    isDarkMode ? "bg-slate-900 border-amber-500/30 text-white" : "bg-white border-amber-200 text-slate-900"
+                  )}
+                >
+                  {/* Header with Icon */}
+                  <div className="flex items-center gap-4 mb-5">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0 shadow-md">
+                      <AlertTriangle size={24} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="px-2.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 inline-block mb-1">
+                        Đăng nhập lần đầu • Tài khoản Nhanh
+                      </span>
+                      <h3 className="text-base sm:text-lg font-black tracking-tight leading-tight">
+                        {quickWarningConfig.title || '⚠️ CẢNH BÁO TÀI KHOẢN NHANH'}
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Warning Content Container */}
+                  <div className={cn(
+                    "p-4 sm:p-5 rounded-2xl border text-xs sm:text-sm leading-relaxed space-y-3 custom-scrollbar max-h-[50vh] overflow-y-auto mb-6",
+                    isDarkMode ? "bg-slate-800/60 border-slate-700/80 text-slate-200" : "bg-amber-50/60 border-amber-100 text-slate-800"
+                  )}>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown>{quickWarningConfig.content || ''}</ReactMarkdown>
+                    </div>
+                  </div>
+
+                  {/* User confirmation button */}
+                  <button
+                    onClick={handleAcknowledgeQuickWarn}
+                    className="w-full py-3.5 sm:py-4 px-6 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <CheckCheck size={18} /> Tôi đã hiểu & Đã đọc cảnh báo
+                  </button>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
       </main >
       </Suspense >
     </div >
