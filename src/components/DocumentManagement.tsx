@@ -9,7 +9,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 import { db, collection, setDoc, deleteDoc, doc, onSnapshot, query, orderBy } from '../firebase';
 import { SAMPLE_DOCUMENTS, ClinicalDocument } from '../lib/sampleDocs';
 import ConfirmModal from './ConfirmModal';
@@ -222,7 +222,7 @@ export default function DocumentManagement({
       snapshot.forEach(docSnap => {
         docsList.push({
           id: docSnap.id,
-          ...docSnap.data()
+          ...sanitizeFirestoreData(docSnap.data())
         } as ClinicalDocument);
       });
       setDocuments(docsList);
@@ -2553,7 +2553,7 @@ Văn bản gốc:
 
                         <div className="flex items-center gap-2 flex-wrap pt-0.5">
                           <span className="text-[9px] text-slate-500 italic font-medium">
-                            Bởi {docItem.creatorName || "Hệ thống"} • {new Date(docItem.createdAt).toLocaleDateString('vi-VN')}
+                            Bởi {docItem.creatorName || "Hệ thống"} • {formatDateSafe(docItem.createdAt)}
                           </span>
                         </div>
                       </div>
@@ -2761,7 +2761,7 @@ Văn bản gốc:
 
                      <div className="pt-4 mt-4 border-t border-slate-200/20 flex items-center justify-between">
                        <div className="text-[9px] text-slate-500 italic font-medium">
-                         Bởi {docItem.creatorName || "Hệ thống"} • {new Date(docItem.createdAt).toLocaleDateString('vi-VN')}
+                         Bởi {docItem.creatorName || "Hệ thống"} • {formatDateSafe(docItem.createdAt)}
                        </div>
 
                        <div className="flex items-center gap-1.5 relative">

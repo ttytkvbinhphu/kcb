@@ -6,7 +6,7 @@ import { Note } from '../types';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 
 interface NotesProps {
   isDarkMode?: boolean;
@@ -91,7 +91,7 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
 
     const q = query(collection(db, 'notes'), where('createdBy', '==', auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Note)));
+      setNotes(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as Note)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'notes');
     });

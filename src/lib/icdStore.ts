@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, collection, onSnapshot, getDocs, doc, getDoc, updateDoc, setDoc } from '../firebase';
 import { ICD10 } from '../types';
+import { sanitizeFirestoreData } from './utils';
 
 let cachedIcdList: ICD10[] = [];
 let hasLoadedFromLocalStorage = false;
@@ -121,7 +122,7 @@ async function fetchFullIcdCollection(targetTimestamp: string) {
   try {
     const querySnapshot = await getDocs(collection(db, 'icd10'));
     const list = querySnapshot.docs.map((doc) => {
-      const data = doc.data();
+      const data = sanitizeFirestoreData(doc.data());
       return { ...data, code: data.code || doc.id, id: doc.id } as ICD10;
     });
 

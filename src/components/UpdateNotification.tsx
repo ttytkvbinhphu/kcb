@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Sparkles, Wrench, ChevronRight, Info, Rocket, Bell, Calendar, Zap, Layout, Star, Plus } from 'lucide-react';
 import { db, collection, query, orderBy, limit, where, onSnapshot } from '../firebase';
 import { VersionLog } from '../types';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 
 interface UpdateNotificationProps {
   isDarkMode: boolean;
@@ -75,7 +75,7 @@ export const VersionUpdateContent: React.FC<{
                 </div>
                 <div className={cn("flex items-center gap-1 text-[10px] md:text-xs font-bold uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>
                   <Calendar size={12} className="md:w-3.5 md:h-3.5" />
-                  {version.releaseDate ? new Date(version.releaseDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Vừa cập nhật'}
+                  {version.releaseDate ? formatDateSafe(version.releaseDate, { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Vừa cập nhật'}
                 </div>
               </div>
             </div>
@@ -261,7 +261,7 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDarkMode, uid
 
     const unsubscribe = onSnapshot(q, (snap) => {
       if (!snap.empty) {
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as VersionLog));
+        const list = snap.docs.map(d => ({ id: d.id, ...sanitizeFirestoreData(d.data()) } as VersionLog));
         setAllVersions(list);
         if (!selectedVersion || !list.some(v => v.id === selectedVersion.id)) {
           setSelectedVersion(list[0]);

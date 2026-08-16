@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap, Mail } from 'lucide-react';
-import { cn, getBustedPhotoURL } from '../lib/utils';
+import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
 import { db, doc, setDoc, collection, query, orderBy, onSnapshot, deleteDoc, updateDoc, increment, where, addDoc, handleFirestoreError, OperationType } from '../firebase';
@@ -367,7 +367,15 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   useEffect(() => {
     const q = query(collection(db, 'social_posts'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post)));
+      setPosts(snapshot.docs.map(doc => {
+        const clean = sanitizeFirestoreData(doc.data());
+        return {
+          id: doc.id,
+          ...clean,
+          likesCount: typeof clean?.likesCount === 'number' ? clean.likesCount : 0,
+          commentsCount: typeof clean?.commentsCount === 'number' ? clean.commentsCount : 0,
+        } as Post;
+      }));
     }, (error) => {
       console.error("Error fetching social posts:", error);
       // We don't use handleFirestoreError here to avoid blocking the whole Social Wall if rules are still propagating
@@ -387,7 +395,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     });
 
     const usersUnsub = onSnapshot(collection(db, 'users'), (snapshot) => {
-      setAllUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
+      setAllUsers(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()) as UserProfile));
     }, (error) => {
       console.error("Error fetching users for social wall:", error);
     });
@@ -491,11 +499,13 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
     const likeId = `${userProfile.uid}_${postId}`;
     const likeRef = doc(db, 'social_likes', likeId);
     const postRef = doc(db, 'social_posts', postId);
+    const targetPost = posts.find(p => p.id === postId);
+    const currentLikes = typeof targetPost?.likesCount === 'number' ? targetPost.likesCount : 0;
 
     try {
       if (userLikes[postId]) {
         await deleteDoc(likeRef);
-        await updateDoc(postRef, { likesCount: increment(-1) });
+        await updateDoc(postRef, { likesCount: Math.max(0, currentLikes - 1) });
       } else {
         await setDoc(likeRef, {
           id: likeId,
@@ -503,7 +513,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
           postId: postId,
           createdAt: new Date().toISOString()
         });
-        await updateDoc(postRef, { likesCount: increment(1) });
+        await updateDoc(postRef, { likesCount: currentLikes + 1 });
       }
     } catch (error) {
       console.error("Error toggling like:", error);
@@ -515,8 +525,10 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
       try {
         await deleteDoc(doc(db, 'social_comments', deleteConfirm.commentId));
         const postRef = doc(db, 'social_posts', deleteConfirm.postId);
+        const targetPost = posts.find(p => p.id === deleteConfirm.postId);
+        const currentComments = typeof targetPost?.commentsCount === 'number' ? targetPost.commentsCount : 0;
         await updateDoc(postRef, {
-          commentsCount: increment(-1)
+          commentsCount: Math.max(0, currentComments - 1)
         });
         setDeleteConfirm({ isOpen: false, postId: null, commentId: null });
       } catch (error) {
@@ -693,7 +705,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
               </button>
             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               <Clock size={10} />
-              {new Date(post.createdAt).toLocaleString('vi-VN')}
+              {formatDateSafe(post.createdAt)}
             </div>
           </div>
         </div>
@@ -1681,7 +1693,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
 
       const postRef = doc(db, 'social_posts', postId);
       await updateDoc(postRef, {
-        commentsCount: increment(1)
+        commentsCount: comments.length + 1
       });
 
       setNewComment('');
@@ -1811,7 +1823,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
                   </div>
                   <div className="flex items-center gap-3 mt-1 ml-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      {new Date(comment.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                      {formatDateSafe(comment.createdAt, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 </div>

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { History, Plus, X, Save, Trash2, Calendar, FileText, CheckCircle2, AlertCircle, Info, Sparkles, Wrench, ChevronRight, Maximize2, ChevronUp, ChevronDown } from 'lucide-react';
 import { db, collection, query, orderBy, onSnapshot, setDoc, doc, deleteDoc, serverTimestamp, handleFirestoreError, OperationType } from '../firebase';
 import { VersionLog, UserProfile } from '../types';
-import { cn, getBustedPhotoURL } from '../lib/utils';
+import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 import { Users, UserCheck } from 'lucide-react';
 import { VersionUpdateContent, markVersionAsRead } from './UpdateNotification';
 
@@ -25,7 +25,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
   useEffect(() => {
     const q = query(collection(db, 'versions'), orderBy('releaseDate', 'desc'));
     const unsubscribe = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as VersionLog));
+      const data = snap.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as VersionLog));
       setVersions(data);
       if (data.length > 0 && !selectedVersionId) {
         setSelectedVersionId(data[0].id);
@@ -39,7 +39,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
   useEffect(() => {
     if (!isAdmin) return;
     const unsubscribe = onSnapshot(collection(db, 'users'), (snap) => {
-      setAllUsers(snap.docs.map(doc => doc.data() as UserProfile));
+      setAllUsers(snap.docs.map(doc => sanitizeFirestoreData(doc.data()) as UserProfile));
     });
     return () => unsubscribe();
   }, [isAdmin]);
@@ -72,7 +72,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
       isDraft: editingVersion.isDraft ?? false,
       createdBy: uid,
       createdAt: editingVersion.createdAt || new Date().toISOString(),
-      updatedAt: serverTimestamp(),
+      updatedAt: new Date().toISOString(),
     };
 
     try {
@@ -132,7 +132,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
               <h1 className={cn("font-black tracking-tighter", isPopup ? "text-5xl" : "text-4xl")}>{v.versionName}</h1>
               <p className="text-sm font-bold opacity-50 flex items-center gap-2">
                 <Calendar size={14} />
-                Phát hành ngày {new Date(v.releaseDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                Phát hành ngày {formatDateSafe(v.releaseDate, { day: '2-digit', month: '2-digit', year: 'numeric' })}
               </p>
             </div>
           </div>
@@ -314,7 +314,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                       </div>
                       <div className="flex items-center gap-2 text-[10px] opacity-50 font-bold">
                         <Calendar size={10} />
-                        {new Date(v.releaseDate).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        {formatDateSafe(v.releaseDate, { day: '2-digit', month: '2-digit', year: 'numeric' })}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">

@@ -3,12 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 import { SystemSettings, UserProfile, AuthLog, GuestLog } from '../types';
 import ThemeSettings from './ThemeSettings';
 import ConfirmModal from './ConfirmModal';
 import StaffManagement from './StaffManagement';
 import VersionManagement from './VersionManagement';
+import SlideShowcaseStudio from './SlideShowcaseStudio';
 
 interface ConfigItem {
   id: string;
@@ -42,6 +43,7 @@ const ROLE_TABS = [
   { id: 'manage_icd10', label: 'Quản lý ICD-10' },
   { id: 'manage_interaction', label: 'Quản lý tương tác thuốc' },
   { id: 'manage_adr', label: 'Quản lý ADR' },
+  { id: 'manage_slideshow', label: 'Quản lý Slide Showcase' },
   { id: 'manage_config', label: 'Cấu hình hệ thống' },
 ];
 
@@ -55,6 +57,7 @@ const TITLE_TABS = [
   { id: 'view_prescription', label: 'Kê toa thử' },
   { id: 'view_todo', label: 'Việc cần làm' },
   { id: 'view_doc_lookup', label: 'Tra cứu văn bản' },
+  { id: 'view_slideshow', label: 'Slide Showcase' },
 ];
 
 const ALL_FEATURES = [
@@ -71,6 +74,7 @@ const ALL_FEATURES = [
   { id: 'view_social', label: 'Mạng xã hội', icon: MessageSquare, desc: 'Giao lưu và chia sẻ chuyên môn' },
   { id: 'view_calculator', label: 'Máy tính', icon: Calculator, desc: 'Máy tính liều lượng & cân nặng' },
   { id: 'view_todo', label: 'Việc cần làm', icon: ListTodo, desc: 'Danh sách công việc cá nhân' },
+  { id: 'view_slideshow', label: 'Slide Showcase', icon: LayoutTemplate, desc: 'Trình thiết kế & Showcase Slide phong cách Edge' },
 ];
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -515,28 +519,28 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
   useEffect(() => {
     const unsubTitles = onSnapshot(collection(db, 'config_titles'), (snapshot) => {
-      setTitles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setTitles(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
     const unsubPositions = onSnapshot(collection(db, 'config_positions'), (snapshot) => {
-      setPositions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setPositions(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
     const unsubSpecialties = onSnapshot(collection(db, 'config_specialties'), (snapshot) => {
-      setSpecialties(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setSpecialties(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
     const unsubDepartments = onSnapshot(collection(db, 'config_departments'), (snapshot) => {
-      setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setDepartments(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as ConfigItem)).sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
     const unsubRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
-      setRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConfigItem)).sort((a, b) => (b.powerPoints ?? 0) - (a.powerPoints ?? 0)));
+      setRoles(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as ConfigItem)).sort((a, b) => (b.powerPoints ?? 0) - (a.powerPoints ?? 0)));
     });
     const unsubPerms = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
-      setRolePermissions(snapshot.docs.map(doc => doc.data() as RolePermission));
+      setRolePermissions(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()) as RolePermission));
     });
     const unsubTitlePerms = onSnapshot(collection(db, 'title_permissions'), (snapshot) => {
-      setTitlePermissions(snapshot.docs.map(doc => doc.data() as TitlePermission));
+      setTitlePermissions(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()) as TitlePermission));
     });
     const unsubStaff = onSnapshot(collection(db, 'staff'), (snapshot) => {
-      setAllStaff(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setAllStaff(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) })));
     });
 
     setLoading(false);
@@ -860,6 +864,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'general', label: 'Cài đặt chung', icon: Globe, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
     { id: 'registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
     { id: 'home', label: 'Công cụ', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+    { id: 'slideshow', label: 'Quản lý Slide Showcase', icon: LayoutTemplate, color: 'text-purple-500', bg: 'bg-purple-500/10' },
     { id: 'notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, color: 'text-rose-500', bg: 'bg-rose-500/10' },
     { id: 'hr', label: 'Quản lý Nhân sự', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
@@ -883,6 +888,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       desc: 'Trung tâm điều khiển & Thông báo',
       longDesc: 'Giám sát toàn diện trạng thái vận hành, quản trị hệ thống tính năng cốt lõi và kênh truyền thông nội bộ chuyên nghiệp.',
       gradient: 'from-indigo-600 to-blue-500'
+    },
+    slideshow: {
+      desc: 'Trình thiết kế & Quản lý Slide Showcase v151',
+      longDesc: 'Thiết kế, tùy chỉnh, thêm mới, chỉnh sửa và sắp xếp các Slide Showcase phong cách Microsoft Edge v151.',
+      gradient: 'from-purple-600 to-indigo-500'
     },
     notifications: {
       desc: 'Hệ thống thông báo & tin nhắn',
@@ -934,7 +944,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   useEffect(() => {
     if (activeCategory === 'hr' || activeCategory === 'features' || activeCategory === 'notifications' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities' || homeSubTab === 'notifications'))) {
       const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
-        setAllUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
+        setAllUsers(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()) as UserProfile));
       });
       return () => unsub();
     }
@@ -944,7 +954,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     if (activeCategory === 'features' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities'))) {
       const unsub = onSnapshot(doc(db, 'system_config', 'feature_settings'), (doc) => {
         if (doc.exists()) {
-          setFeatureSettings(doc.data());
+          setFeatureSettings(sanitizeFirestoreData(doc.data()));
         }
       });
       return () => unsub();
@@ -2566,6 +2576,20 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       <div className="space-y-6">
         {/* Content Area */}
         <div className="space-y-6">
+          {activeCategory === 'slideshow' && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <SlideShowcaseStudio
+                isDarkMode={isDarkMode}
+                userRole={userRole}
+                uid={uid}
+                initialMode="designer"
+              />
+            </motion.div>
+          )}
           {activeCategory === 'hr' && (
             <div className={cn(
               "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
@@ -3279,12 +3303,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               <div className="mt-3 pt-3 border-t border-dashed border-slate-500/10 flex items-center justify-between text-[8px] font-black uppercase tracking-widest text-slate-400">
                                 <span className="flex items-center gap-1">
                                   <Calendar size={10} />
-                                  Gửi lúc: {new Date(ann.createdAt).toLocaleString('vi-VN')}
+                                  Gửi lúc: {formatDateSafe(ann.createdAt)}
                                 </span>
                                 {ann.updatedAt && (
                                   <span className="text-amber-500 flex items-center gap-1">
                                     <Edit3 size={10} />
-                                    Cập nhật: {new Date(ann.updatedAt).toLocaleString('vi-VN')}
+                                    Cập nhật: {formatDateSafe(ann.updatedAt)}
                                   </span>
                                 )}
                               </div>
@@ -4305,7 +4329,36 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 )}
 
                 {regSubTab === 'history' && (() => {
-                  const filteredAuthLogs = authLogs.filter((log) => {
+                  const rawGmail = authLogs.filter((log) => {
+                    if (log.loginType === 'quick_account') return false;
+                    if (log.userId && log.userId.startsWith('staff_')) return false;
+                    if (log.staffAccount) return false;
+                    if (log.loginType === 'google') return true;
+                    if (log.userEmail && log.userEmail.toLowerCase().includes('@gmail.com')) return true;
+                    if (log.userEmail && log.userEmail.toLowerCase().endsWith('@bv.local')) return false;
+                    return !!log.userEmail && !log.userEmail.toLowerCase().endsWith('@bv.local');
+                  });
+
+                  // Deduplicate rapid consecutive entries for same email within 5 minutes
+                  const gmailLogs: typeof rawGmail = [];
+                  for (const log of rawGmail) {
+                    const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+                    const emailKey = (log.userEmail || log.userId || 'unknown').toLowerCase();
+
+                    const isDup = gmailLogs.some(prev => {
+                      if (prev.type !== log.type) return false;
+                      const prevKey = (prev.userEmail || prev.userId || 'unknown').toLowerCase();
+                      if (prevKey !== emailKey) return false;
+                      const prevTime = prev.timestamp ? new Date(prev.timestamp).getTime() : 0;
+                      return Math.abs(prevTime - logTime) < 300000;
+                    });
+
+                    if (!isDup) {
+                      gmailLogs.push(log);
+                    }
+                  }
+
+                  const filteredAuthLogs = gmailLogs.filter((log) => {
                     if (historyActionFilter !== 'all' && log.type !== historyActionFilter) {
                       return false;
                     }
@@ -4335,17 +4388,22 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         "p-6 sm:p-8 rounded-[32px] border transition-all space-y-8",
                         isDarkMode ? "bg-slate-900/50 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/30"
                       )}>
-                        <div className="flex items-center justify-between px-1">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 px-1">
                           <div className="space-y-1">
-                            <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                              Lịch sử Đăng nhập/Đăng xuất
-                            </h3>
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                Lịch sử Đăng nhập/Đăng xuất (Tài khoản Gmail)
+                              </h3>
+                              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                                Chỉ ghi nhận Gmail
+                              </span>
+                            </div>
                             <p className={cn("text-sm font-medium", isDarkMode ? "text-slate-400" : "text-slate-500")}>
-                              Theo dõi hoạt động truy cập hệ thống (Tối đa 50 bản ghi gần nhất)
+                              Chỉ lưu và ghi nhận nhật ký đăng nhập/đăng xuất của các tài khoản Google / Gmail (Tối đa 50 bản ghi gần nhất)
                             </p>
                           </div>
                           <div className={cn(
-                            "p-4 rounded-2xl",
+                            "p-4 rounded-2xl shrink-0",
                             isDarkMode ? "bg-slate-800 text-blue-400" : "bg-blue-50 text-blue-600"
                           )}>
                             <History size={24} />
@@ -4360,7 +4418,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               type="text"
                               value={historySearchQuery}
                               onChange={(e) => setHistorySearchQuery(e.target.value)}
-                              placeholder="Tìm tên, email, IP, MAC, thiết bị..."
+                              placeholder="Tìm tên, gmail, IP, MAC, thiết bị..."
                               className={cn(
                                 "w-full pl-10 pr-9 py-3 rounded-2xl text-[12px] font-bold outline-none transition-all border-none focus:ring-2 focus:ring-blue-500",
                                 isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-100 text-slate-900 placeholder-slate-400 shadow-sm"
@@ -4395,7 +4453,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                   : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
-                              Tất cả ({authLogs.length})
+                              Tất cả ({gmailLogs.length})
                             </button>
                             <button
                               type="button"
@@ -4407,7 +4465,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                   : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
-                              Đăng nhập ({authLogs.filter(l => l.type === 'login').length})
+                              Đăng nhập ({gmailLogs.filter(l => l.type === 'login').length})
                             </button>
                             <button
                               type="button"
@@ -4419,7 +4477,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                   : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")
                               )}
                             >
-                              Đăng xuất ({authLogs.filter(l => l.type === 'logout').length})
+                              Đăng xuất ({gmailLogs.filter(l => l.type === 'logout').length})
                             </button>
                           </div>
                         </div>
@@ -4433,7 +4491,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               <thead>
                                 <tr className={cn("text-[10px] font-black uppercase tracking-[0.2em]", isDarkMode ? "bg-slate-800 text-slate-500" : "bg-slate-50 text-slate-400")}>
                                   <th className="px-6 py-5 border-b border-transparent">Thời gian</th>
-                                  <th className="px-6 py-5 border-b border-transparent">Người dùng</th>
+                                  <th className="px-6 py-5 border-b border-transparent">Tài khoản Gmail</th>
                                   <th className="px-6 py-5 border-b border-transparent">Thiết bị</th>
                                   <th className="px-6 py-5 border-b border-transparent">Địa chỉ IP / MAC</th>
                                   <th className="px-6 py-5 border-b border-transparent">Hành động</th>
@@ -4443,7 +4501,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                 {filteredAuthLogs.length > 0 ? filteredAuthLogs.map((log) => (
                                   <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
                                     <td className="px-6 py-5 whitespace-nowrap text-[13px] font-bold text-slate-400">
-                                      {new Date(log.timestamp).toLocaleString('vi-VN', {
+                                      {formatDateSafe(log.timestamp, {
                                         day: '2-digit',
                                         month: '2-digit',
                                         year: 'numeric',
@@ -4454,11 +4512,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                     </td>
                                     <td className="px-6 py-5">
                                       <div className="flex flex-col">
-                                        <span className={cn("text-sm font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                                        <span className={cn("text-sm font-black tracking-tight flex items-center gap-1.5", isDarkMode ? "text-white" : "text-slate-900")}>
                                           {log.userName}
                                         </span>
-                                        <span className="text-[11px] text-slate-500 font-bold tracking-tight">
-                                          {log.userEmail}
+                                        <span className="text-[11px] text-rose-500 font-bold tracking-tight flex items-center gap-1">
+                                          ✉️ {log.userEmail}
                                         </span>
                                       </div>
                                     </td>
@@ -4652,7 +4710,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               {filteredGuestLogs.length > 0 ? filteredGuestLogs.map((log) => (
                                 <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/20" : "hover:bg-slate-50/50")}>
                                   <td className="px-6 py-5 whitespace-nowrap text-xs font-bold text-slate-500">
-                                    {new Date(log.timestamp).toLocaleString('vi-VN')}
+                                    {formatDateSafe(log.timestamp)}
                                   </td>
                                   <td className="px-6 py-5 whitespace-nowrap">
                                     <span className={cn("text-[13px] font-bold tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>

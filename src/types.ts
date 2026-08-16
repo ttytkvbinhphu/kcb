@@ -13,11 +13,12 @@ export interface Drug {
   mechanismOfActionLabel?: string; // Tùy chỉnh tiêu đề của cơ chế tác dụng
   pharmacology?: string; // Thông tin dược lý chi tiết
   pharmacologicalGroup?: string; // Nhóm dược lý
-  indications: { title?: string; content: string; icd10s?: string[]; doubleIcd10s?: { dagger: string; asterisk: string }[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[]; notRecommendedIcd10s?: string[]; betterAlternativeIcd10s?: string[]; isRecommended?: boolean; isNotRecommended?: boolean; }[];
+  indications: { title?: string; content: string; icd10s?: string[]; doubleIcd10s?: { dagger: string; asterisk: string; category?: 'default' | 'alternative' | 'not_recommended' | 'normal' }[]; isPrimary?: boolean; defaultIcd10?: string; defaultIcd10s?: string[]; notRecommendedIcd10s?: string[]; betterAlternativeIcd10s?: string[]; isRecommended?: boolean; isNotRecommended?: boolean; }[];
   contraindications: { 
     content: string; 
     type?: 'Drug' | 'ICD-10' | 'Weight' | 'Age' | 'Other'; 
     icd10s?: string[];
+    cautionIcd10s?: string[];
     drugs?: string[];
     ageConfig?: {
       operator: '<' | '>' | '≥' | '≤' | '';
@@ -38,8 +39,9 @@ export interface Drug {
   bannerUrl?: string;
   pdfUrl?: string;
   registrationNumber?: string;
+  price?: number | string;
   lotNumber?: string;
-  lots?: { lotNumber: string; expiryDate: string; quantity?: number | string; reportDate?: string }[];
+  lots?: { lotNumber: string; expiryDate: string; quantity?: number | string; reportDate?: string; price?: number | string }[];
   stockQuantity?: number | string;
   lastReportDate?: string;
   quantityReports?: {
@@ -66,6 +68,7 @@ export interface Drug {
   administrationRoute?: string; // e.g., Oral, IV, IM
   dosageAndAdministration?: { 
     groupTitle?: string; // Tiêu đề nhóm đối tượng (Ví dụ: Điều trị bệnh A)
+    groupDescription?: string; // Mô tả/ghi chú chung nhóm chỉ định
     category: string; 
     content: string;
     patientGroups?: string[];
@@ -83,6 +86,8 @@ export interface Drug {
     afternoon?: string;      // Chiều (Legacy)
     night?: string;          // Tối (Legacy)
     totalDay?: string;       // Tổng/Ngày (Legacy)
+    name?: string;           // Tên lộ trình (Legacy)
+    note?: string;           // Ghi chú (Legacy)
     schedules?: {            // Mảng các lộ trình dùng thuốc
       name?: string;         // Tên lộ trình (Ví dụ: Đợt tấn công, liều duy trì,...)
       periodStart?: string;
@@ -721,4 +726,66 @@ export interface QuickAccountWarningConfig {
   content: string;
   updatedAt?: string;
   updatedBy?: string;
+}
+
+export interface SlideShowcaseDeck {
+  id: string;
+  title: string;
+  description?: string;
+  category?: string;
+  badge?: string;
+  isDefault?: boolean;
+  order?: number;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+}
+
+export interface SlideShowcaseItem {
+  id: string;
+  deckId?: string; // ID của Bộ Slide Showcase
+  title: string;
+  subtitle?: string;
+  category: string;
+  badgeText?: string;
+  badgeVariant?: 'blue' | 'emerald' | 'purple' | 'amber' | 'rose' | 'dark';
+  description: string;
+  highlights?: string[];
+  mediaType?: 'image' | 'video' | 'mock_card' | 'interactive_demo';
+  mediaUrl?: string;
+  mediaCaption?: string;
+  mockConfig?: {
+    headerTitle?: string;
+    badge?: string;
+    previewType?: 'search_demo' | 'icd_demo' | 'interaction_demo' | 'ai_assistant_demo' | 'stats_demo';
+    codeSnippet?: string;
+    featuresList?: { title: string; desc: string; icon?: string }[];
+  };
+  primaryCta?: {
+    text: string;
+    actionType: 'navigate' | 'external_link' | 'modal' | 'copy';
+    targetTab?: string;
+    url?: string;
+  };
+  secondaryCta?: {
+    text: string;
+    actionType: 'navigate' | 'external_link' | 'modal' | 'copy';
+    targetTab?: string;
+    url?: string;
+  };
+  layoutType: 'edge_hero' | 'feature_split' | 'grid_spotlight' | 'minimal_card' | 'banner_full';
+  themeColor: 'edge_blue' | 'emerald_teal' | 'cyber_violet' | 'sunset_rose' | 'golden_amber' | 'slate_dark';
+  order: number;
+  isActive: boolean;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SlideDeckSection {
+  id: string;
+  name: string;
+  icon?: string;
+  description?: string;
+  order: number;
 }

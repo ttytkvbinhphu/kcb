@@ -21,11 +21,12 @@ import StaffManagement from './components/StaffManagement';
 import UpdateNotification from './components/UpdateNotification';
 import DrugDetailModal from './components/DrugDetailModal';
 import WelcomeSlider from './components/WelcomeSlider';
+import SlideShowcaseStudio from './components/SlideShowcaseStudio';
 
 import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { cn, getBustedPhotoURL } from './lib/utils';
+import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from './lib/utils';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment, arrayUnion, arrayRemove } from './firebase';
 import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings, Staff, QuickAccountWarningConfig } from './types';
 import { seedInitialData } from './lib/seed';
@@ -495,7 +496,10 @@ export default function App() {
           const storageKey = `daily_access_logged_${activeUid}_${deviceMac}`;
           const lastLoggedDate = safeLocalStorage.getItem(storageKey);
 
-          if (lastLoggedDate !== todayStr) {
+          const userEmail = userProfile.email || user?.email || '';
+          const isGmailUser = (userEmail.toLowerCase().includes('@gmail.com') || (!activeUid.startsWith('staff_') && !userProfile.staffAccount && !userEmail.toLowerCase().endsWith('@bv.local')));
+
+          if (lastLoggedDate !== todayStr && isGmailUser) {
             const logId = Date.now().toString();
             const ip = await getIpAddress();
             const dev = getDeviceName();
@@ -503,9 +507,10 @@ export default function App() {
             await setDoc(doc(db, 'auth_logs', logId), {
               id: logId,
               userId: activeUid,
-              userEmail: userProfile.email || user?.email || '',
+              userEmail: userEmail,
               userName: userProfile.displayName || 'Người dùng',
               type: 'login',
+              loginType: 'google',
               timestamp: new Date().toISOString(),
               ipAddress: ip,
               macAddress: deviceMac,
@@ -978,11 +983,11 @@ export default function App() {
       if (activeUid.startsWith('staff_')) {
         const staffId = activeUid.replace(/^staff_/, '');
         try {
-          await updateDoc(doc(db, 'staff', staffId), {
+          await setDoc(doc(db, 'staff', staffId), {
             staffAccount: step1Val,
             username: step1Val,
             updatedAt: new Date().toISOString()
-          });
+          }, { merge: true });
         } catch (e) {
           console.warn("Could not update staff document:", e);
         }
@@ -1010,7 +1015,7 @@ export default function App() {
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, 'system_settings', 'main'), (snapshot) => {
       if (snapshot.exists()) {
-        const settings = snapshot.data() as SystemSettings;
+        const settings = sanitizeFirestoreData(snapshot.data()) as SystemSettings;
         setSystemSettings(settings);
 
         // Apply default theme only if user hasn't explicitly set one in this session's localStorage
@@ -1025,7 +1030,7 @@ export default function App() {
 
     const unsubReg = onSnapshot(doc(db, 'system_config', 'registration'), (snapshot) => {
       if (snapshot.exists()) {
-        setRegSettings(snapshot.data() as RegistrationSettings);
+        setRegSettings(sanitizeFirestoreData(snapshot.data()) as RegistrationSettings);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'system_config/registration');
@@ -1033,7 +1038,7 @@ export default function App() {
 
     const unsubFeatures = onSnapshot(doc(db, 'system_config', 'features'), (snapshot) => {
       if (snapshot.exists()) {
-        setFeatureStates(snapshot.data() as any);
+        setFeatureStates(sanitizeFirestoreData(snapshot.data()) as any);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'system_config/features');
@@ -1041,7 +1046,7 @@ export default function App() {
 
     const unsubFeatureSettings = onSnapshot(doc(db, 'system_config', 'feature_settings'), (snapshot) => {
       if (snapshot.exists()) {
-        setFeatureSettings(snapshot.data() as any);
+        setFeatureSettings(sanitizeFirestoreData(snapshot.data()) as any);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'system_config/feature_settings');
@@ -1049,7 +1054,7 @@ export default function App() {
 
     const unsubQuickWarn = onSnapshot(doc(db, 'system_config', 'quick_account_warning'), (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.data() as QuickAccountWarningConfig;
+        const data = sanitizeFirestoreData(snapshot.data()) as QuickAccountWarningConfig;
         setQuickWarningConfig(prev => ({ ...prev, ...data }));
       }
     }, (error) => {
@@ -1076,7 +1081,7 @@ export default function App() {
     // Current user profile listener for real-time sync
     const unsubUserProfile = onSnapshot(doc(db, 'users', activeUid), (snapshot) => {
       if (snapshot.exists()) {
-        setUserProfile(snapshot.data() as UserProfile);
+        setUserProfile(sanitizeFirestoreData(snapshot.data()) as UserProfile);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${activeUid}`);
@@ -1090,19 +1095,19 @@ export default function App() {
     }, 3000);
 
     const unsubConfigRoles = onSnapshot(collection(db, 'config_roles'), (snapshot) => {
-      setConfigRoles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setConfigRoles(snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'config_roles');
     });
 
     const unsubRolePerms = onSnapshot(collection(db, 'role_permissions'), (snapshot) => {
-      setRolePermissions(snapshot.docs.map(doc => doc.data()));
+      setRolePermissions(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'role_permissions');
     });
 
     const unsubTitlePerms = onSnapshot(collection(db, 'title_permissions'), (snapshot) => {
-      setTitlePermissions(snapshot.docs.map(doc => doc.data()));
+      setTitlePermissions(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
       setPermsLoading(false);
       clearTimeout(permsTimeout);
     }, (error) => {
@@ -1120,7 +1125,7 @@ export default function App() {
     );
 
     const unsubNotifications = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as Notification));
       
       if (isInitialNotificationsLoad.current) {
         existingNotificationIds.current = items.map(x => x.id);
@@ -1158,7 +1163,7 @@ export default function App() {
     );
 
     const unsubAnnouncements = onSnapshot(qAnnouncements, (snapshot) => {
-      const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement));
+      const allAnnouncements = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as Announcement));
 
       // Filter based on user profile targets
       const filtered = allAnnouncements.filter(ann => {
@@ -1380,7 +1385,7 @@ export default function App() {
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
                 )}
                 <span className="text-[8px] text-slate-400 font-medium shrink-0">
-                  {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+                  {formatDateSafe(item.createdAt)}
                 </span>
               </div>
             </div>
@@ -1524,12 +1529,14 @@ export default function App() {
             if (!isVisitLoggedThisSession) {
               isVisitLoggedThisSession = true;
               try {
+                const nowIso = new Date().toISOString();
+                const nextCount = typeof profile.visitCount === 'number' ? profile.visitCount + 1 : 1;
                 await updateDoc(userRef, {
-                  lastVisit: serverTimestamp(),
-                  visitCount: increment(1)
+                  lastVisit: nowIso,
+                  visitCount: nextCount
                 });
-                profile.lastVisit = new Date().toISOString();
-                profile.visitCount = (profile.visitCount || 0) + 1;
+                profile.lastVisit = nowIso;
+                profile.visitCount = nextCount;
               } catch (visitErr) {
                 console.warn("Failed to update visit stats for existing user:", visitErr);
               }
@@ -1612,8 +1619,8 @@ export default function App() {
               specialty: 'Không',
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              lastVisit: serverTimestamp(),
-              visitCount: increment(1)
+              lastVisit: new Date().toISOString(),
+              visitCount: 1
             };
 
             // Set profile locally first so UI transitions immediately
@@ -1740,7 +1747,7 @@ export default function App() {
 
       const staffRef = collection(db, 'staff');
       const snapshot = await getDocs(staffRef);
-      const staffList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff));
+      const staffList = snapshot.docs.map(doc => ({ ...sanitizeFirestoreData(doc.data()), id: doc.id } as Staff));
 
       const matchedStaff = staffList.find(s => {
         const inputLower = input.toLowerCase();
@@ -1800,30 +1807,29 @@ export default function App() {
 
           // Increment staff quickLoginCount in Firestore
           try {
-            await updateDoc(doc(db, 'staff', matchedStaff.id), {
-              quickLoginCount: increment(1),
-              lastQuickLoginAt: new Date().toISOString()
-            });
+            const curCount = typeof matchedStaff.quickLoginCount === 'number' ? matchedStaff.quickLoginCount : 0;
+            const nowIso = new Date().toISOString();
+
+            let logCount = 0;
+            try {
+              const logsQ = query(collection(db, 'auth_logs'), where('staffId', '==', matchedStaff.id));
+              const logSnap = await getDocs(logsQ);
+              logCount = logSnap.docs.filter(d => d.data()?.type === 'login').length;
+            } catch (e) {
+              console.warn("Could not query auth logs count:", e);
+            }
+
+            const newCount = Math.max(curCount + 1, logCount + 1);
+
+            await setDoc(doc(db, 'staff', matchedStaff.id), {
+              quickLoginCount: newCount,
+              lastQuickLoginAt: nowIso
+            }, { merge: true });
           } catch (countErr) {
             console.warn("Could not increment quickLoginCount:", countErr);
           }
-
-          await setDoc(doc(db, 'auth_logs', logId), {
-            id: logId,
-            userId: staffProfile.uid,
-            staffId: matchedStaff.id,
-            staffAccount: matchedStaff.staffAccount || matchedStaff.username || matchedStaff.id,
-            userEmail: staffProfile.email,
-            userName: staffProfile.displayName,
-            type: 'login',
-            loginType: 'quick_account',
-            timestamp: new Date().toISOString(),
-            ipAddress: ip,
-            macAddress: mac,
-            device: dev
-          });
         } catch (logErr) {
-          console.warn("Auth log failed:", logErr);
+          console.warn("Staff login handling failed:", logErr);
         }
       } else {
         setStaffLoginError('Không có tài khoản nhanh này trong hệ thống.');
@@ -1916,10 +1922,12 @@ export default function App() {
     const isStaff = loggingUid ? (loggingUid.startsWith('staff_') || !!loggingStaffAcc) : false;
     const staffId = isStaff && loggingUid ? loggingUid.replace(/^staff_/, '') : undefined;
 
+    const isGmailUser = !isStaff && (loggingEmail.toLowerCase().includes('@gmail.com') || (!!loggingEmail && !loggingEmail.toLowerCase().endsWith('@bv.local')));
+
     safeLocalStorage.removeItem('staff_login_session');
     setUserProfile(null);
 
-    if (loggingUid) {
+    if (loggingUid && isGmailUser) {
       // Log explicit logout
       const logId = Date.now().toString();
       try {
@@ -1929,12 +1937,10 @@ export default function App() {
         await setDoc(doc(db, 'auth_logs', logId), {
           id: logId,
           userId: loggingUid,
-          staffId: staffId,
-          staffAccount: loggingStaffAcc,
           userEmail: loggingEmail,
           userName: loggingName,
           type: 'logout',
-          loginType: isStaff ? 'quick_account' : 'google',
+          loginType: 'google',
           timestamp: new Date().toISOString(),
           ipAddress: ip,
           macAddress: mac,
@@ -2849,6 +2855,18 @@ export default function App() {
       case 'todo':
       case 'view_todo':
         return <TodoWidget isDarkMode={isDarkMode} onClose={() => setActiveTab('dashboard')} />;
+      case 'slideshow':
+      case 'view_slideshow':
+      case 'manage_slideshow':
+        return (
+          <SlideShowcaseStudio
+            isDarkMode={isDarkMode}
+            userRole={userProfile.role}
+            uid={userProfile.uid}
+            onNavigateToTab={(tab) => setActiveTab(tab)}
+            initialMode={activeTab === 'manage_slideshow' ? 'designer' : 'viewer'}
+          />
+        );
       case 'doc_lookup':
       case 'view_doc_lookup':
         if (activeTab === 'manage_doc_lookup') {

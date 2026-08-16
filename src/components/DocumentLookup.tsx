@@ -8,7 +8,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 import { db, collection, onSnapshot, query, orderBy } from '../firebase';
 import { SAMPLE_DOCUMENTS, ClinicalDocument } from '../lib/sampleDocs';
 
@@ -183,7 +183,7 @@ export default function DocumentLookup({
       snapshot.forEach(docSnap => {
         docsList.push({
           id: docSnap.id,
-          ...docSnap.data()
+          ...sanitizeFirestoreData(docSnap.data())
         } as ClinicalDocument);
       });
       

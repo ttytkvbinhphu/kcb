@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ChevronDown, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch, FolderTree, Database, HelpCircle } from 'lucide-react';
-import { cn, getBustedPhotoURL } from '../lib/utils';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ChevronDown, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch, FolderTree, Database, HelpCircle, LayoutTemplate } from 'lucide-react';
+import { cn, getBustedPhotoURL, sanitizeFirestoreData } from '../lib/utils';
 import { Reorder, motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, where, orderBy, limit, onSnapshot } from '../firebase';
 import { VersionLog } from '../types';
@@ -94,7 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       const unsubscribe = onSnapshot(q, (snap) => {
         if (!snap.empty) {
-          const versions = snap.docs.map(d => ({ id: d.id, ...d.data() } as VersionLog));
+          const versions = snap.docs.map(d => ({ id: d.id, ...sanitizeFirestoreData(d.data()) } as VersionLog));
           const published = versions.find(v => !v.isDraft);
           setLatestVersion(published || versions[0] || null);
         }
@@ -125,12 +125,14 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_prescription', label: featureSettings['view_prescription']?.customTitle || 'Kê toa thử', icon: FileText, section: 'member', group: 'general' },
       { id: 'view_social', label: featureSettings['view_social']?.customTitle || 'Mạng xã hội', icon: MessageSquare, section: 'member', group: 'general' },
       { id: 'view_calculator', label: featureSettings['view_calculator']?.customTitle || 'Máy tính', icon: Calculator, section: 'member', group: 'general' },
+      { id: 'view_slideshow', label: featureSettings['view_slideshow']?.customTitle || 'Slide Showcase', icon: LayoutTemplate, section: 'member', group: 'general' },
       
       { id: 'admin_general', label: 'Cài đặt chung', icon: Globe, section: 'admin', group: 'admin' },
       { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
       { id: 'admin_home', label: 'Công cụ', icon: LayoutGrid, section: 'admin', group: 'admin' },
       { id: 'admin_notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, section: 'admin', group: 'admin' },
       { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
+      { id: 'admin_slideshow', label: 'Quản lý Slide Showcase', icon: LayoutTemplate, section: 'admin', group: 'admin' },
       { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users, section: 'admin', group: 'admin' },
       { id: 'admin_guide', label: 'Hướng dẫn/Trợ giúp', icon: HelpCircle, section: 'admin', group: 'admin' },
       

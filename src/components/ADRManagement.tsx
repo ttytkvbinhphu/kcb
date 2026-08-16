@@ -29,7 +29,7 @@ import {
   Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, formatDateSafe } from '../lib/utils';
 import { 
   db, 
   collection, 
@@ -44,6 +44,7 @@ import {
   OperationType 
 } from '../firebase';
 import { ADRReport, Drug, ADRCatalogItem } from '../types';
+import { sanitizeFirestoreData } from '../lib/utils';
 import ConfirmModal from './ConfirmModal';
 import DrugDetailModal from './DrugDetailModal';
 
@@ -280,7 +281,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
 
     const unsubscribeReports = onSnapshot(qReports, (snapshot) => {
       const reportsData = snapshot.docs.map(doc => ({
-        ...doc.data(),
+        ...sanitizeFirestoreData(doc.data()),
         id: doc.id
       })) as ADRReport[];
       setReports(reportsData);
@@ -293,7 +294,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
 
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       const drugsData = snapshot.docs.map(doc => ({
-        ...doc.data(),
+        ...sanitizeFirestoreData(doc.data()),
         id: doc.id
       })) as Drug[];
       setDrugs(drugsData);
@@ -303,7 +304,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
 
     const unsubscribeCatalog = onSnapshot(collection(db, 'adr_catalog'), (snapshot) => {
       const catalogData = snapshot.docs.map(doc => ({
-        ...doc.data(),
+        ...sanitizeFirestoreData(doc.data()),
         id: doc.id
       })) as ADRCatalogItem[];
       
@@ -785,7 +786,7 @@ const ADRManagement: React.FC<ADRManagementProps> = ({
                   <div className="flex items-center gap-2 text-slate-400">
                     <Clock size={12} />
                     <span className="text-[10px] font-bold">
-                      {new Date(report.reportedAt).toLocaleDateString('vi-VN')}
+                      {formatDateSafe(report.reportedAt)}
                     </span>
                   </div>
                 </div>

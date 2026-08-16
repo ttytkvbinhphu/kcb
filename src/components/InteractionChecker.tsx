@@ -3,7 +3,7 @@ import { Search, ShieldAlert, X, Plus, Sparkles, Loader2, AlertTriangle, CheckCi
 import { Drug, InteractionResult, ManualInteraction, ICD10 } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 import DrugDetailModal from './DrugDetailModal';
 import { db, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, setDoc, doc, deleteDoc, query, orderBy, sanitizeData } from '../firebase';
 import ConfirmModal from './ConfirmModal';
@@ -106,7 +106,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
 
   useEffect(() => {
     const unsubscribeDrugs = onSnapshot(collection(db, 'drugs'), (snapshot) => {
-      setDrugs(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Drug)));
+      setDrugs(snapshot.docs.map(doc => ({ ...sanitizeFirestoreData(doc.data()), id: doc.id } as Drug)));
     }, (error) => {
       console.error("Error fetching drugs for interaction check:", error);
       handleFirestoreError(error, OperationType.LIST, 'drugs');
@@ -117,7 +117,7 @@ const InteractionChecker: React.FC<InteractionCheckerProps> = ({
     });
 
     const unsubscribeManual = onSnapshot(query(collection(db, 'manual_interactions'), orderBy('updatedAt', 'desc')), (snapshot) => {
-      setManualInteractions(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ManualInteraction)));
+      setManualInteractions(snapshot.docs.map(doc => ({ ...sanitizeFirestoreData(doc.data()), id: doc.id } as ManualInteraction)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'manual_interactions');
     });

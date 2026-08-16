@@ -18,7 +18,8 @@ export default defineConfig(({ mode }) => {
         registerType: 'autoUpdate',
         includeAssets: ['icon-512.png', 'pwa-192x192.svg', 'pwa-512x512.svg'],
         workbox: {
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024
         },
         manifest: {
           name: 'KCB PB',
@@ -55,8 +56,9 @@ export default defineConfig(({ mode }) => {
       assetsDir: 'assets',
       emptyOutDir: true,
       sourcemap: false,
+      reportCompressedSize: false,
       target: 'esnext',
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 5000,
       rollupOptions: {
         output: {
           manualChunks(id) {

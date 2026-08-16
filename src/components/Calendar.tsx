@@ -5,7 +5,7 @@ import { CalendarEvent } from '../types';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, parseISO, isWithinInterval } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 
 interface CalendarProps {
   isDarkMode?: boolean;
@@ -32,7 +32,7 @@ const Calendar: React.FC<CalendarProps> = ({ isDarkMode }) => {
     if (!auth.currentUser) return;
 
     const unsubscribe = onSnapshot(collection(db, 'calendar_events'), (snapshot) => {
-      const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CalendarEvent));
+      const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as CalendarEvent));
       setEvents(fetchedEvents);
       
       // Update viewed event if it was changed in the background

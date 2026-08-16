@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Save, X, Loader2, Database, Search, Check, Pill } from 'lucide-react';
 import { Ingredient, Excipient } from '../types';
 import { db, collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, sanitizeData } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
 
@@ -68,7 +68,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
   useEffect(() => {
     const q = query(collection(db, collectionName), orderBy('name'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => doc.data());
+      const data = snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()));
       setItems(data);
       setLoading(false);
     }, (error) => {
@@ -84,13 +84,13 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     if (type === 'ingredient_category') {
       const q = query(collection(db, 'ingredients'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        setRelatedItems(snapshot.docs.map(doc => doc.data()));
+        setRelatedItems(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
       });
       return () => unsubscribe();
     } else if (type === 'excipient_category') {
       const q = query(collection(db, 'excipients'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        setRelatedItems(snapshot.docs.map(doc => doc.data()));
+        setRelatedItems(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
       });
       return () => unsubscribe();
     }
@@ -100,7 +100,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     if (type === 'ingredient') {
       const q = query(collection(db, 'ingredient_categories'), orderBy('name'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        setCategories(snapshot.docs.map(doc => doc.data()));
+        setCategories(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
       }, (error) => {
         console.error("Error fetching ingredient categories:", error);
       });
@@ -108,7 +108,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     } else if (type === 'excipient') {
       const q = query(collection(db, 'excipient_categories'), orderBy('name'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        setCategories(snapshot.docs.map(doc => doc.data()));
+        setCategories(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
       }, (error) => {
         console.error("Error fetching excipient categories:", error);
       });
@@ -126,7 +126,7 @@ const CatalogManagement: React.FC<CatalogManagementProps> = ({
     if (type !== 'excipient') return;
     const q = query(collection(db, 'drugs'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setDrugs(snapshot.docs.map(doc => doc.data()));
+      setDrugs(snapshot.docs.map(doc => sanitizeFirestoreData(doc.data())));
     }, (error) => {
       console.error("Error fetching drugs for CatalogManagement:", error);
     });

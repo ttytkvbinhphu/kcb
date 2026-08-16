@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Users, ChevronRight, X, Loader2, Check, AlertTriangle, Filter, Eye, Trash2, Pill, ClipboardList, Activity, Edit, Plus, Pin, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, writeBatch, where, getDocs, auth, updateDoc } from '../firebase';
 import { Patient, PatientDrug, PatientSupply, PatientSubclinical } from '../types';
 
@@ -215,7 +215,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
   useEffect(() => {
     const q = query(collection(db, 'patients'), orderBy('HO_TEN'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => doc.data() as Patient);
+      const data = snapshot.docs.map(doc => sanitizeFirestoreData(doc.data()) as Patient);
       setPatients(data);
       setLoading(false);
     }, (error) => {
@@ -230,7 +230,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
   useEffect(() => {
     const q = query(collection(db, 'patient_groups'), orderBy('name'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as any));
       setPatientGroups(data);
       setGroupsLoaded(true);
     }, (error) => {

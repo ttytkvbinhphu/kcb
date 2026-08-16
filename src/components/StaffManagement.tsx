@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, UserPlus, Users, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ChevronDown, X, Loader2, Check, AlertTriangle, Filter, Eye, EyeOff, Edit, Trash2, UserCheck, UserX, Briefcase, Stethoscope, Pill, ClipboardList, Syringe, Microscope, LayoutGrid, List, Baby, Zap, History, Laptop, Wifi, ShieldCheck, LogIn, LogOut, Clock, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
+import { cn, sanitizeFirestoreData } from '../lib/utils';
 import { db, collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, setDoc, doc, deleteDoc, writeBatch, limit } from '../firebase';
 import { Staff, AuthLog } from '../types';
 
@@ -58,6 +58,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
   const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
   const [viewingStaffDetail, setViewingStaffDetail] = useState<Staff | null>(null);
   const [showAccountInDetail, setShowAccountInDetail] = useState(false);
+  const [showDuplicateConfirmModal, setShowDuplicateConfirmModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(12);
@@ -101,7 +102,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
   useEffect(() => {
     const q = query(collection(db, 'staff'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const staffData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff));
+      const staffData = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as Staff));
       setStaff(staffData);
       setLoading(false);
     }, (error) => {
@@ -111,7 +112,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
 
     const qLogs = query(collection(db, 'auth_logs'), orderBy('timestamp', 'desc'), limit(500));
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
-      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AuthLog));
+      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...sanitizeFirestoreData(doc.data()) } as AuthLog));
       setAuthLogs(logs);
     }, (error) => {
       console.warn("Auth logs snapshot error:", error);
@@ -148,12 +149,35 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
     };
   }, []);
 
+  const currentQuickAccount = (formData.staffAccount || formData.username || '').trim();
+
+  const duplicateStaff = React.useMemo(() => {
+    if (!currentQuickAccount) return null;
+    const target = currentQuickAccount.toLowerCase();
+    return staff.find((s) => {
+      if (isEditing && selectedStaff && s.id === selectedStaff.id) return false;
+      const acc1 = (s.staffAccount || '').trim().toLowerCase();
+      const acc2 = (s.username || '').trim().toLowerCase();
+      return acc1 === target || acc2 === target;
+    }) || null;
+  }, [currentQuickAccount, staff, isEditing, selectedStaff]);
+
   const handleSave = async () => {
     if (!formData.fullName || !formData.type || !formData.gender || !formData.dob) {
       alert("Vui lòng nhập đầy đủ Tên, Loại nhân sự, Giới tính và Ngày sinh");
       return;
     }
 
+    if (duplicateStaff) {
+      setShowDuplicateConfirmModal(true);
+      return;
+    }
+
+    await executeSave();
+  };
+
+  const executeSave = async () => {
+    setShowDuplicateConfirmModal(false);
     setSaving(true);
     try {
       const staffId = isEditing && selectedStaff ? selectedStaff.id : `STF${Date.now()}`;
@@ -237,11 +261,14 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
   };
 
   const filteredStaff = staff.filter(s => {
-    const matchesSearch = (s.fullName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                         (s.certificateCode || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-                         (s.department || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-                         (s.specialty || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-                         (s.position || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+    const term = (searchTerm || '').toLowerCase();
+    const matchesSearch = (s.fullName || '').toLowerCase().includes(term) || 
+                         (s.staffAccount || '').toLowerCase().includes(term) ||
+                         (s.username || '').toLowerCase().includes(term) ||
+                         (s.certificateCode || '').toLowerCase().includes(term) ||
+                         (s.department || '').toLowerCase().includes(term) ||
+                         (s.specialty || '').toLowerCase().includes(term) ||
+                         (s.position || '').toLowerCase().includes(term);
     const matchesTab = activeTab === 'All' || 
                        (activeTab === 'Kỹ thuật viên' ? (s.type === 'Kỹ thuật viên' || String(s.type || '').toLowerCase().includes('kỹ thuật')) :
                        activeTab === 'Y sĩ' ? (s.type === 'Y sĩ' || String(s.type || '').toLowerCase().includes('y sĩ')) :
@@ -323,13 +350,97 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
     }
   };
 
+  const getStaffQuickLoginStats = React.useCallback((person: Staff) => {
+    const matchingLogs = authLogs.filter(log => {
+      if (log.type !== 'login') return false;
+      const matchStaffId = log.staffId === person.id || log.userId === `staff_${person.id}`;
+      const matchAcc = person.staffAccount && (
+        log.staffAccount === person.staffAccount || 
+        log.userEmail?.toLowerCase().startsWith(person.staffAccount.toLowerCase() + '@')
+      );
+      const matchUser = person.username && (
+        log.staffAccount === person.username || 
+        log.userEmail?.toLowerCase().startsWith(person.username.toLowerCase() + '@')
+      );
+      const matchPhone = person.phone && log.userEmail?.includes(person.phone);
+      return matchStaffId || matchAcc || matchUser || matchPhone;
+    });
+
+    // Deduplicate rapid consecutive logs within 5 minutes
+    const uniqueLogs: typeof matchingLogs = [];
+    for (const log of matchingLogs) {
+      const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+      const isDup = uniqueLogs.some(existing => {
+        const existingTime = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
+        return Math.abs(existingTime - logTime) < 300000;
+      });
+      if (!isDup) {
+        uniqueLogs.push(log);
+      }
+    }
+
+    const countFromLogs = uniqueLogs.length;
+    const storedCount = typeof person.quickLoginCount === 'number' ? person.quickLoginCount : 0;
+    const effectiveCount = Math.max(storedCount, countFromLogs);
+
+    let latestTime = person.lastQuickLoginAt || '';
+    uniqueLogs.forEach(log => {
+      if (log.timestamp && (!latestTime || new Date(log.timestamp) > new Date(latestTime))) {
+        latestTime = log.timestamp;
+      }
+    });
+
+    return {
+      count: effectiveCount,
+      lastLoginAt: latestTime
+    };
+  }, [authLogs]);
+
+  // Sync staff quickLoginCount with authLogs history if stored count is behind
+  useEffect(() => {
+    if (!staff.length || !authLogs.length) return;
+    staff.forEach(person => {
+      const stats = getStaffQuickLoginStats(person);
+      const storedCount = typeof person.quickLoginCount === 'number' ? person.quickLoginCount : 0;
+      if (stats.count > storedCount) {
+        setDoc(doc(db, 'staff', person.id), {
+          quickLoginCount: stats.count,
+          lastQuickLoginAt: stats.lastLoginAt || new Date().toISOString()
+        }, { merge: true }).catch(err => {
+          console.warn("Auto-sync staff quickLoginCount failed:", err);
+        });
+      }
+    });
+  }, [staff, authLogs, getStaffQuickLoginStats]);
+
   const staffAuthLogs = React.useMemo(() => {
-    return authLogs.filter(log => {
+    const raw = authLogs.filter(log => {
       return log.loginType === 'quick_account' 
         || (log.userId && log.userId.startsWith('staff_'))
         || !!log.staffAccount
         || !!log.staffId;
     });
+
+    // Filter out duplicate logs for the same staff member & action within 5 minutes
+    const deduplicated: typeof authLogs = [];
+    for (const log of raw) {
+      const logTime = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+      const staffKey = log.staffId || log.userId || log.staffAccount || log.userEmail || 'unknown';
+
+      const isDup = deduplicated.some(prev => {
+        if (prev.type !== log.type) return false;
+        const prevKey = prev.staffId || prev.userId || prev.staffAccount || prev.userEmail || 'unknown';
+        if (prevKey !== staffKey) return false;
+        const prevTime = prev.timestamp ? new Date(prev.timestamp).getTime() : 0;
+        return Math.abs(prevTime - logTime) < 300000;
+      });
+
+      if (!isDup) {
+        deduplicated.push(log);
+      }
+    }
+
+    return deduplicated;
   }, [authLogs]);
 
   const filteredAuthLogs = React.useMemo(() => {
@@ -510,7 +621,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
             type="text" 
-            placeholder="Tìm theo tên, mã chứng chỉ, khoa phòng..." 
+            placeholder="Tìm theo tên, tài khoản nhanh, mã CCHN, khoa phòng..." 
             className={cn(
               "w-full pl-10 pr-3 py-2.5 rounded-xl border-none font-bold text-sm transition-all focus:ring-2 focus:ring-primary",
               isDarkMode ? "bg-slate-800 text-white" : "bg-white text-slate-900 shadow-sm"
@@ -1136,15 +1247,22 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       "space-y-0.5 col-span-2 pt-2 mt-1 border-t flex items-center justify-between text-[10px]",
                       isDarkMode ? "border-slate-800" : "border-slate-100"
                     )}>
-                      <div className="flex items-center gap-1 text-amber-500 font-bold" title="Số lần truy cập bằng Tài khoản nhanh">
-                        <Zap size={12} className="fill-amber-500/20 text-amber-500 shrink-0" />
-                        <span>Đăng nhập nhanh: <strong className={cn("font-black", isDarkMode ? "text-amber-400" : "text-amber-600")}>{person.quickLoginCount || 0}</strong> lượt</span>
-                      </div>
-                      {person.lastQuickLoginAt && (
-                        <span className="text-[9px] text-slate-400 font-medium">
-                          {formatLogTime(person.lastQuickLoginAt)}
-                        </span>
-                      )}
+                      {(() => {
+                        const stats = getStaffQuickLoginStats(person);
+                        return (
+                          <>
+                            <div className="flex items-center gap-1 text-amber-500 font-bold" title="Số lần truy cập bằng Tài khoản nhanh">
+                              <Zap size={12} className="fill-amber-500/20 text-amber-500 shrink-0" />
+                              <span>Đăng nhập nhanh: <strong className={cn("font-black", isDarkMode ? "text-amber-400" : "text-amber-600")}>{stats.count}</strong> lượt</span>
+                            </div>
+                            {stats.lastLoginAt && (
+                              <span className="text-[9px] text-slate-400 font-medium">
+                                {formatLogTime(stats.lastLoginAt)}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 </motion.div>
@@ -1296,17 +1414,22 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
 
                       {/* Quick Login Count */}
                       <td className="py-3 px-3 whitespace-nowrap">
-                        <div className="flex flex-col items-start">
-                          <span className={cn("font-black text-xs flex items-center gap-1", isDarkMode ? "text-amber-400" : "text-amber-600")}>
-                            <Zap size={12} className="fill-amber-500/20 text-amber-500" />
-                            {person.quickLoginCount || 0} lượt
-                          </span>
-                          {person.lastQuickLoginAt && (
-                            <span className="text-[9px] text-slate-400 font-medium">
-                              {formatLogTime(person.lastQuickLoginAt)}
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const stats = getStaffQuickLoginStats(person);
+                          return (
+                            <div className="flex flex-col items-start">
+                              <span className={cn("font-black text-xs flex items-center gap-1", isDarkMode ? "text-amber-400" : "text-amber-600")}>
+                                <Zap size={12} className="fill-amber-500/20 text-amber-500" />
+                                {stats.count} lượt
+                              </span>
+                              {stats.lastLoginAt && (
+                                <span className="text-[9px] text-slate-400 font-medium">
+                                  {formatLogTime(stats.lastLoginAt)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Contact */}
@@ -1929,16 +2052,67 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                      <span>Tài khoản nhanh</span>
+                      <span className="flex items-center gap-1.5">
+                        Tài khoản nhanh
+                        {duplicateStaff && (
+                          <span className="text-amber-500 font-bold flex items-center gap-1 normal-case tracking-normal text-[10px]">
+                            <AlertTriangle size={12} /> Trùng lặp
+                          </span>
+                        )}
+                      </span>
                       <span className="text-[9px] text-emerald-500 font-bold lowercase italic">(Đăng nhập nhanh không cần mật khẩu)</span>
                     </label>
-                    <input 
-                      type="text" 
-                      placeholder="Nhập mã / tên tài khoản (ví dụ: bs.nam, STF102)..."
-                      className={cn("w-full px-4 py-2.5 rounded-xl border-none font-bold text-sm", isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900")}
-                      value={formData.staffAccount || formData.username || ''}
-                      onChange={(e) => setFormData({...formData, staffAccount: e.target.value, username: e.target.value})}
-                    />
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder="Nhập mã / tên tài khoản (ví dụ: bs.nam, STF102)..."
+                        className={cn(
+                          "w-full px-4 py-2.5 rounded-xl font-bold text-sm transition-all outline-none",
+                          duplicateStaff
+                            ? isDarkMode
+                              ? "bg-amber-950/20 border-2 border-amber-500 text-amber-200 placeholder-amber-700 pr-10"
+                              : "bg-amber-50/60 border-2 border-amber-400 text-amber-900 placeholder-amber-400 pr-10"
+                            : isDarkMode 
+                              ? "bg-slate-800 text-white border border-transparent" 
+                              : "bg-slate-50 text-slate-900 border border-transparent"
+                        )}
+                        value={formData.staffAccount || formData.username || ''}
+                        onChange={(e) => setFormData({...formData, staffAccount: e.target.value, username: e.target.value})}
+                      />
+                      {duplicateStaff && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-amber-500 pointer-events-none">
+                          <AlertTriangle size={18} />
+                        </div>
+                      )}
+                    </div>
+                    {duplicateStaff && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                          "p-3 rounded-xl border flex items-start gap-2.5 text-xs mt-1.5 shadow-2xs",
+                          isDarkMode
+                            ? "bg-amber-950/40 border-amber-800/80 text-amber-300"
+                            : "bg-amber-50 border-amber-200 text-amber-800"
+                        )}
+                      >
+                        <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5 min-w-0 leading-relaxed">
+                          <p className="font-black text-[11px] uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            Cảnh báo: Tài khoản nhanh này đã được sử dụng!
+                          </p>
+                          <p className="text-[12px]">
+                            Tài khoản <span className="font-black underline">{currentQuickAccount}</span> trùng với nhân sự: <strong className="font-extrabold">{duplicateStaff.fullName}</strong>
+                            {duplicateStaff.type ? ` (${duplicateStaff.type})` : ''}
+                            {duplicateStaff.department ? ` - ${duplicateStaff.department}` : ''}
+                            {duplicateStaff.certificateCode ? ` [Mã CCHN: ${duplicateStaff.certificateCode}]` : ''}.
+                          </p>
+                          <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 italic pt-0.5">
+                            💡 Vui lòng đổi sang mã/tài khoản khác để tránh nhầm lẫn khi đăng nhập nhanh.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại nhân sự (Chức danh)</label>
@@ -2186,6 +2360,97 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                 >
                   {deleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
                   Xác nhận xóa
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Duplicate Quick Account Warning Modal */}
+      <AnimatePresence>
+        {showDuplicateConfirmModal && duplicateStaff && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDuplicateConfirmModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className={cn(
+                "relative w-full max-w-md rounded-3xl p-6 shadow-2xl border z-10 space-y-4",
+                isDarkMode ? "bg-slate-900 border-amber-500/40 text-white" : "bg-white border-amber-200 text-slate-900"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight text-amber-600 dark:text-amber-400">
+                    Cảnh báo: Trùng Tài khoản nhanh!
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Tài khoản nhanh này đã được gán cho nhân sự khác
+                  </p>
+                </div>
+              </div>
+
+              <div className={cn("p-4 rounded-2xl border text-xs space-y-3", isDarkMode ? "bg-amber-950/20 border-amber-800/40" : "bg-amber-50/60 border-amber-200/80")}>
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Tài khoản nhanh <strong className="font-black text-amber-600 dark:text-amber-400 underline">{currentQuickAccount}</strong> bạn vừa nhập đang thuộc về nhân sự:
+                </p>
+                
+                <div className={cn("p-3 rounded-xl border space-y-1", isDarkMode ? "bg-slate-800/80 border-slate-700" : "bg-white border-amber-100 shadow-2xs")}>
+                  <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span>{duplicateStaff.fullName}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/20">
+                      {duplicateStaff.type || 'Nhân sự'}
+                    </span>
+                  </p>
+                  {duplicateStaff.department && (
+                    <p className="text-slate-500 text-[11px]">
+                      Khoa/Phòng: <strong className="text-slate-700 dark:text-slate-300">{duplicateStaff.department}</strong>
+                    </p>
+                  )}
+                  {duplicateStaff.certificateCode && (
+                    <p className="text-slate-500 text-[11px]">
+                      Mã CCHN: <strong className="text-slate-700 dark:text-slate-300">{duplicateStaff.certificateCode}</strong>
+                    </p>
+                  )}
+                </div>
+
+                <p className="text-amber-700 dark:text-amber-300 italic text-[11px] leading-relaxed">
+                  💡 Bạn có thể chọn <strong className="font-bold">"Quay lại sửa tài khoản"</strong> để thay đổi mã khác, hoặc nhấn <strong className="font-bold">"Vẫn tiếp tục lưu"</strong> nếu muốn sử dụng tài khoản chung này.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-2">
+                <button
+                  onClick={() => setShowDuplicateConfirmModal(false)}
+                  className={cn(
+                    "w-full sm:w-auto px-5 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 border",
+                    isDarkMode
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30"
+                      : "bg-amber-500 text-white border-amber-600 hover:bg-amber-600 shadow-sm"
+                  )}
+                >
+                  Quay lại sửa tài khoản
+                </button>
+                <button
+                  disabled={saving}
+                  onClick={executeSave}
+                  className={cn(
+                    "w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer",
+                    isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  {saving ? <Loader2 className="animate-spin" size={16} /> : "Vẫn tiếp tục lưu"}
                 </button>
               </div>
             </motion.div>
