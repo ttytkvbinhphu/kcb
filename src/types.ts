@@ -1,7 +1,7 @@
 export interface Drug {
   id: string;
   name: string;
-  activeIngredients: { name: string; amount: string; unit: string; sideEffectsNote?: string; equivalent?: string; equivalentAmount?: string; equivalentUnit?: string }[];
+  activeIngredients: { name: string; amount: string; unit: string; sideEffectsNote?: string; equivalent?: string; equivalentAmount?: string; equivalentUnit?: string; groupId?: string; groupIds?: string[] }[];
   atcCode?: string;
   dosageForm: string;
   detailedDosageForm?: string;
@@ -24,6 +24,13 @@ export interface Drug {
       operator: '<' | '>' | '≥' | '≤' | '';
       value: number | '';
       unit?: 'years' | 'months';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
+    };
+    weightConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'kg' | 'g';
       operatorBefore?: '<' | '>' | '≥' | '≤' | '';
       valueBefore?: number | '';
     };
@@ -143,6 +150,13 @@ export interface Drug {
       operatorBefore?: '<' | '>' | '≥' | '≤' | '';
       valueBefore?: number | '';
     };
+    weightConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'kg' | 'g';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
+    };
   }[];
   warnings?: { 
     title?: string; 
@@ -155,6 +169,13 @@ export interface Drug {
       operator: '<' | '>' | '≥' | '≤' | '';
       value: number | '';
       unit?: 'years' | 'months';
+      operatorBefore?: '<' | '>' | '≥' | '≤' | '';
+      valueBefore?: number | '';
+    };
+    weightConfig?: {
+      operator: '<' | '>' | '≥' | '≤' | '';
+      value: number | '';
+      unit?: 'kg' | 'g';
       operatorBefore?: '<' | '>' | '≥' | '≤' | '';
       valueBefore?: number | '';
     };
@@ -188,6 +209,10 @@ export interface Drug {
   storageCondition?: string;
   storageTemperature?: string;
   shelfLife?: string;
+  standardizationRationale?: string; // Lí luận, lập luận chuẩn hóa y khoa
+  standardizationBasis?: string; // Căn cứ tài liệu, guideline chuẩn hóa
+  standardizationStatus?: string; // Trạng thái chuẩn hóa (draft, reviewed, approved...)
+  standardizationNotes?: string; // Ghi chú chuẩn hóa bổ sung
   updatedAt?: string;
   updatedBy?: string;
   createdAt?: string;
@@ -344,6 +369,8 @@ export interface ManualInteraction {
   updatedAt: string;
   updatedBy: string;
   contraindicated?: boolean;
+  sourceCategory?: string;
+  isFromDrugDirectory?: boolean;
 }
 
 export interface ADRReport {
@@ -644,6 +671,28 @@ export interface Notification {
   link?: string;
 }
 
+export interface DrugFeedback {
+  id: string;
+  drugId: string;
+  drugName: string;
+  drugAvatarUrl?: string;
+  activeIngredients?: string;
+  targetSection: string;
+  feedbackType: 'correction' | 'addition' | 'error_report' | 'suggestion' | 'other';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  content: string;
+  referenceSource?: string;
+  authorName?: string;
+  authorEmail?: string;
+  authorDepartment?: string;
+  authorPhone?: string;
+  authorUid?: string;
+  status: 'pending' | 'reviewed' | 'resolved' | 'rejected';
+  adminNotes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Announcement {
   id: string;
   title?: string;
@@ -692,6 +741,26 @@ export interface RegistrationSettings {
   registrationDisabledReason?: string;
 }
 
+export interface MobileNavButtonConfig {
+  id: string;
+  label: string;
+  icon: string;
+  actionType: 'tab' | 'sheet_lookup' | 'sheet_tools' | 'sheet_menu' | 'admin';
+  targetTab?: string;
+  isVisible: boolean;
+  order: number;
+  highlightColor?: 'primary' | 'emerald' | 'indigo' | 'amber' | 'rose' | 'purple' | 'cyan';
+  badgeText?: string;
+  rolesAllowed?: string[]; // Empty = all roles allowed
+}
+
+export interface MobileBottomNavSettings {
+  enabled?: boolean;
+  navStyle?: 'default' | 'glass' | 'floating' | 'solid';
+  showLabels?: 'always' | 'active_only' | 'hidden';
+  buttons?: MobileNavButtonConfig[];
+}
+
 export interface SystemSettings {
   appName: string;
   loginTitle: string;
@@ -706,6 +775,9 @@ export interface SystemSettings {
   loginCardGlassMode?: boolean;
   termsOfUse?: string;
   termsUpdateDate?: string;
+  workspaceSlideSpeed?: number;
+  workspaceSlideAutoPlay?: boolean;
+  mobileBottomNav?: MobileBottomNavSettings;
 }
 
 export interface VersionLog {

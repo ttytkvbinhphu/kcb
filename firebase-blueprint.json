@@ -386,7 +386,9 @@
         "loginCardGlassMode": { "type": "boolean" },
         "termsOfUse": { "type": "string" },
         "termsUpdateDate": { "type": "string" },
-        "showWelcomeSlider": { "type": "boolean" }
+        "showWelcomeSlider": { "type": "boolean" },
+        "workspaceSlideSpeed": { "type": "number", "description": "Tốc độ tự động chạy slide tại Workspace (giây)" },
+        "workspaceSlideAutoPlay": { "type": "boolean", "description": "Bật/Tắt tự động chạy slide tại Workspace" }
       }
     },
     "SocialPost": {

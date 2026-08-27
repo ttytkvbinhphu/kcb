@@ -699,12 +699,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       )}
                     </div>
                     <div className="space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar">
-                      {(['All', 'Bác sĩ', 'Dược sĩ', 'Điều dưỡng', 'Hộ sinh', 'Y sĩ', 'Kỹ thuật viên', 'Không'] as const).map((tab) => {
+                      {(['All', 'Bác sĩ', 'Dược sĩ', 'Điều dưỡng', 'Hộ sinh', 'Y sĩ', 'Kỹ thuật viên', 'Không'] as const).map((tab, idx) => {
                         const count = getTabCount(tab);
                         const isSelected = activeTab === tab;
                         return (
                           <button
-                            key={tab}
+                            key={`tab-${tab}-${idx}`}
                             onClick={() => {
                               setActiveTab(tab);
                               setShowTitleFilter(false);
@@ -808,12 +808,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       )}
                     </div>
                     <div className="space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar">
-                      {positionOptions.map((pos) => {
+                      {positionOptions.map((pos, idx) => {
                         const count = pos === 'All' ? staff.length : staff.filter(s => (s.position || '') === pos).length;
                         const isSelected = selectedPosition === pos;
                         return (
                           <button
-                            key={pos}
+                            key={`pos-${pos}-${idx}`}
                             onClick={() => {
                               setSelectedPosition(pos);
                               setShowPositionFilter(false);
@@ -917,12 +917,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       )}
                     </div>
                     <div className="space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar">
-                      {departmentOptions.map((dept) => {
+                      {departmentOptions.map((dept, idx) => {
                         const count = dept === 'All' ? staff.length : staff.filter(s => (s.department || '') === dept).length;
                         const isSelected = selectedDepartment === dept;
                         return (
                           <button
-                            key={dept}
+                            key={`dept-${dept}-${idx}`}
                             onClick={() => {
                               setSelectedDepartment(dept);
                               setShowDepartmentFilter(false);
@@ -1017,12 +1017,12 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
         <>
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {paginatedStaff.map((person) => (
+              {paginatedStaff.map((person, idx) => (
                 <motion.div
                   layout
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  key={person.id}
+                  key={person.id ? `staff-${person.id}` : `staff-idx-${idx}`}
                   onClick={() => {
                     setViewingStaffDetail(person);
                     setShowAccountInDetail(false);
@@ -1291,9 +1291,9 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                   </tr>
                 </thead>
                 <tbody className={cn("divide-y", isDarkMode ? "divide-slate-700/60" : "divide-slate-100")}>
-                  {paginatedStaff.map((person) => (
+                  {paginatedStaff.map((person, pIdx) => (
                     <tr
-                      key={person.id}
+                      key={`staff-row-${person.id || 'p'}-${pIdx}`}
                       onClick={() => {
                         setViewingStaffDetail(person);
                         setShowAccountInDetail(false);
@@ -1785,8 +1785,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                 )}
               >
                 <option value="all">Nhân sự: Tất cả ({staff.length})</option>
-                {staff.map(s => (
-                  <option key={s.id} value={s.id}>
+                {staff.map((s, sIdx) => (
+                  <option key={`staff-filter-opt-${s.id || 's'}-${sIdx}`} value={s.id}>
                     {s.fullName} {s.staffAccount ? `(${s.staffAccount})` : ''}
                   </option>
                 ))}
@@ -1838,13 +1838,13 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     </td>
                   </tr>
                 ) : (
-                  paginatedLogs.map(log => {
+                  paginatedLogs.map((log, lIdx) => {
                     const isLogin = log.type === 'login';
                     const isQuick = log.loginType === 'quick_account' || log.userId?.startsWith('staff_') || !!log.staffAccount;
                     const matchedStaff = staff.find(s => s.id === log.staffId || `staff_${s.id}` === log.userId || s.id === log.userId || (s.staffAccount && s.staffAccount === log.staffAccount));
 
                     return (
-                      <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-50")}>
+                      <tr key={`staff-log-row-${log.id || 'log'}-${lIdx}`} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/60" : "hover:bg-slate-50")}>
                         {/* Timestamp */}
                         <td className={cn("py-3 px-4 font-bold whitespace-nowrap", isDarkMode ? "text-slate-200" : "text-slate-700")}>
                           {formatLogTime(log.timestamp)}
@@ -2122,7 +2122,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       onChange={(e) => setFormData({...formData, type: e.target.value as any})}
                     >
                       {availableTitles.length > 0 ? (
-                        availableTitles.map(t => <option key={t.id} value={t.name}>{t.name}</option>)
+                        availableTitles.map((t, tIdx) => <option key={`staff-title-opt-${t.id || 't'}-${tIdx}`} value={t.name}>{t.name}</option>)
                       ) : (
                         <>
                           <option value="Bác sĩ">Bác sĩ</option>
@@ -2172,7 +2172,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       onChange={(e) => setFormData({...formData, specialty: e.target.value})}
                     >
                       <option value="">Chọn chuyên khoa...</option>
-                      {availableSpecialties.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                      {availableSpecialties.map((s, sIdx) => <option key={`staff-spec-opt-${s.id || 's'}-${sIdx}`} value={s.name}>{s.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -2183,7 +2183,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       onChange={(e) => setFormData({...formData, position: e.target.value})}
                     >
                       <option value="">Chọn chức vụ...</option>
-                      {availablePositions.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      {availablePositions.map((p, pIdx) => <option key={`staff-pos-opt-${p.id || 'p'}-${pIdx}`} value={p.name}>{p.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -2194,7 +2194,7 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                       onChange={(e) => setFormData({...formData, department: e.target.value})}
                     >
                       <option value="">Chọn khoa/phòng...</option>
-                      {availableDepartments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                      {availableDepartments.map((d, dIdx) => <option key={`staff-dept-opt-${d.id || 'd'}-${dIdx}`} value={d.name}>{d.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1 md:col-span-2">
@@ -2209,8 +2209,8 @@ const StaffManagement: React.FC<StaffManagementProps> = ({ isDarkMode, canManage
                     >
                       <option value="">-- Mặc định theo Chức danh --</option>
                       {availableRoles.length > 0 ? (
-                        availableRoles.map(r => (
-                          <option key={r.id} value={r.id}>
+                        availableRoles.map((r, rIdx) => (
+                          <option key={`staff-role-opt-${r.id || 'r'}-${rIdx}`} value={r.id}>
                             {r.name} ({r.id})
                           </option>
                         ))

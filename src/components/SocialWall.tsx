@@ -218,9 +218,9 @@ const PostModal: React.FC<PostModalProps> = ({
                 <div className="space-y-3">
                   <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Phong cách văn bản</h4>
                   <div className="flex flex-wrap gap-2">
-                    {textStyles.map((style) => (
+                    {textStyles.map((style, stIdx) => (
                       <button
-                        key={style.id}
+                        key={`text-style-${style.id}-${stIdx}`}
                         onClick={() => setSelectedTextStyle(style.id)}
                         className={cn(
                           "px-4 py-2 rounded-xl text-xs font-bold transition-all border-2",
@@ -251,7 +251,7 @@ const HighlightText: React.FC<{ text: string; search: string; className?: string
     <span className={className}>
       {parts.map((part, i) => 
         part.toLowerCase() === search.toLowerCase() ? (
-          <mark key={i} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">
+          <mark key={`sw-hl-${i}-${part.slice(0, 5)}`} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">
             {part}
           </mark>
         ) : (
@@ -632,7 +632,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
 
 
 
-  const renderPost = (post: Post) => {
+  const renderPost = (post: Post, postIdx?: number) => {
     const authorProfile = allUsers.find(u => u.uid === post.authorUid);
     const authorPhoto = getBustedPhotoURL(authorProfile?.photoURL || post.authorPhoto, authorProfile?.photoSyncToken);
     const authorName = authorProfile?.displayName || post.authorName;
@@ -657,7 +657,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
 
     return (
       <motion.div
-        key={post.id}
+        key={`post-card-${post.id || 'p'}-${postIdx ?? ''}`}
         layout
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -928,7 +928,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                            post.authorName.toLowerCase().includes(searchTerm.toLowerCase());
                       return isVisible && matchesSearch;
                     })
-                    .map(renderPost)}
+                    .map((post, pIdx) => renderPost(post, pIdx))}
                 </div>
               </motion.div>
             ) : (
@@ -1149,8 +1149,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   )}
                                 >
                                   <option value="">Chọn chức danh...</option>
-                                  {availableTitles.map(t => (
-                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                  {availableTitles.map((t, tIdx) => (
+                                    <option key={`opt-title-${t.id || 't'}-${tIdx}`} value={t.name}>{t.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -1168,8 +1168,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   )}
                                 >
                                   <option value="">Chọn khoa/phòng...</option>
-                                  {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map(d => (
-                                    <option key={d.id} value={d.name}>{d.name}</option>
+                                  {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map((d, dIdx) => (
+                                    <option key={`opt-dept-${d.id || 'd'}-${dIdx}`} value={d.name}>{d.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -1187,8 +1187,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   )}
                                 >
                                   <option value="">Chọn chức vụ...</option>
-                                  {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map(p => (
-                                    <option key={p.id} value={p.name}>{p.name}</option>
+                                  {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map((p, pIdx) => (
+                                    <option key={`opt-pos-${p.id || 'p'}-${pIdx}`} value={p.name}>{p.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -1206,8 +1206,8 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                                   )}
                                 >
                                   <option value="">Chọn chuyên khoa...</option>
-                                  {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map(s => (
-                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                  {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map((s, sIdx) => (
+                                    <option key={`opt-spec-${s.id || 's'}-${sIdx}`} value={s.name}>{s.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -1507,7 +1507,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           const isProfileMatch = p.authorUid === selectedProfile.uid;
                           const matchesSearch = p.content.toLowerCase().includes(searchTerm.toLowerCase());
                           return isVisible && isProfileMatch && matchesSearch;
-                        }).map(renderPost)
+                        }).map((post, pIdx) => renderPost(post, pIdx))
                       )}
                     </div>
                   </div>
@@ -1532,9 +1532,9 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
             </div>
             
             <div className="space-y-4 max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar pr-2">
-              {allUsers.filter(u => !u.isHidden || u.uid === userProfile.uid).map((user) => (
+              {allUsers.filter(u => !u.isHidden || u.uid === userProfile.uid).map((user, uIdx) => (
                 <button 
-                  key={user.uid} 
+                  key={`wall-user-member-${user.uid || 'u'}-${uIdx}`} 
                   onClick={() => handleViewProfile(user)}
                   className="w-full flex items-center gap-3 group text-left transition-all hover:translate-x-1"
                 >
@@ -1738,13 +1738,13 @@ const CommentSection: React.FC<CommentSectionProps> = ({ postId, userProfile, is
           comments.filter(comment => {
             const author = allUsers.find(u => u.uid === comment.authorUid);
             return !author?.isHidden || comment.authorUid === userProfile.uid;
-          }).map((comment) => {
+          }).map((comment, cIdx) => {
             const commenterProfile = allUsers.find(u => u.uid === comment.authorUid);
             const commenterPhoto = getBustedPhotoURL(commenterProfile?.photoURL || comment.authorPhoto, commenterProfile?.photoSyncToken);
             const commenterName = commenterProfile?.displayName || comment.authorName;
 
             return (
-              <div key={comment.id} className="flex gap-3 group">
+              <div key={`wall-comment-${comment.id || 'c'}-${cIdx}`} className="flex gap-3 group">
                 <div className={cn(
                   "w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-sm border",
                   isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-white"

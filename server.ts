@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import cors from "cors";
 
 async function startServer() {
@@ -21,7 +20,7 @@ async function startServer() {
     }
   }) : null;
 
-  // API Routes
+  // API Routes - Health Check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
@@ -253,8 +252,9 @@ async function startServer() {
     return res.json({ error: readableErrorMsg });
   });
 
-  // Vite middleware for development
+  // Vite middleware for development vs static files for production
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -262,14 +262,23 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.use((req, res) => {
+    app.use(express.static(distPath, { maxAge: '1h', index: false }));
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  // Handle graceful shutdown for Cloud Run
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM signal received: closing HTTP server');
+    server.close(() => {
+      console.log('HTTP server closed');
+      process.exit(0);
+    });
   });
 }
 

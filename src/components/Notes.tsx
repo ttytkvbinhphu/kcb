@@ -262,12 +262,12 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <AnimatePresence mode="popLayout">
-          {filteredNotes.map((note) => {
+          {filteredNotes.map((note, nIdx) => {
             const colorConfig = colors.find(c => c.name === note.color) || colors[0];
             return (
               <motion.div
                 layout
-                key={note.id}
+                key={`note-card-${note.id || 'n'}-${nIdx}`}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
@@ -475,9 +475,9 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
                     <div className="w-full">
                        <label className={cn("block text-[10px] font-black uppercase tracking-widest mb-4", isDarkMode ? "text-slate-500" : "text-slate-400")}>Màu sắc</label>
                        <div className="flex flex-wrap gap-3">
-                         {colors.map((color) => (
+                         {colors.map((color, clrIdx) => (
                            <button
-                             key={color.name}
+                             key={`note-color-${color.name}-${clrIdx}`}
                              type="button"
                              onClick={() => setFormData({ ...formData, color: color.name })}
                              className={cn(

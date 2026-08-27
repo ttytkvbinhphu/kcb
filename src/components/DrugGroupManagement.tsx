@@ -102,11 +102,11 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
     }
   };
 
-  const renderGroupItem = (group: DrugGroup, level: number) => {
+  const renderGroupItem = (group: DrugGroup, level: number, idx: number = 0) => {
     const children = groups.filter(g => g.parentId === group.id).sort((a, b) => a.order - b.order);
     
     return (
-      <div key={group.id} className="mb-2">
+      <div key={`dgm-grp-${group.id || 'g'}-${level}-${idx}`} className="mb-2">
         <div className={cn(
           "flex items-center justify-between p-2.5 sm:p-3 rounded-xl border transition-all group",
           isDarkMode ? "bg-slate-900/50 border-slate-800 hover:border-blue-900" : "bg-white border-slate-100 hover:border-blue-200 shadow-sm"
@@ -116,7 +116,7 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
               "p-1.5 sm:p-2 rounded-lg shrink-0",
               level === 0 ? "bg-blue-500/10 text-blue-500" : 
               level === 1 ? "bg-indigo-500/10 text-indigo-500" : 
-              level === 2 ? "bg-emerald-500/10 text-emerald-500" :
+              level === 2 ? "bg-emerald-500/10 text-emerald-500" : 
               "bg-amber-500/10 text-amber-500"
             )}>
               <Folder size={18} />
@@ -166,7 +166,7 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
             "ml-4 sm:ml-8 mt-2 border-l-2 pl-3 sm:pl-4",
             isDarkMode ? "border-slate-800" : "border-slate-100"
           )}>
-            {children.map(child => renderGroupItem(child, level + 1))}
+            {children.map((child, cIdx) => renderGroupItem(child, level + 1, cIdx))}
           </div>
         )}
       </div>
@@ -254,7 +254,7 @@ const DrugGroupManagement: React.FC<DrugGroupManagementProps> = ({ isDarkMode, o
               {groups
                 .filter(g => g.parentId === null && (g.classification || 'treatment') === activeClassTab)
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
-                .map(group => renderGroupItem(group, 0))}
+                .map((group, rIdx) => renderGroupItem(group, 0, rIdx))}
             </div>
           ) : (
             <div className="text-center py-20">

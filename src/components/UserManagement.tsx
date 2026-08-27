@@ -347,9 +347,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
             "flex p-1 rounded-xl shrink-0",
             isDarkMode ? "bg-slate-800" : "bg-slate-100"
           )}>
-            {(['All', 'Chưa duyệt', 'Bác sĩ', 'Dược sĩ', 'Điều dưỡng', 'Y sĩ', 'Kỹ thuật viên', 'Admin'] as const).map((tab) => (
+            {(['All', 'Chưa duyệt', 'Bác sĩ', 'Dược sĩ', 'Điều dưỡng', 'Y sĩ', 'Kỹ thuật viên', 'Admin'] as const).map((tab, tIdx) => (
               <button
-                key={tab}
+                key={`user-cat-tab-${tab}-${tIdx}`}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
@@ -405,14 +405,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
         <>
           {viewMode === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {paginatedUsers.map((user) => {
+              {paginatedUsers.map((user, uIdx) => {
                 const category = getUserTypeCategory(user);
                 return (
                   <motion.div
                     layout
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    key={user.uid}
+                    key={`user-grid-${user.uid || 'u'}-${uIdx}`}
                     onClick={() => startEditing(user)}
                     className={cn(
                       "group relative p-4 rounded-2xl border transition-all hover:shadow-md cursor-pointer overflow-hidden",
@@ -611,11 +611,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                   </tr>
                 </thead>
                 <tbody className={cn("divide-y", isDarkMode ? "divide-slate-700/60" : "divide-slate-100")}>
-                  {paginatedUsers.map((user) => {
+                  {paginatedUsers.map((user, idx) => {
                     const category = getUserTypeCategory(user);
                     return (
                       <tr
-                        key={user.uid}
+                        key={user.uid ? `user-${user.uid}` : `user-idx-${idx}`}
                         onClick={() => startEditing(user)}
                         className={cn(
                           "group transition-colors cursor-pointer",
@@ -702,8 +702,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                                   : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600")
                             )}
                           >
-                            {configRoles.map(role => (
-                              <option key={role.id} value={role.id}>{role.name}</option>
+                            {configRoles.map((role, rIdx) => (
+                              <option key={`role-${role.id}-${rIdx}`} value={role.id}>{role.name}</option>
                             ))}
                           </select>
                         </td>
@@ -823,7 +823,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
               {getPageNumbers().map((page, idx) => (
                 typeof page === 'number' ? (
                   <button
-                    key={idx}
+                    key={`user-page-btn-${page}-${idx}`}
                     onClick={() => setCurrentPage(page)}
                     className={cn(
                       "w-8 h-8 rounded-xl text-xs font-black transition-all flex items-center justify-center border",
@@ -837,7 +837,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     {page}
                   </button>
                 ) : (
-                  <span key={idx} className="w-6 text-center text-xs text-slate-400 font-bold select-none">
+                  <span key={`user-page-dots-${idx}`} className="w-6 text-center text-xs text-slate-400 font-bold select-none">
                     {page}
                   </span>
                 )
@@ -947,9 +947,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <Award size={12} /> Chức danh
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {configTitles.map((t) => (
+                      {configTitles.map((t, idx) => (
                         <button
-                          key={t}
+                          key={`cfg-title-${t}-${idx}`}
                           type="button"
                           onClick={() => setEditForm({ ...editForm, title: t })}
                           className={cn(
@@ -981,9 +981,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <ShieldCheck size={12} /> Chức vụ
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {configPositions.map((p) => (
+                      {configPositions.map((p, idx) => (
                         <button
-                          key={p}
+                          key={`cfg-pos-${p}-${idx}`}
                           type="button"
                           onClick={() => setEditForm({ ...editForm, position: p })}
                           className={cn(
@@ -1015,9 +1015,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <GraduationCap size={12} /> Chuyên môn
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {configSpecialties.map((s) => (
+                      {configSpecialties.map((s, idx) => (
                         <button
-                          key={s}
+                          key={`cfg-spec-${s}-${idx}`}
                           type="button"
                           onClick={() => setEditForm({ ...editForm, specialty: s })}
                           className={cn(
@@ -1049,9 +1049,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       <Globe size={12} /> Khoa/Phòng
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {configDepartments.map((d) => (
+                      {configDepartments.map((d, idx) => (
                         <button
-                          key={d}
+                          key={`cfg-dept-${d}-${idx}`}
                           type="button"
                           onClick={() => setEditForm({ ...editForm, department: d })}
                           className={cn(

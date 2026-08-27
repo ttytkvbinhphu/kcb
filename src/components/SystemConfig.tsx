@@ -814,10 +814,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               <th className={cn("p-6 text-left text-[10px] font-black uppercase tracking-[0.2em] border-b", isDarkMode ? "text-slate-500 border-slate-800" : "text-slate-400 border-slate-200")}>
                 Tính năng / Vai trò
               </th>
-              {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map(roleId => {
+              {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map((roleId, rIdx) => {
                 const role = roles.find(r => r.id === roleId);
                 return (
-                  <th key={roleId} className={cn("p-6 text-center text-[10px] font-black uppercase tracking-[0.2em] border-b", isDarkMode ? "text-slate-500 border-slate-800" : "text-slate-400 border-slate-200")}>
+                  <th key={`role-head-${roleId}-${rIdx}`} className={cn("p-6 text-center text-[10px] font-black uppercase tracking-[0.2em] border-b", isDarkMode ? "text-slate-500 border-slate-800" : "text-slate-400 border-slate-200")}>
                     {role?.name || roleId}
                   </th>
                 );
@@ -828,16 +828,16 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             "divide-y",
             isDarkMode ? "divide-slate-800" : "divide-slate-100"
           )}>
-            {ROLE_TABS.map(tab => (
-              <tr key={tab.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
+            {ROLE_TABS.map((tab, tabIdx) => (
+              <tr key={`role-tab-row-${tab.id}-${tabIdx}`} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
                 <td className={cn("p-6 font-bold text-sm", isDarkMode ? "text-white" : "text-slate-900")}>
                   {tab.label}
                 </td>
-                {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map(roleId => {
+                {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map((roleId, rIdx) => {
                   const perm = rolePermissions.find(p => p.roleId === roleId);
                   const isAllowed = perm?.allowedTabs.includes(tab.id);
                   return (
-                    <td key={`${roleId}-${tab.id}`} className="p-6 text-center">
+                    <td key={`role-perm-cell-${roleId}-${tab.id}-${rIdx}`} className="p-6 text-center">
                       <button
                         onClick={() => togglePermission(roleId, tab.id)}
                         className={cn(
@@ -1093,8 +1093,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   { id: 'sidebar', label: 'Thanh menu bên', checkedWhenVisible: true },
                   { id: 'home_grid', label: 'Lưới trang chủ', checkedWhenVisible: true },
                   { id: 'utilities_box', label: 'Tiện ích', checkedWhenVisible: false }
-                ].map(loc => (
-                  <label key={loc.id} className="flex items-center gap-3 cursor-pointer group">
+                ].map((loc, lIdx) => (
+                  <label key={`sys-loc-${loc.id}-${lIdx}`} className="flex items-center gap-3 cursor-pointer group">
                     <div className="relative flex items-center">
                       <input
                         type="checkbox"
@@ -1497,6 +1497,36 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         </span>
                       </div>
                     </div>
+
+                    <div className={cn("p-4 rounded-2xl border transition-all", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/40 border-indigo-100")}>
+                      <p className={cn("text-xs font-black mb-2 flex items-center justify-between gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                          Gợi ý Cân nặng (Chống chỉ định & Thận trọng)
+                        </span>
+                        <span 
+                          className="w-4 h-4 rounded-full bg-slate-300/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-black cursor-help shrink-0 hover:bg-slate-400 dark:hover:bg-slate-600 transition-colors"
+                          title="Thiết lập điểm quyền lực tối thiểu để xem và cấu hình gợi ý Cân nặng trong Chống chỉ định và Thận trọng (sẽ ẩn hoàn toàn đối với tài khoản không đủ điểm)."
+                        >
+                          !
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={0}
+                          value={settings.weightSuggestionsMinPower ?? 0}
+                          onChange={(e) => updateFeatureSettings(feature.id, { ...settings, weightSuggestionsMinPower: parseInt(e.target.value) || 0 })}
+                          className={cn(
+                            "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center outline-none transition-all",
+                            isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400 focus:border-amber-500" : "bg-white border-indigo-200 text-indigo-900 focus:border-indigo-500"
+                          )}
+                        />
+                        <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          ⚡ Điểm quyền lực tối thiểu để xem và cấu hình gợi ý Cân nặng.
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1747,12 +1777,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           ].map(o => [o.id, o])
                         ).values()
                       );
-                      return allOptions.map(role => {
+                      return allOptions.map((role, rIdx) => {
                         const allowedRoles: string[] = settings.postingAllowedRoles || [];
                         const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
                         return (
                           <button
-                            key={role.id}
+                            key={`posting-role-${role.id}-${rIdx}`}
                             onClick={() => {
                               let newAllowed: string[];
                               if (allowedRoles.length === 0) {
@@ -1798,12 +1828,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           ].map(o => [o.id, o])
                         ).values()
                       );
-                      return allOptions.map(role => {
+                      return allOptions.map((role, rIdx) => {
                         const allowedRoles: string[] = settings.commentingAllowedRoles || [];
                         const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
                         return (
                           <button
-                            key={role.id}
+                            key={`commenting-role-${role.id}-${rIdx}`}
                             onClick={() => {
                               let newAllowed: string[];
                               if (allowedRoles.length === 0) {
@@ -1849,12 +1879,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           ].map(o => [o.id, o])
                         ).values()
                       );
-                      return allOptions.map(role => {
+                      return allOptions.map((role, rIdx) => {
                         const allowedRoles: string[] = settings.moderatorRoles || [];
                         const isAllowed = allowedRoles.includes(role.id);
                         return (
                           <button
-                            key={role.id}
+                            key={`moderator-role-${role.id}-${rIdx}`}
                             onClick={() => {
                               let newAllowed: string[];
                               if (allowedRoles.length === 0) {
@@ -1902,12 +1932,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           ].map(o => [o.id, o])
                         ).values()
                       );
-                      return allOptions.map(role => {
+                      return allOptions.map((role, rIdx) => {
                         const catalogAllowedRoles: string[] = settings.catalogAllowedRoles || [];
                         const isAllowed = catalogAllowedRoles.length === 0 || catalogAllowedRoles.includes(role.id);
                         return (
                           <button
-                            key={role.id}
+                            key={`catalog-role-${role.id}-${rIdx}`}
                             onClick={() => {
                               let newAllowed: string[];
                               if (catalogAllowedRoles.length === 0) {
@@ -1951,12 +1981,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           ].map(o => [o.id, o])
                         ).values()
                       );
-                      return allOptions.map(role => {
+                      return allOptions.map((role, rIdx) => {
                         const reportsAllowedRoles: string[] = settings.reportsAllowedRoles || [];
                         const isAllowed = reportsAllowedRoles.length === 0 || reportsAllowedRoles.includes(role.id);
                         return (
                           <button
-                            key={role.id}
+                            key={`reports-role-${role.id}-${rIdx}`}
                             onClick={() => {
                               let newAllowed: string[];
                               if (reportsAllowedRoles.length === 0) {
@@ -2124,12 +2154,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   ...roles,
                   { id: 'guest', name: 'Khách (Chưa đăng nhập)' }
                 ];
-                return allOptions.map(role => {
+                return allOptions.map((role, rIdx) => {
                   const allowedRoles = settings.allowedRoles || [];
                   const isAllowed = allowedRoles.length === 0 || allowedRoles.includes(role.id);
                   return (
                     <button
-                      key={role.id}
+                      key={`feat-opt-role-${role.id}-${rIdx}`}
                       onClick={() => {
                         let newAllowed: string[];
                         if (allowedRoles.length === 0) {
@@ -2163,12 +2193,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               "grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-3xl border",
               isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
             )}>
-              {titles.map(title => {
+              {titles.map((title, tIdx) => {
                 const allowedTitles = settings.allowedTitles || [];
                 const isAllowed = allowedTitles.length === 0 || allowedTitles.includes(title.name);
                 return (
                   <button
-                    key={title.id}
+                    key={`feat-opt-title-${title.id || 't'}-${tIdx}`}
                     onClick={() => {
                       let newAllowed: string[];
                       if (allowedTitles.length === 0) {
@@ -2219,11 +2249,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
             )}>
               {allUsers
                 .filter(u => u.displayName.toLowerCase().includes(userSearchTerm.toLowerCase()) || u.email.toLowerCase().includes(userSearchTerm.toLowerCase()))
-                .map(user => {
+                .map((user, uIdx) => {
                   const isBanned = bannedUsers.includes(user.uid);
                   return (
                     <div
-                      key={user.uid}
+                      key={`feat-banned-user-${user.uid || 'u'}-${uIdx}`}
                       className={cn(
                         "flex items-center justify-between p-3 rounded-2xl transition-all",
                         isBanned
@@ -2270,13 +2300,13 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       </motion.div>
     );
   };
-  const renderFeatureCard = (feature: typeof ALL_FEATURES[number]) => {
+  const renderFeatureCard = (feature: typeof ALL_FEATURES[number], index?: number, groupKey?: string) => {
     const state = featureStates[feature.id] || 'open';
     const settings = featureSettings[feature.id] || {};
 
     return (
       <div
-        key={feature.id}
+        key={`feat-${groupKey || 'g'}-${feature.id || 'f'}-${index ?? 0}`}
         onClick={() => setSelectedFeatureForDetail(feature.id)}
         className={cn(
           "p-5 sm:p-7 rounded-[2rem] border-2 transition-all relative group cursor-pointer overflow-hidden",
@@ -2386,8 +2416,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 if (allowedRoles.length === 0 || allowedRoles.length === allOptions.length) {
                   return <span className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-600")}>Tất cả vai trò</span>;
                 }
-                return allOptions.filter(r => allowedRoles.includes(r.id)).map(r => (
-                  <span key={r.id} className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-600")}>
+                return allOptions.filter(r => allowedRoles.includes(r.id)).map((r, rIdx) => (
+                  <span key={`card-role-${r.id}-${rIdx}`} className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-100 text-emerald-600")}>
                     {r.name}
                   </span>
                 ));
@@ -2402,8 +2432,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 if (allowedTitles.length === 0 || allowedTitles.length === titles.length) {
                   return <span className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600")}>Tất cả chức danh</span>;
                 }
-                return titles.filter(t => allowedTitles.includes(t.name)).map(t => (
-                  <span key={t.id} className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600")}>
+                return titles.filter(t => allowedTitles.includes(t.name)).map((t, tIdx) => (
+                  <span key={`card-title-${t.id || 't'}-${tIdx}`} className={cn("px-2 py-0.5 rounded text-[8px] font-bold border", isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-400" : "bg-blue-50 border-blue-100 text-blue-600")}>
                     {t.name}
                   </span>
                 ));
@@ -2595,9 +2625,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
               "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
               isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
             )}>
-              {HR_SUB_TABS.map((tab) => (
+              {HR_SUB_TABS.map((tab, tabIdx) => (
                 <button
-                  key={tab.id}
+                  key={`hr-subtab-${tab.id}-${tabIdx}`}
                   onClick={() => setHrSubTab(tab.id as any)}
                   className={cn(
                     "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
@@ -2622,9 +2652,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 {[
                   { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
                   { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid }
-                ].map((tab) => (
+                ].map((tab, tabIdx) => (
                   <button
-                    key={tab.id}
+                    key={`home-subtab-${tab.id}-${tabIdx}`}
                     onClick={() => setHomeSubTab(tab.id as any)}
                     className={cn(
                       "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
@@ -2656,7 +2686,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     )}
                   >
                     <div className="space-y-6">
-                      {featureStateGroups.map(group => {
+                      {featureStateGroups.map((group, grpIdx) => {
                         const featuresInGroup = sortedFeatures.filter(feature => {
                           const isInCorrectTab = homeSubTab === 'features_main'
                             ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
@@ -2665,7 +2695,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
                         });
                         return (
-                          <div key={group.id} className="space-y-3">
+                          <div key={`sys-home-feat-grp-${group.id || 'grp'}-${grpIdx}`} className="space-y-3">
                             <div className="flex items-center justify-between px-1">
                               <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
                                 {group.label}
@@ -2676,7 +2706,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             </div>
                             {featuresInGroup.length > 0 ? (
                               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                                {featuresInGroup.map(renderFeatureCard)}
+                                {featuresInGroup.map((f, fIdx) => renderFeatureCard(f, fIdx, group.id || `grp-${grpIdx}`))}
                               </div>
                             ) : (
                               <div className={cn(
@@ -2831,9 +2861,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           {drugsList
                             .filter(d => d.name?.toLowerCase().includes(drugSearchQuery.toLowerCase()))
                             .slice(0, 5)
-                            .map(drug => (
+                            .map((drug, dIdx) => (
                               <button
-                                key={drug.id}
+                                key={`sys-search-drug-${drug.id || 'd'}-${dIdx}`}
                                 type="button"
                                 onClick={() => {
                                   setSelectedDrugId(drug.id);
@@ -2898,12 +2928,12 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       <ShieldCheck size={12} /> Đối tượng theo vai trò
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map(roleId => {
+                      {['admin', 'operator_doctor', 'operator_pharmacist', 'member'].map((roleId, rIdx) => {
                         const role = roles.find(r => r.id === roleId);
                         const isSelected = targetRoles.includes(roleId);
                         return (
                           <button
-                            key={roleId}
+                            key={`sys-target-role-${roleId}-${rIdx}`}
                             onClick={() => setTargetRoles(prev => isSelected ? prev.filter(r => r !== roleId) : [...prev, roleId])}
                             className={cn(
                               "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
@@ -2924,11 +2954,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       <Award size={12} /> Đối tượng theo chức danh
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      {titles.map(title => {
+                      {titles.map((title, tIdx) => {
                         const isSelected = targetTitles.includes(title.name);
                         return (
                           <button
-                            key={title.id}
+                            key={`sys-target-title-${title.id || 't'}-${tIdx}`}
                             onClick={() => setTargetTitles(prev => isSelected ? prev.filter(t => t !== title.name) : [...prev, title.name])}
                             className={cn(
                               "px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
@@ -3007,7 +3037,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-6">Lịch sử thông báo</h3>
                 <div className="space-y-4">
                   {announcements.length > 0 ? (
-                    announcements.map((ann) => {
+                    announcements.map((ann, annIdx) => {
                       const categoryInfo = (() => {
                         if (ann.type === 'drug_update') {
                           return {
@@ -3059,7 +3089,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       const Icon = categoryInfo.icon;
 
                       return (
-                        <div key={ann.id} className={cn(
+                        <div key={`sys-ann-item-${ann.id || 'ann'}-${annIdx}`} className={cn(
                           "p-6 rounded-3xl border-2 transition-all relative group flex flex-col gap-3",
                           isDarkMode ? "bg-slate-800/40 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-50 hover:border-indigo-100"
                         )}>
@@ -3196,7 +3226,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
                                     {recipients.length > 0 ? (
                                       <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
-                                        {visibleRecipients.map((u) => {
+                                        {visibleRecipients.map((u, uIdx) => {
                                           const isRead = ann.readBy?.includes(u.uid);
                                           const initials = (u.displayName || u.email || 'U')
                                             .split(' ')
@@ -3217,7 +3247,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
                                           return (
                                             <div
-                                              key={u.uid}
+                                              key={`sys-recip-avatar-${u.uid || 'u'}-${uIdx}`}
                                               className="relative group/avatar cursor-pointer"
                                               onClick={() => {
                                                 setSelectedAnnForRecipients(ann);
@@ -3849,7 +3879,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         <div className="flex flex-wrap gap-2 p-2 rounded-2xl bg-slate-100/10 border border-slate-100/5">
                           {guideTabs.map((t, idx) => (
                             <div
-                              key={t.id}
+                              key={`sys-guide-tab-${t.id || 'tab'}-${idx}`}
                               onClick={() => setSelectedContentTabIndex(idx)}
                               className={cn(
                                 "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-all border",
@@ -4042,9 +4072,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       { id: 'all', label: 'Tất cả mục', icon: LayoutGrid },
                       { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
                       { id: 'utilities', label: 'Tiện ích mở rộng', icon: Sparkles }
-                    ].map(cat => (
+                    ].map((cat, cIdx) => (
                       <button
-                        key={cat.id}
+                        key={`sys-feat-cat-${cat.id}-${cIdx}`}
                         onClick={() => setFeatureCategoryFilter(cat.id as any)}
                         className={cn(
                           "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
@@ -4070,7 +4100,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     )}
                   >
                     <div className="space-y-6">
-                      {featureStateGroups.map(group => {
+                      {featureStateGroups.map((group, grpIdx) => {
                         const featuresInGroup = sortedFeatures.filter(feature => {
                           const statusMatch = (featureStates[feature.id] || 'open') === group.id;
                           if (!statusMatch) return false;
@@ -4085,7 +4115,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                         });
 
                         return (
-                          <div key={group.id} className="space-y-3">
+                          <div key={`sys-admin-feat-grp-${group.id || 'grp'}-${grpIdx}`} className="space-y-3">
                             <div className="flex items-center justify-between px-1">
                               <h4 className={cn("text-[11px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-700")}>
                                 {group.label}
@@ -4096,7 +4126,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             </div>
                             {featuresInGroup.length > 0 ? (
                               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
-                                {featuresInGroup.map(renderFeatureCard)}
+                                {featuresInGroup.map((f, fIdx) => renderFeatureCard(f, fIdx, group.id || `adm-grp-${grpIdx}`))}
                               </div>
                             ) : (
                               <div className={cn(
@@ -4128,9 +4158,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   { id: 'settings', label: 'Cấu hình đăng ký', icon: Settings },
                   { id: 'history', label: 'Lịch sử', icon: History },
                   { id: 'guest_history', label: 'Lịch sử khách', icon: Globe },
-                ].map((tab) => (
+                ].map((tab, tIdx) => (
                   <button
-                    key={tab.id}
+                    key={`sys-reg-subtab-${tab.id}-${tIdx}`}
                     onClick={() => setRegSubTab(tab.id as any)}
                     className={cn(
                       "flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all shrink-0 sm:shrink",
@@ -4168,8 +4198,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                     </h3>
                     {pendingUsers.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {pendingUsers.map(user => (
-                          <div key={user.uid} className={cn(
+                        {pendingUsers.map((user, uIdx) => (
+                          <div key={`sys-pending-user-${user.uid || 'u'}-${uIdx}`} className={cn(
                             "flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 rounded-2xl border transition-all",
                             isDarkMode ? "bg-slate-800/50 border-slate-700 hover:border-indigo-500/50" : "bg-slate-50 border-slate-100 hover:border-indigo-200"
                           )}>
@@ -4292,7 +4322,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               isDarkMode ? "bg-slate-800 border-slate-700 text-white focus:border-indigo-500" : "bg-white border-slate-100 text-slate-900 focus:border-indigo-500 shadow-sm"
                             )}
                           >
-                            {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                            {roles.map((r, rIdx) => <option key={`reg-default-role-${r.id || 'r'}-${rIdx}`} value={r.id}>{r.name}</option>)}
                           </select>
                         </div>
 
@@ -4307,7 +4337,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                             )}
                           >
                             <option value="">Không chọn</option>
-                            {titles.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            {titles.map((t, tIdx) => <option key={`reg-default-title-${t.id || 't'}-${tIdx}`} value={t.id}>{t.name}</option>)}
                           </select>
                         </div>
                       </div>
@@ -4498,8 +4528,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                 </tr>
                               </thead>
                               <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
-                                {filteredAuthLogs.length > 0 ? filteredAuthLogs.map((log) => (
-                                  <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
+                                {filteredAuthLogs.length > 0 ? filteredAuthLogs.map((log, lIdx) => (
+                                  <tr key={`sys-auth-log-${log.id || 'log'}-${lIdx}`} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-slate-50/50")}>
                                     <td className="px-6 py-5 whitespace-nowrap text-[13px] font-bold text-slate-400">
                                       {formatDateSafe(log.timestamp, {
                                         day: '2-digit',
@@ -4707,8 +4737,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               </tr>
                             </thead>
                             <tbody className={cn("divide-y", isDarkMode ? "divide-slate-800" : "divide-slate-100")}>
-                              {filteredGuestLogs.length > 0 ? filteredGuestLogs.map((log) => (
-                                <tr key={log.id} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/20" : "hover:bg-slate-50/50")}>
+                              {filteredGuestLogs.length > 0 ? filteredGuestLogs.map((log, lIdx) => (
+                                <tr key={`sys-guest-log-${log.id || 'glog'}-${lIdx}`} className={cn("transition-colors", isDarkMode ? "hover:bg-slate-800/20" : "hover:bg-slate-50/50")}>
                                   <td className="px-6 py-5 whitespace-nowrap text-xs font-bold text-slate-500">
                                     {formatDateSafe(log.timestamp)}
                                   </td>
@@ -4867,7 +4897,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       {currentItems.length > 0 ? (
                         currentItems.map((item, index) => (
                           <motion.div
-                            key={item.id}
+                            key={`sys-curr-item-${item.id || 'it'}-${index}`}
                             layout
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -5201,9 +5231,9 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       {drugsList
                         .filter(d => d.name?.toLowerCase().includes(editDrugSearchQuery.toLowerCase()))
                         .slice(0, 50)
-                        .map(d => (
+                        .map((d, dIdx) => (
                           <button
-                            key={d.id}
+                            key={`sys-edit-drug-${d.id || 'd'}-${dIdx}`}
                             type="button"
                             onClick={() => {
                               setEditDrugId(d.id);
@@ -5261,11 +5291,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <div className="space-y-1.5">
                     <span className="text-[9px] font-extrabold text-slate-400 block">Theo vai trò:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {roles.map(r => {
+                      {roles.map((r, rIdx) => {
                         const isSelected = editTargetRoles.includes(r.id);
                         return (
                           <button
-                            key={r.id}
+                            key={`notif-target-role-${r.id || 'r'}-${rIdx}`}
                             type="button"
                             onClick={() => {
                               if (isSelected) {
@@ -5292,11 +5322,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                   <div className="space-y-1.5 pt-2">
                     <span className="text-[9px] font-extrabold text-slate-400 block">Theo chức danh:</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {titles.map(t => {
+                      {titles.map((t, tIdx) => {
                         const isSelected = editTargetTitles.includes(t.name);
                         return (
                           <button
-                            key={t.id}
+                            key={`notif-target-title-${t.id || 't'}-${tIdx}`}
                             type="button"
                             onClick={() => {
                               if (isSelected) {
@@ -5524,7 +5554,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       {/* User Grid */}
                       {filtered.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                          {filtered.map(u => {
+                          {filtered.map((u, uIdx) => {
                             const isRead = selectedAnnForRecipients.readBy?.includes(u.uid);
                             const initials = (u.displayName || u.email || 'U')
                               .split(' ')
@@ -5545,7 +5575,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
                             return (
                               <div
-                                key={u.uid}
+                                key={`sys-modal-user-${u.uid || 'u'}-${uIdx}`}
                                 className={cn(
                                   "p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all",
                                   isDarkMode ? "bg-slate-800/50 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:border-indigo-200"

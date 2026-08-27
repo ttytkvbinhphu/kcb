@@ -97,11 +97,11 @@ export const VersionUpdateContent: React.FC<{
         {allVersions.length > 1 && (
           <div className="relative z-10 px-4 md:px-6 pb-3 flex items-center gap-2 overflow-x-auto custom-scrollbar">
             <span className={cn("text-[10px] font-bold uppercase tracking-wider shrink-0", isDarkMode ? "text-slate-400" : "text-slate-500")}>Các phiên bản:</span>
-            {allVersions.map((v) => {
+            {allVersions.map((v, vIdx) => {
               const isSelected = v.id === version.id || v.versionName === version.versionName;
               return (
                 <button
-                  key={v.id || v.versionName}
+                  key={`version-pill-${v.id || v.versionName}-${vIdx}`}
                   onClick={() => onSelectVersion && onSelectVersion(v)}
                   className={cn(
                     "px-2.5 py-1 rounded-full text-[10px] font-bold transition-all shrink-0 cursor-pointer border",
@@ -155,7 +155,7 @@ export const VersionUpdateContent: React.FC<{
                   whileInView={{ opacity: 1, x: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: idx * 0.05 }}
-                  key={idx} 
+                  key={`ver-change-${change.type}-${idx}`} 
                   className={cn(
                     "p-4 md:p-6 rounded-[24px] md:rounded-[32px] border flex items-start gap-3 md:gap-5 transition-all hover:translate-x-2 group",
                     isDarkMode ? "bg-slate-800/30 border-slate-800 hover:bg-slate-800/50" : "bg-white border-slate-100 shadow-sm hover:shadow-xl hover:shadow-indigo-500/5"

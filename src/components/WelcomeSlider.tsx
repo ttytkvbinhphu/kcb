@@ -199,9 +199,9 @@ export default function WelcomeSlider({ onComplete, isDarkMode, userName, slides
         {currentSlideData.elements ? (
           /* Presentation Mode: Free-form elements */
           <div className="absolute inset-0 z-20 pointer-events-none">
-            {currentSlideData.elements.map((el: any) => (
+            {currentSlideData.elements.map((el: any, elIdx: number) => (
               <motion.div
-                key={el.id}
+                key={`slide-el-${el.id || el.type}-${elIdx}`}
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ 
@@ -306,7 +306,7 @@ export default function WelcomeSlider({ onComplete, isDarkMode, userName, slides
           <div className="flex justify-center gap-2 sm:gap-4">
             {displaySlides.map((_, idx) => (
               <button
-                key={idx}
+                key={`welcome-dot-${idx}`}
                 onClick={() => setCurrentSlide(idx)}
                 className="group relative h-8 flex items-center justify-center transition-all"
               >

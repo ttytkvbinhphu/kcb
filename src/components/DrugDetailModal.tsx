@@ -41,11 +41,13 @@ import {
   Maximize2,
   Minimize2,
   Scale,
+  MessageSquarePlus,
 } from "lucide-react";
 import { Drug, ICD10, Ingredient } from "../types";
 import { subscribeICD10 } from "../lib/icdStore";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
+import { DrugFeedbackModal } from "./DrugFeedbackModal";
 import {
   db,
   collection,
@@ -187,6 +189,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     | "pharmacology"
   >("info");
   const [direction, setDirection] = useState(0);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
 
   const renderFormattedText = (text: string | null | undefined) => {
     if (!text) return null;
@@ -194,12 +197,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     return lines.map((line, lineIdx) => {
       const parts = line.split(/(\*\*.*?\*\*)/g);
       return (
-        <React.Fragment key={lineIdx}>
+        <React.Fragment key={`fmt-line-${lineIdx}`}>
           {lineIdx > 0 && <br />}
           {parts.map((part, partIdx) => {
             if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
               return (
-                <strong key={partIdx} className="font-bold">
+                <strong key={`fmt-part-${lineIdx}-${partIdx}`} className="font-bold">
                   {part.slice(2, -2)}
                 </strong>
               );
@@ -278,7 +281,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     return (
       <div className="flex gap-0.5 items-center">
         {activeRules.map((rule, rIdx) => (
-          <div key={rIdx} className="relative group/badge inline-block">
+          <div key={`icd-rule-${rule.label}-${rIdx}`} className="relative group/badge inline-block">
             <span
               className={cn(
                 "shrink-0 px-1 py-0.5 rounded text-white text-[7px] font-black uppercase tracking-tighter cursor-help transition-all group-hover/badge:scale-110",
@@ -700,30 +703,34 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div
-          className={cn(
-            "fixed inset-0 z-[190] flex items-center justify-center transition-all duration-300",
-            isFullScreen ? "p-0" : "p-0 lg:p-8 xl:p-12"
-          )}
-        >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-          />
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <div
+            key="drug-detail-modal-root-wrapper"
+            className={cn(
+              "fixed inset-0 z-[190] flex items-center justify-center transition-all duration-300",
+              isFullScreen ? "p-0" : "p-0 lg:p-8 xl:p-12"
+            )}
+          >
+            <motion.div
+              key="drug-detail-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 10 }}
-            transition={{
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1],
-            }}
+            <motion.div
+              key="drug-detail-dialog"
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              transition={{
+                duration: 0.3,
+                ease: [0.4, 0, 0.2, 1],
+              }}
             className={cn(
               "relative w-full h-full flex flex-row transition-all duration-300 overflow-hidden shadow-2xl",
               isFullScreen
@@ -753,7 +760,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
               <div
                 className={cn(
                   "shrink-0 relative transition-all duration-300",
-                  showPdfPreview ? "p-3 sm:p-5" : "p-3 sm:p-6 lg:p-10",
+                  showPdfPreview ? "p-3 sm:p-4" : "p-3 sm:p-5 lg:px-7 lg:py-3.5",
                   isDarkMode
                     ? "bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 text-white"
                     : "bg-gradient-to-br from-blue-50 to-indigo-50 text-slate-900",
@@ -764,24 +771,24 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                   <div className="absolute right-0 top-0 w-96 h-96 bg-blue-500/10 blur-[100px] rounded-full -mr-32 -mt-32"></div>
                 </div>
 
-                <div className={cn("relative z-10", showPdfPreview ? "pr-20 lg:pr-32" : "pr-11 sm:pr-48 lg:pr-56")}>
+                <div className={cn("relative z-10", showPdfPreview ? "pr-20 lg:pr-28" : "pr-11 sm:pr-44 lg:pr-48")}>
                   {/* Nhóm nút chức năng - góc trên phải */}
                   <div
                     className={cn(
-                      "absolute z-20 transition-all duration-300 flex flex-col sm:flex-row-reverse items-end sm:items-center gap-1 sm:gap-2 top-1/2 -translate-y-1/2",
+                      "absolute z-20 transition-all duration-300 flex flex-col sm:flex-row-reverse items-end sm:items-center gap-1 sm:gap-1.5 top-1/2 -translate-y-1/2",
                       showPdfPreview
-                        ? "right-1.5 sm:right-4"
-                        : "right-1.5 sm:right-5 lg:right-6"
+                        ? "right-1.5 sm:right-3 lg:right-4"
+                        : "right-1.5 sm:right-4 lg:right-5"
                     )}
                   >
                     {/* Hàng nút trên: Toàn màn hình (PC) & Đóng (Esc) */}
-                    <div className="flex items-center gap-1 sm:gap-2">
+                    <div className="flex items-center gap-1 sm:gap-1.5">
                       {/* Nút Toàn màn hình (Fullscreen) dành cho PC */}
                       <button
                         type="button"
                         onClick={toggleFullScreen}
                         className={cn(
-                          "hidden lg:flex p-2 rounded-xl transition-all duration-200 items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
+                          "hidden lg:flex w-8 h-8 rounded-xl transition-all duration-200 items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
                           isFullScreen
                             ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-400/50 border-blue-500"
                             : isDarkMode
@@ -790,51 +797,69 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         )}
                         title={isFullScreen ? "Thu nhỏ cửa sổ" : "Toàn màn hình"}
                       >
-                        {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                        {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                       </button>
 
                       {/* Nút Đóng modal toàn bộ */}
                       <button
                         onClick={onClose}
                         className={cn(
-                          "w-7 h-7 sm:w-9 sm:h-9 p-1 sm:p-2 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
+                          "w-7 h-7 sm:w-8 sm:h-8 p-1 sm:p-1.5 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
                           isDarkMode
                             ? "bg-slate-800/80 text-slate-300 hover:bg-rose-500/20 hover:text-rose-400 hover:border-rose-500/30 border-slate-700/60"
                             : "bg-white/90 text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 border-slate-200"
                         )}
                         title="Đóng toàn bộ cửa sổ (Esc)"
                       >
-                        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-[18px] lg:h-[18px]" />
+                        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </button>
                     </div>
 
-                    {/* Hàng nút dưới: Nút Xem tờ HDSD (PDF) */}
-                    {drug.pdfUrl && !showPdfPreview && (
+                    {/* Hàng nút dưới: Nút Góp ý & Nút Xem tờ HDSD (PDF) */}
+                    <div className="flex items-center gap-1 sm:gap-1.5">
+                      {/* Nút Góp ý chi tiết thuốc */}
                       <button
                         type="button"
-                        onClick={() => setShowPdfPreview(true)}
+                        onClick={() => setShowFeedbackModal(true)}
                         className={cn(
-                          "w-7 h-7 sm:w-auto sm:h-auto px-0 sm:px-3 py-0 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
+                          "w-7 h-7 sm:w-auto sm:h-auto px-0 sm:px-2.5 py-0 sm:py-1 rounded-lg sm:rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
                           isDarkMode
-                            ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border-rose-500/30"
-                            : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200"
+                            ? "bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 border-blue-500/30"
+                            : "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200"
                         )}
-                        title="Xem tờ hướng dẫn (PDF)"
+                        title="Góp ý / Đính chính thông tin thuốc"
                       >
-                        <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        <span className="hidden sm:inline text-[11px] font-bold">Xem PDF</span>
+                        <MessageSquarePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
+                        <span className="hidden sm:inline text-[11px] font-bold">Góp ý</span>
                       </button>
-                    )}
+
+                      {drug.pdfUrl && !showPdfPreview && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPdfPreview(true)}
+                          className={cn(
+                            "w-7 h-7 sm:w-auto sm:h-auto px-0 sm:px-2.5 py-0 sm:py-1 rounded-lg sm:rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
+                            isDarkMode
+                              ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border-rose-500/30"
+                              : "bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-200"
+                          )}
+                          title="Xem tờ hướng dẫn (PDF)"
+                        >
+                          <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span className="hidden sm:inline text-[11px] font-bold">Xem PDF</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className={cn("flex items-center transition-all duration-300", showPdfPreview ? "gap-3" : "gap-2.5 sm:gap-4 lg:gap-6")}>
+                  <div className={cn("flex items-center transition-all duration-300", showPdfPreview ? "gap-2.5" : "gap-2.5 sm:gap-3.5 lg:gap-4")}>
                     <div className="relative shrink-0">
                       <div
                         className={cn(
-                          "relative p-1 shadow-2xl border overflow-hidden flex items-center justify-center transition-all duration-300",
+                          "relative p-1 shadow-md border overflow-hidden flex items-center justify-center transition-all duration-300",
                           showPdfPreview
                             ? "w-10 h-10 rounded-xl"
-                            : "w-12 h-12 sm:w-16 sm:h-16 lg:w-24 lg:h-24 rounded-xl sm:rounded-[20px] lg:rounded-[28px]",
+                            : "w-12 h-12 sm:w-14 sm:h-14 lg:w-14 lg:h-14 rounded-xl sm:rounded-2xl lg:rounded-2xl",
                           isDarkMode
                             ? "bg-white/10 border-white/20"
                             : "bg-white border-slate-100",
@@ -846,12 +871,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             alt={drug.name}
                             className={cn(
                               "w-full h-full object-cover transition-all duration-300",
-                              showPdfPreview ? "rounded-lg" : "rounded-lg sm:rounded-[18px] lg:rounded-[24px]"
+                              showPdfPreview ? "rounded-lg" : "rounded-lg sm:rounded-xl lg:rounded-xl"
                             )}
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <Pill size={showPdfPreview ? 20 : 24} className="text-blue-500 lg:w-8 lg:h-8" />
+                          <Pill size={showPdfPreview ? 20 : 24} className="text-blue-500 lg:w-6 lg:h-6" />
                         )}
                       </div>
                       {drug.isNew ? (
@@ -869,65 +894,65 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                       {drug.isRx && (
                         <span className={cn(
                           "absolute -bottom-1 -right-1 z-10 bg-rose-500 text-white font-black px-1.5 py-0.5 shadow-md flex items-center justify-center border border-white dark:border-slate-800 leading-none",
-                          showPdfPreview ? "rounded-md text-[8px]" : "rounded-md sm:rounded-lg text-[8px] sm:text-[9px] lg:text-[10px]"
+                          showPdfPreview ? "rounded-md text-[8px]" : "rounded-md sm:rounded-lg text-[8px] sm:text-[9px]"
                         )}>
                           Rx
                         </span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 lg:gap-3 mb-0.5 flex-wrap">
-                        <h3 className={cn("font-black tracking-tight leading-tight truncate", showPdfPreview ? "text-[16px]" : "text-base sm:text-xl lg:text-4xl")}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 lg:gap-2.5 mb-0.5 flex-wrap">
+                        <h3 className={cn("font-black tracking-tight leading-tight truncate", showPdfPreview ? "text-[16px]" : "text-base sm:text-lg lg:text-2xl")}>
                           {drug.name}
                         </h3>
                         {!showPdfPreview && drug.isNew && (
-                          <span className="shrink-0 hidden lg:flex px-2 py-0.5 bg-emerald-500/20 text-emerald-500 rounded-lg text-[10px] font-black border border-emerald-500/30 items-center gap-1">
-                            <Sparkles size={10} />
+                          <span className="shrink-0 hidden lg:flex px-2 py-0.5 bg-emerald-500/20 text-emerald-500 rounded-md text-[9px] font-black border border-emerald-500/30 items-center gap-1">
+                            <Sparkles size={9} />
                             THUỐC MỚI
                           </span>
                         )}
                         {!showPdfPreview && drug.isUpdated && (
                           <span className={cn(
-                            "shrink-0 hidden lg:flex px-2 py-0.5 rounded-lg text-[10px] font-black border items-center gap-1",
+                            "shrink-0 hidden lg:flex px-2 py-0.5 rounded-md text-[9px] font-black border items-center gap-1",
                             drug.isUpdated === "updating"
                               ? "bg-amber-500/20 text-amber-500 border-amber-500/30"
                               : "bg-indigo-500/20 text-indigo-500 border-indigo-500/30"
                           )}>
-                            <Sparkles size={10} />
+                            <Sparkles size={9} />
                             {drug.isUpdated === "updating" ? "ĐANG CẬP NHẬT" : "ĐÃ CẬP NHẬT"}
                           </span>
                         )}
                         {!showPdfPreview && drug.isClosed && (
                           <span
                             className={cn(
-                              "shrink-0 px-3 py-1 rounded-lg text-[10px] font-black border flex items-center gap-1.5",
+                              "shrink-0 px-2 py-0.5 rounded-md text-[9px] font-black border flex items-center gap-1",
                               isDarkMode
                                 ? "bg-slate-800 text-slate-400 border-slate-700"
                                 : "bg-slate-100/80 text-slate-500 border-slate-200 shadow-sm",
                             )}
                           >
-                            <AlertCircle size={12} className="shrink-0" />
+                            <AlertCircle size={10} className="shrink-0" />
                             ĐANG ẨN
                           </span>
                         )}
                         {!showPdfPreview && drug.status === "suspended" && (
                           <span
                             className={cn(
-                              "shrink-0 px-3 py-1 rounded-lg text-[10px] font-black border flex items-center gap-1.5",
+                              "shrink-0 px-2 py-0.5 rounded-md text-[9px] font-black border flex items-center gap-1",
                               isDarkMode
                                 ? "bg-amber-900/20 text-amber-400 border-amber-900/30"
                                 : "bg-amber-50 text-amber-600 border-amber-100 shadow-sm",
                             )}
                           >
-                            <Pause size={12} className="shrink-0" />
+                            <Pause size={10} className="shrink-0" />
                             TẠM NGƯNG
                           </span>
                         )}
                       </div>
                       <p
                         className={cn(
-                          "font-bold uppercase tracking-widest opacity-70 truncate",
-                          showPdfPreview ? "text-[10px] mb-0" : "text-[9px] lg:text-[11px] mb-0.5 sm:mb-2 lg:mb-3",
+                          "font-bold uppercase tracking-wider opacity-75 truncate",
+                          showPdfPreview ? "text-[10px] mb-0" : "text-[9px] sm:text-[10px] lg:text-[11px] mb-0",
                           isDarkMode ? "text-blue-300" : "text-blue-600",
                         )}
                       >
@@ -956,28 +981,28 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
               {/* Navigation Tabs */}
               <div
                 className={cn(
-                  "px-0 lg:px-10 pt-3 sm:pt-1 border-b backdrop-blur-md transition-colors shrink-0",
+                  "px-0 lg:px-7 pt-2 sm:pt-0.5 border-b backdrop-blur-md transition-colors shrink-0",
                   isDarkMode
                     ? "bg-slate-900/90 border-slate-800"
                     : "bg-white border-slate-100 shadow-xs",
                 )}
               >
                 <div className="flex justify-between lg:justify-start lg:gap-4 overflow-x-auto custom-scrollbar -mb-[1px]">
-                  {detailTabs.map((tab) => {
+                  {detailTabs.map((tab, tIdx) => {
                     const isActive = activeDetailTab === tab.id;
                     const tabIndex = detailTabs.findIndex(
                       (t) => t.id === tab.id,
                     );
                     return (
                       <button
-                        key={tab.id}
+                        key={`detail-tab-${tab.id}-${tIdx}`}
                         type="button"
                         onClick={() => {
                           setDirection(tabIndex > currentIndex ? 1 : -1);
                           setActiveDetailTab(tab.id as any);
                         }}
                         className={cn(
-                          "flex flex-1 lg:flex-none flex-col lg:flex-row items-center justify-center gap-1 lg:gap-2 py-3 px-1 text-[10px] sm:text-[11px] font-black transition-all whitespace-nowrap border-b-2 focus:outline-none",
+                          "flex flex-1 lg:flex-none flex-col lg:flex-row items-center justify-center gap-1 lg:gap-1.5 py-2.5 px-1 text-[10px] sm:text-[11px] font-black transition-all whitespace-nowrap border-b-2 focus:outline-none",
                           isActive
                             ? isDarkMode
                               ? "border-blue-500 text-blue-400 font-extrabold hover:text-blue-400"
@@ -1044,9 +1069,9 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         }
                       }
                     }}
-                    className="min-h-full py-4 lg:py-10 touch-pan-y"
+                    className="min-h-full py-3 lg:py-6 touch-pan-y"
                   >
-                    <div className="px-0 lg:px-10">
+                    <div className="px-0 lg:px-7">
                     {/* Indications Tab */}
                     {activeDetailTab === "indications" && (
                       <div className="space-y-2.5 sm:space-y-6 relative">
@@ -2010,78 +2035,341 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     {/* Gợi ý mốc tuổi & mốc sinh */}
                                     {(() => {
                                       const cfg = item.ageConfig as any;
-                                      if (item.type !== "Age" || !cfg) return null;
-                                      const valBefore = typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
-                                      const valAfter = typeof cfg.value === "number" ? cfg.value : null;
-                                      if (valBefore === null && valAfter === null) return null;
+                                      if (!cfg && item.type !== "Age") return null;
+                                      const valBefore = cfg && typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
+                                      const valAfter = cfg && typeof cfg.value === "number" ? cfg.value : null;
+
+                                      const unitStr = cfg?.unit === "months" ? "tháng tuổi" : "tuổi";
+                                      const hasBefore = valBefore !== null && cfg?.operatorBefore;
+                                      const hasAfter = valAfter !== null && cfg?.operator;
+
+                                      let ageRangeText = "";
+                                      if (hasBefore && hasAfter) {
+                                        ageRangeText = `${valBefore} – ${valAfter} ${unitStr}`;
+                                      } else if (hasBefore) {
+                                        ageRangeText = `${cfg.operatorBefore} ${valBefore} ${unitStr}`;
+                                      } else if (hasAfter) {
+                                        ageRangeText = `${cfg.operator} ${valAfter} ${unitStr}`;
+                                      }
 
                                       const calcDate = (val: number) => {
                                         const d = new Date();
-                                        if (cfg.unit === "months") d.setMonth(d.getMonth() - val);
+                                        if (cfg?.unit === "months") d.setMonth(d.getMonth() - val);
                                         else d.setFullYear(d.getFullYear() - val);
                                         return d.toLocaleDateString("vi-VN");
                                       };
 
                                       const dateBefore = valBefore !== null ? calcDate(valBefore) : null;
                                       const dateAfter = valAfter !== null ? calcDate(valAfter) : null;
-
                                       const display = [dateAfter, dateBefore].filter(Boolean).join(" – ");
 
-                                      return display && canSeeAgeContraindications ? (
-                                        <div className="mt-2">
-                                          <div className={cn(
-                                            "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold",
-                                            isDarkMode
-                                              ? "bg-slate-800 border-slate-700 text-slate-300"
-                                              : "bg-white border-slate-200 text-slate-600 shadow-xs",
-                                          )}>
-                                            <Calendar size={11} className="shrink-0 text-rose-400" />
-                                            <span>Mốc sinh: {display}</span>
+                                      if (!ageRangeText && !display) return null;
+
+                                      return (
+                                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                          {ageRangeText && (
+                                            <div
+                                              className={cn(
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10.5px] font-black shadow-2xs",
+                                                isDarkMode
+                                                  ? "bg-rose-950/30 border-rose-900/40 text-rose-300"
+                                                  : "bg-rose-50 border-rose-200 text-rose-700",
+                                              )}
+                                            >
+                                              <Baby size={12} className="shrink-0 text-rose-500" />
+                                              <span className="opacity-70 font-semibold">Độ tuổi CCĐ:</span>
+                                              <span>{ageRangeText}</span>
+                                            </div>
+                                          )}
+
+                                          {display && canSeeAgeContraindications && (
+                                            <div
+                                              className={cn(
+                                                "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10.5px] font-bold shadow-2xs",
+                                                isDarkMode
+                                                  ? "bg-slate-800/80 border-slate-700 text-slate-300"
+                                                  : "bg-white border-slate-200 text-slate-600 shadow-xs",
+                                              )}
+                                            >
+                                              <Calendar size={11} className="shrink-0 text-rose-400" />
+                                              <span className="opacity-70">Mốc sinh:</span>
+                                              <span className="font-semibold text-rose-600 dark:text-rose-400">{display}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+
+                                    {/* Gợi ý Cân nặng */}
+                                    {(() => {
+                                      const cfg = item.weightConfig as any;
+                                      if (!cfg && item.type !== "Weight") return null;
+                                      const valBefore = cfg && typeof cfg.valueBefore === "number" ? cfg.valueBefore : null;
+                                      const valAfter = cfg && typeof cfg.value === "number" ? cfg.value : null;
+
+                                      const unitStr = cfg?.unit === "g" ? "g" : "kg";
+                                      const hasBefore = valBefore !== null && cfg?.operatorBefore;
+                                      const hasAfter = valAfter !== null && cfg?.operator;
+
+                                      let weightRangeText = "";
+                                      if (hasBefore && hasAfter) {
+                                        weightRangeText = `${valBefore} – ${valAfter} ${unitStr}`;
+                                      } else if (hasBefore) {
+                                        weightRangeText = `${cfg.operatorBefore} ${valBefore} ${unitStr}`;
+                                      } else if (hasAfter) {
+                                        weightRangeText = `${cfg.operator} ${valAfter} ${unitStr}`;
+                                      }
+
+                                      if (!weightRangeText) return null;
+
+                                      return (
+                                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                          <div
+                                            className={cn(
+                                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10.5px] font-black shadow-2xs",
+                                              isDarkMode
+                                                ? "bg-rose-950/30 border-rose-900/40 text-rose-300"
+                                                : "bg-rose-50 border-rose-200 text-rose-700",
+                                            )}
+                                          >
+                                            <Scale size={12} className="shrink-0 text-rose-500" />
+                                            <span className="opacity-70 font-semibold">Cân nặng CCĐ:</span>
+                                            <span>{weightRangeText}</span>
                                           </div>
                                         </div>
-                                      ) : null;
+                                      );
                                     })()}
 
                                     {/* Gợi ý ICD-10 */}
                                     {canSeeIcdSuggestions &&
                                       item.icd10s &&
                                       item.icd10s.length > 0 && (
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                          {[...item.icd10s]
-                                            .sort((a, b) => a.localeCompare(b, "vi"))
-                                            .map((fullName, idx) => {
-                                              const parts = fullName.split(" - ");
-                                              const code = parts[0];
-                                              const icdObj = icdList.find(
-                                                (icd) => icd.code === code,
-                                              );
-                                              const desc =
-                                                parts.slice(1).join(" - ") ||
-                                                icdObj?.description;
-                                              return (
-                                                <div
-                                                  key={idx}
-                                                  className="flex items-center gap-1"
-                                                >
+                                        <div className="mt-3">
+                                          <div className="text-[9.5px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 mb-1.5 flex items-center gap-1.5">
+                                            <Activity size={12} className="shrink-0" />
+                                            <span>Gợi ý ICD-10 chống chỉ định:</span>
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {[...item.icd10s]
+                                              .sort((a, b) => a.localeCompare(b, "vi"))
+                                              .map((fullName, tagIdx) => {
+                                                const parts = fullName.split(" - ");
+                                                const code = parts[0];
+                                                const icdObj = icdList.find(
+                                                  (icd) => icd.code === code,
+                                                );
+                                                const desc =
+                                                  parts.slice(1).join(" - ") ||
+                                                  icdObj?.description;
+                                                const tagId = `contra-${idx}-${tagIdx}`;
+                                                const isCopyActive = activeCopyTag?.id === tagId;
+                                                return (
                                                   <div
+                                                    key={tagIdx}
                                                     className={cn(
-                                                      "px-2 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2",
-                                                      isDarkMode
-                                                        ? "bg-rose-900/20 border-rose-900/30 text-rose-400"
-                                                        : "bg-rose-50 border-rose-100 text-rose-600",
+                                                      "relative group/icd-tag inline-block cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform select-none",
+                                                      isCopyActive ? "z-[200]" : "z-10"
                                                     )}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (activeCopyTag?.id === tagId) {
+                                                        setActiveCopyTag(null);
+                                                      } else {
+                                                        setActiveCopyTag({
+                                                          id: tagId,
+                                                          code,
+                                                          desc: desc || "",
+                                                          fullName,
+                                                        });
+                                                      }
+                                                    }}
                                                   >
-                                                    <span>{code}</span>
-                                                    {desc && (
-                                                      <span className="opacity-60 font-bold">
-                                                        {desc}
-                                                      </span>
+                                                    <div
+                                                      className={cn(
+                                                        "px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2 shadow-2xs",
+                                                        isDarkMode
+                                                          ? "bg-rose-950/30 border-rose-900/40 text-rose-400 hover:bg-rose-900/40"
+                                                          : "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100",
+                                                      )}
+                                                    >
+                                                      <span>{code}</span>
+                                                      {desc && (
+                                                        <span className="opacity-75 font-bold">
+                                                          {desc}
+                                                        </span>
+                                                      )}
+                                                      {icdObj && renderIcdRules(icdObj)}
+                                                    </div>
+
+                                                    {/* 3 Copy buttons popup + Other drugs list (Desktop only) */}
+                                                    {isCopyActive && (
+                                                      <div
+                                                        className={cn(
+                                                          "hidden sm:flex sm:flex-col absolute sm:bottom-auto sm:top-full sm:left-1/2 sm:-translate-x-1/2 mt-2 z-[220] border rounded-2xl shadow-2xl p-3 gap-2 sm:min-w-[240px] sm:max-w-[320px] animate-in fade-in sm:slide-in-from-top-2 duration-150 cursor-default",
+                                                          isDarkMode
+                                                            ? "bg-slate-900 border-slate-800 text-white shadow-black/50"
+                                                            : "bg-white border-slate-200 text-slate-800 shadow-slate-300/40"
+                                                        )}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        <div className={cn(
+                                                          "flex items-center justify-between text-[9px] font-black uppercase tracking-widest px-1 border-b pb-1.5",
+                                                          isDarkMode ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
+                                                        )}>
+                                                          <div className="flex items-center gap-2">
+                                                            <span>Sao chép ICD-10</span>
+                                                            <span className="font-mono text-[10px] text-rose-500 font-extrabold">{code}</span>
+                                                          </div>
+                                                          <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              setActiveCopyTag(null);
+                                                            }}
+                                                            className={cn(
+                                                              "p-0.5 rounded-md transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-400 hover:text-slate-600"
+                                                            )}
+                                                          >
+                                                            <X size={14} />
+                                                          </button>
+                                                        </div>
+
+                                                        <div className="flex flex-col gap-1">
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(code, "code");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Mã</span>
+                                                            {copiedType === "code" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(desc || "", "desc");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Tên</span>
+                                                            {copiedType === "desc" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(fullName, "fullName");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Tên + Mã</span>
+                                                            {copiedType === "fullName" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+                                                        </div>
+
+                                                        {/* Section: Thuốc khác cùng ICD-10 */}
+                                                        <div className={cn(
+                                                          "pt-2 border-t flex flex-col gap-1.5",
+                                                          isDarkMode ? "border-slate-800" : "border-slate-100"
+                                                        )}>
+                                                          <div className={cn(
+                                                            "flex items-center justify-between text-[9px] font-black uppercase tracking-wider px-1",
+                                                            isDarkMode ? "text-slate-400" : "text-slate-500"
+                                                          )}>
+                                                            <span className="flex items-center gap-1">
+                                                              <Pill size={11} className="text-emerald-500" />
+                                                              Thuốc khác cùng ICD-10
+                                                            </span>
+                                                            <span className={cn(
+                                                              "px-1.5 py-0.2 rounded-full text-[9px] font-bold",
+                                                              isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-600"
+                                                            )}>
+                                                              {otherDrugsWithIcd.length}
+                                                            </span>
+                                                          </div>
+
+                                                          {otherDrugsWithIcd.length === 0 ? (
+                                                            <div className={cn(
+                                                              "text-[10px] font-medium italic px-1 py-1",
+                                                              isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                            )}>
+                                                              Không có thuốc nào khác cùng mã
+                                                            </div>
+                                                          ) : (
+                                                            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+                                                              {otherDrugsWithIcd.map((otherDrug, odIdx) => (
+                                                                <button
+                                                                  key={`${otherDrug.id || otherDrug.name}-${odIdx}`}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setActiveCopyTag(null);
+                                                                    setActiveDrug(otherDrug);
+                                                                  }}
+                                                                  className={cn(
+                                                                    "w-full text-left p-1.5 rounded-lg border transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer",
+                                                                    isDarkMode
+                                                                      ? "hover:bg-emerald-950/40 border-transparent hover:border-emerald-800/50"
+                                                                      : "hover:bg-emerald-50 border-transparent hover:border-emerald-200"
+                                                                  )}
+                                                                >
+                                                                  <div className="min-w-0">
+                                                                    <div className={cn(
+                                                                      "text-[11px] font-bold truncate",
+                                                                      isDarkMode ? "text-slate-200 group-hover/drug-item:text-emerald-400" : "text-slate-800 group-hover/drug-item:text-emerald-600"
+                                                                    )}>
+                                                                      {otherDrug.name}
+                                                                    </div>
+                                                                    {otherDrug.activeIngredients && otherDrug.activeIngredients.length > 0 && (
+                                                                      <div className={cn(
+                                                                        "text-[9px] truncate",
+                                                                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                                      )}>
+                                                                        {otherDrug.activeIngredients.map((ai) => ai.name).join(", ")}
+                                                                      </div>
+                                                                    )}
+                                                                  </div>
+                                                                  <ExternalLink size={11} className="text-slate-400 group-hover/drug-item:text-emerald-500 shrink-0" />
+                                                                </button>
+                                                              ))}
+                                                            </div>
+                                                          )}
+                                                        </div>
+
+                                                        {/* Pointer triangle facing up */}
+                                                        <div className={cn(
+                                                          "hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent",
+                                                          isDarkMode ? "border-b-slate-900" : "border-b-white"
+                                                        )} />
+                                                      </div>
                                                     )}
-                                                    {icdObj && renderIcdRules(icdObj)}
                                                   </div>
-                                                </div>
-                                              );
-                                            })}
+                                                );
+                                              })}
+                                          </div>
                                         </div>
                                       )}
 
@@ -2089,71 +2377,267 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                     {canSeeIcdSuggestions &&
                                       item.cautionIcd10s &&
                                       item.cautionIcd10s.length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                          {[...item.cautionIcd10s]
-                                            .sort((a, b) => a.localeCompare(b, "vi"))
-                                            .map((fullName: string, idx: number) => {
-                                              const parts = fullName.split(" - ");
-                                              const code = parts[0];
-                                              const icdObj = icdList.find(
-                                                (icd) => icd.code === code,
-                                              );
-                                              const desc =
-                                                parts.slice(1).join(" - ") ||
-                                                icdObj?.description;
-                                              return (
-                                                <div
-                                                  key={idx}
-                                                  className="flex items-center gap-1"
-                                                >
+                                        <div className="mt-3">
+                                          <div className="text-[9.5px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 mb-1.5 flex items-center gap-1.5">
+                                            <AlertTriangle size={12} className="shrink-0" />
+                                            <span>Mã ICD-10 cần cân nhắc / thận trọng:</span>
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {[...item.cautionIcd10s]
+                                              .sort((a, b) => a.localeCompare(b, "vi"))
+                                              .map((fullName: string, tagIdx: number) => {
+                                                const parts = fullName.split(" - ");
+                                                const code = parts[0];
+                                                const icdObj = icdList.find(
+                                                  (icd) => icd.code === code,
+                                                );
+                                                const desc =
+                                                  parts.slice(1).join(" - ") ||
+                                                  icdObj?.description;
+                                                const tagId = `contra-caution-${idx}-${tagIdx}`;
+                                                const isCopyActive = activeCopyTag?.id === tagId;
+                                                return (
                                                   <div
+                                                    key={tagIdx}
                                                     className={cn(
-                                                      "px-2 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2",
-                                                      isDarkMode
-                                                        ? "bg-amber-900/20 border-amber-900/30 text-amber-400"
-                                                        : "bg-amber-50 border-amber-200 text-amber-700",
+                                                      "relative group/icd-tag inline-block cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform select-none",
+                                                      isCopyActive ? "z-[200]" : "z-10"
                                                     )}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      if (activeCopyTag?.id === tagId) {
+                                                        setActiveCopyTag(null);
+                                                      } else {
+                                                        setActiveCopyTag({
+                                                          id: tagId,
+                                                          code,
+                                                          desc: desc || "",
+                                                          fullName,
+                                                        });
+                                                      }
+                                                    }}
                                                   >
-                                                    <span>⚠️ {code}</span>
-                                                    {desc && (
-                                                      <span className="opacity-75 font-bold">
-                                                        {desc}
-                                                      </span>
+                                                    <div
+                                                      className={cn(
+                                                        "px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all flex items-center gap-2 shadow-2xs",
+                                                        isDarkMode
+                                                          ? "bg-amber-900/20 border-amber-900/30 text-amber-400 hover:bg-amber-900/30"
+                                                          : "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100",
+                                                      )}
+                                                    >
+                                                      <span>⚠️ {code}</span>
+                                                      {desc && (
+                                                        <span className="opacity-75 font-bold">
+                                                          {desc}
+                                                        </span>
+                                                      )}
+                                                      {icdObj && renderIcdRules(icdObj)}
+                                                    </div>
+
+                                                    {/* 3 Copy buttons popup + Other drugs list (Desktop only) */}
+                                                    {isCopyActive && (
+                                                      <div
+                                                        className={cn(
+                                                          "hidden sm:flex sm:flex-col absolute sm:bottom-auto sm:top-full sm:left-1/2 sm:-translate-x-1/2 mt-2 z-[220] border rounded-2xl shadow-2xl p-3 gap-2 sm:min-w-[240px] sm:max-w-[320px] animate-in fade-in sm:slide-in-from-top-2 duration-150 cursor-default",
+                                                          isDarkMode
+                                                            ? "bg-slate-900 border-slate-800 text-white shadow-black/50"
+                                                            : "bg-white border-slate-200 text-slate-800 shadow-slate-300/40"
+                                                        )}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        <div className={cn(
+                                                          "flex items-center justify-between text-[9px] font-black uppercase tracking-widest px-1 border-b pb-1.5",
+                                                          isDarkMode ? "text-slate-400 border-slate-800" : "text-slate-500 border-slate-100"
+                                                        )}>
+                                                          <div className="flex items-center gap-2">
+                                                            <span>Sao chép ICD-10</span>
+                                                            <span className="font-mono text-[10px] text-amber-500 font-extrabold">{code}</span>
+                                                          </div>
+                                                          <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              setActiveCopyTag(null);
+                                                            }}
+                                                            className={cn(
+                                                              "p-0.5 rounded-md transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-400 hover:text-slate-600"
+                                                            )}
+                                                          >
+                                                            <X size={14} />
+                                                          </button>
+                                                        </div>
+
+                                                        <div className="flex flex-col gap-1">
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(code, "code");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Mã</span>
+                                                            {copiedType === "code" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(desc || "", "desc");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Tên</span>
+                                                            {copiedType === "desc" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCopyText(fullName, "fullName");
+                                                            }}
+                                                            className={cn(
+                                                              "flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-left transition-colors cursor-pointer",
+                                                              isDarkMode ? "text-slate-300 hover:bg-slate-800/80" : "text-slate-700 hover:bg-slate-100"
+                                                            )}
+                                                          >
+                                                            <span>Sao chép Tên + Mã</span>
+                                                            {copiedType === "fullName" ? (
+                                                              <span className="text-emerald-500 text-[9px] font-extrabold shrink-0">Đã chép!</span>
+                                                            ) : (
+                                                              <Copy size={11} className="text-slate-400 shrink-0" />
+                                                            )}
+                                                          </button>
+                                                        </div>
+
+                                                        {/* Section: Thuốc khác cùng ICD-10 */}
+                                                        <div className={cn(
+                                                          "pt-2 border-t flex flex-col gap-1.5",
+                                                          isDarkMode ? "border-slate-800" : "border-slate-100"
+                                                        )}>
+                                                          <div className={cn(
+                                                            "flex items-center justify-between text-[9px] font-black uppercase tracking-wider px-1",
+                                                            isDarkMode ? "text-slate-400" : "text-slate-500"
+                                                          )}>
+                                                            <span className="flex items-center gap-1">
+                                                              <Pill size={11} className="text-emerald-500" />
+                                                              Thuốc khác cùng ICD-10
+                                                            </span>
+                                                            <span className={cn(
+                                                              "px-1.5 py-0.2 rounded-full text-[9px] font-bold",
+                                                              isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-600"
+                                                            )}>
+                                                              {otherDrugsWithIcd.length}
+                                                            </span>
+                                                          </div>
+
+                                                          {otherDrugsWithIcd.length === 0 ? (
+                                                            <div className={cn(
+                                                              "text-[10px] font-medium italic px-1 py-1",
+                                                              isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                            )}>
+                                                              Không có thuốc nào khác cùng mã
+                                                            </div>
+                                                          ) : (
+                                                            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5 custom-scrollbar">
+                                                              {otherDrugsWithIcd.map((otherDrug, odIdx) => (
+                                                                <button
+                                                                  key={`${otherDrug.id || otherDrug.name}-${odIdx}`}
+                                                                  onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setActiveCopyTag(null);
+                                                                    setActiveDrug(otherDrug);
+                                                                  }}
+                                                                  className={cn(
+                                                                    "w-full text-left p-1.5 rounded-lg border transition-all flex items-center justify-between gap-2 group/drug-item cursor-pointer",
+                                                                    isDarkMode
+                                                                      ? "hover:bg-emerald-950/40 border-transparent hover:border-emerald-800/50"
+                                                                      : "hover:bg-emerald-50 border-transparent hover:border-emerald-200"
+                                                                  )}
+                                                                >
+                                                                  <div className="min-w-0">
+                                                                    <div className={cn(
+                                                                      "text-[11px] font-bold truncate",
+                                                                      isDarkMode ? "text-slate-200 group-hover/drug-item:text-emerald-400" : "text-slate-800 group-hover/drug-item:text-emerald-600"
+                                                                    )}>
+                                                                      {otherDrug.name}
+                                                                    </div>
+                                                                    {otherDrug.activeIngredients && otherDrug.activeIngredients.length > 0 && (
+                                                                      <div className={cn(
+                                                                        "text-[9px] truncate",
+                                                                        isDarkMode ? "text-slate-500" : "text-slate-400"
+                                                                      )}>
+                                                                        {otherDrug.activeIngredients.map((ai) => ai.name).join(", ")}
+                                                                      </div>
+                                                                    )}
+                                                                  </div>
+                                                                  <ExternalLink size={11} className="text-slate-400 group-hover/drug-item:text-emerald-500 shrink-0" />
+                                                                </button>
+                                                              ))}
+                                                            </div>
+                                                          )}
+                                                        </div>
+
+                                                        {/* Pointer triangle facing up */}
+                                                        <div className={cn(
+                                                          "hidden sm:block absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent",
+                                                          isDarkMode ? "border-b-slate-900" : "border-b-white"
+                                                        )} />
+                                                      </div>
                                                     )}
-                                                    {icdObj && renderIcdRules(icdObj)}
                                                   </div>
-                                                </div>
-                                              );
-                                            })}
+                                                );
+                                              })}
+                                          </div>
                                         </div>
                                       )}
 
                                     {/* Gợi ý Thuốc */}
                                     {item.drugs && item.drugs.length > 0 && (
-                                      <div className="mt-3 flex flex-wrap gap-2">
-                                        {item.drugs.map((drugName: string, idx: number) => {
-                                          const isCypSpecial = drugName === "CYP3A4";
-                                          return (
-                                            <div
-                                              key={idx}
-                                              className={cn(
-                                                "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-xs",
-                                                isCypSpecial
-                                                  ? isDarkMode
-                                                    ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
-                                                    : "bg-amber-50 border-amber-100 text-amber-700"
-                                                  : isDarkMode
-                                                    ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
-                                                    : "bg-rose-50 border-rose-100 text-rose-700",
-                                              )}
-                                            >
-                                              <span>
-                                                {isCypSpecial ? "⭐" : "💊"}
-                                              </span>
-                                              <span>{drugName}</span>
-                                            </div>
-                                          );
-                                        })}
+                                      <div className="mt-3">
+                                        <div className="text-[9.5px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 mb-1.5 flex items-center gap-1.5">
+                                          <Pill size={12} className="shrink-0" />
+                                          <span>Gợi ý Thuốc & Nhóm thuốc chống chỉ định:</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                          {item.drugs.map((drugName: string, drugIdx: number) => {
+                                            const isCypSpecial = drugName === "CYP3A4";
+                                            return (
+                                              <div
+                                                key={drugIdx}
+                                                className={cn(
+                                                  "px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all flex items-center gap-1.5 shadow-2xs",
+                                                  isCypSpecial
+                                                    ? isDarkMode
+                                                      ? "bg-amber-900/25 border-amber-900/40 text-amber-400"
+                                                      : "bg-amber-50 border-amber-200 text-amber-700"
+                                                    : isDarkMode
+                                                      ? "bg-rose-900/25 border-rose-900/40 text-rose-400"
+                                                      : "bg-rose-50 border-rose-200 text-rose-700",
+                                                )}
+                                              >
+                                                <span>
+                                                  {isCypSpecial ? "⭐" : "💊"}
+                                                </span>
+                                                <span>{drugName}</span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -4919,9 +5403,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                           const renderInteractionItem = (
                             item: any,
                             idx: number,
+                            prefix: string = "int"
                           ) => (
                             <div
-                              key={idx}
+                              key={`${item.id || item.interactWith || item.title || prefix}-${prefix}-${idx}`}
                               className={cn(
                                 "p-6 rounded-3xl border flex items-start gap-4 transition-all hover:shadow-md",
                                 isDarkMode
@@ -5144,7 +5629,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                         </div>
                                         <div className="space-y-3">
                                           {items.map((item, idx) =>
-                                            renderInteractionItem(item, idx),
+                                            renderInteractionItem(item, idx, `group-${gIdx}`),
                                           )}
                                         </div>
                                       </div>
@@ -5170,7 +5655,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                       </div>
                                       <div className="space-y-3">
                                         {unassignedItems.map((item, idx) =>
-                                          renderInteractionItem(item, idx),
+                                          renderInteractionItem(item, idx, "unassigned"),
                                         )}
                                       </div>
                                     </div>
@@ -5179,7 +5664,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                               ) : (
                                 <div className="space-y-3">
                                   {filteredInteractions.map((item, idx) =>
-                                    renderInteractionItem(item, idx),
+                                    renderInteractionItem(item, idx, "flat"),
                                   )}
                                 </div>
                               )}
@@ -5221,9 +5706,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                 drug.pharmacokinetics.length > 0);
 
                           const drugGroupNames = (() => {
-                            const ids = drug.groupIds && drug.groupIds.length > 0
-                              ? drug.groupIds
-                              : drug.groupId ? [drug.groupId] : [];
+                            const ingGroupIds = (drug.activeIngredients || []).flatMap((ai: any) =>
+                              Array.isArray(ai.groupIds) ? ai.groupIds : ai.groupId ? [ai.groupId] : []
+                            );
+                            const ids = Array.from(new Set([
+                              ...(drug.groupIds && drug.groupIds.length > 0
+                                ? drug.groupIds
+                                : drug.groupId ? [drug.groupId] : []),
+                              ...ingGroupIds,
+                            ]));
                             return ids
                               .map(id => drugGroups.find(g => g.id === id))
                               .filter(Boolean) as import('../types').DrugGroup[];
@@ -5586,6 +6077,35 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                                           </span>
                                         </div>
                                       )}
+                                      {(() => {
+                                        const ingGroupIds = Array.isArray(ing.groupIds)
+                                          ? ing.groupIds
+                                          : ing.groupId
+                                            ? [ing.groupId]
+                                            : [];
+                                        const ingGroups = ingGroupIds
+                                          .map((gid: string) => drugGroups.find((g) => g.id === gid))
+                                          .filter(Boolean) as import('../types').DrugGroup[];
+                                        if (ingGroups.length === 0) return null;
+                                        return (
+                                          <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-dashed border-slate-200 dark:border-slate-800 w-full">
+                                            {ingGroups.map((g, gIdx) => (
+                                              <span
+                                                key={`${g.id}-${gIdx}`}
+                                                className={cn(
+                                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border",
+                                                  isDarkMode
+                                                    ? "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                                                    : "bg-blue-50 border-blue-200 text-blue-700",
+                                                )}
+                                              >
+                                                <FolderTree size={10} />
+                                                {g.name}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   ),
                                 )}
@@ -5805,6 +6325,116 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                             )}
                           </div>
                         </div>
+
+                        {/* Lí luận & Lập luận chuẩn hóa */}
+                        {(drug.standardizationRationale ||
+                          drug.standardizationBasis ||
+                          drug.standardizationNotes) && (
+                          <div
+                            className={cn(
+                              "p-4 sm:p-6 rounded-none sm:rounded-3xl border space-y-4",
+                              isDarkMode
+                                ? "bg-slate-800 border-slate-700"
+                                : "bg-gradient-to-br from-white via-blue-50/20 to-indigo-50/30 border-blue-100 shadow-sm",
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={cn(
+                                    "p-2 rounded-xl",
+                                    isDarkMode
+                                      ? "bg-blue-500/20 text-blue-400"
+                                      : "bg-blue-100 text-blue-600",
+                                  )}
+                                >
+                                  <Scale size={18} />
+                                </div>
+                                <div>
+                                  <h4 className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-blue-500">
+                                    Lí luận & Lập luận chuẩn hóa y khoa
+                                  </h4>
+                                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                    Cơ sở biện giải chuyên môn và chuẩn hóa điều trị
+                                  </p>
+                                </div>
+                              </div>
+
+                              {drug.standardizationStatus && (
+                                <span
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0",
+                                    drug.standardizationStatus === "approved"
+                                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                      : drug.standardizationStatus === "reviewed"
+                                        ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                        : "bg-slate-500/10 text-slate-500 border-slate-500/30",
+                                  )}
+                                >
+                                  {drug.standardizationStatus === "approved"
+                                    ? "Đã chuẩn hóa"
+                                    : drug.standardizationStatus === "reviewed"
+                                      ? "Đang thẩm định"
+                                      : "Bản nháp"}
+                                </span>
+                              )}
+                            </div>
+
+                            {drug.standardizationRationale && (
+                              <div
+                                className={cn(
+                                  "p-4 rounded-2xl border text-xs sm:text-sm font-medium leading-relaxed whitespace-pre-wrap",
+                                  isDarkMode
+                                    ? "bg-slate-900/60 border-slate-700/80 text-slate-200"
+                                    : "bg-white/90 border-blue-100/80 text-slate-800 shadow-2xs",
+                                )}
+                              >
+                                {drug.standardizationRationale}
+                              </div>
+                            )}
+
+                            {(drug.standardizationBasis ||
+                              drug.standardizationNotes) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                {drug.standardizationBasis && (
+                                  <div
+                                    className={cn(
+                                      "p-3 rounded-xl border space-y-1",
+                                      isDarkMode
+                                        ? "bg-slate-900/40 border-slate-750 text-slate-300"
+                                        : "bg-white border-slate-150 text-slate-700",
+                                    )}
+                                  >
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
+                                      Căn cứ tài liệu / Guideline
+                                    </span>
+                                    <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                                      {drug.standardizationBasis}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {drug.standardizationNotes && (
+                                  <div
+                                    className={cn(
+                                      "p-3 rounded-xl border space-y-1",
+                                      isDarkMode
+                                        ? "bg-slate-900/40 border-slate-750 text-slate-300"
+                                        : "bg-white border-slate-150 text-slate-700",
+                                    )}
+                                  >
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">
+                                      Ghi chú nội bộ
+                                    </span>
+                                    <p className="text-xs font-medium">
+                                      {drug.standardizationNotes}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Metadata Rows */}
                         <div className="flex flex-col md:flex-row gap-4">
@@ -6363,7 +6993,20 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+
+      {/* Modal Góp ý chi tiết thuốc */}
+      {drug && (
+        <DrugFeedbackModal
+          key={`drug-feedback-modal-${drug.id || drug.name}`}
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          drug={drug}
+          initialSection={activeDetailTab}
+          isDarkMode={isDarkMode}
+        />
+      )}
+    </>
   );
 };
 

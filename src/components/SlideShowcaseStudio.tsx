@@ -1328,12 +1328,12 @@ export default function SlideShowcaseStudio({ isDarkMode, userRole = 'member', u
 
           {/* Deck Selector Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 w-full no-scrollbar">
-            {decks.map((deck) => {
+            {decks.map((deck, dIdx) => {
               const deckSlideCount = slides.filter(s => (s.deckId || 'deck_default') === deck.id && s.isActive !== false).length;
               const isSelected = deck.id === activeDeckId;
               return (
                 <button
-                  key={deck.id}
+                  key={`deck-pill-${deck.id || 'deck'}-${dIdx}`}
                   onClick={() => {
                     setActiveDeckId(deck.id);
                     setCurrentSlideIndex(0);
@@ -1421,9 +1421,9 @@ export default function SlideShowcaseStudio({ isDarkMode, userRole = 'member', u
         <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col gap-6">
           {/* CATEGORY TABS BAR */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {categories.map((cat) => (
+            {categories.map((cat, cIdx) => (
               <button
-                key={cat}
+                key={`cat-pill-${cat || 'c'}-${cIdx}`}
                 onClick={() => {
                   setActiveCategory(cat);
                   setCurrentSlideIndex(0);
@@ -1865,7 +1865,7 @@ export default function SlideShowcaseStudio({ isDarkMode, userRole = 'member', u
           <div className="grid grid-cols-1 gap-4">
             {slides.map((slide, idx) => (
               <div
-                key={slide.id}
+                key={`slide-mgmt-card-${slide.id || 'slide'}-${idx}`}
                 className={cn(
                   "p-4 sm:p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all shadow-xs",
                   isDarkMode ? "bg-slate-900/90 border-slate-800" : "bg-white border-slate-200/80"

@@ -264,8 +264,8 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
 
         {viewMode === 'form' && (
           <div className="flex items-center gap-2 lg:gap-4">
-            {[1, 2, 3].map((s) => (
-              <React.Fragment key={s}>
+            {[1, 2, 3].map((s, sIdx) => (
+              <React.Fragment key={`presc-step-${s}-${sIdx}`}>
                 <div className={cn(
                   "flex items-center justify-center w-8 h-8 lg:w-10 lg:h-10 rounded-full text-sm lg:text-base font-bold transition-all duration-300",
                   step === s ? (isDarkMode ? "bg-blue-600 text-white shadow-none scale-110" : "bg-blue-600 text-white shadow-lg shadow-blue-200 lg:shadow-blue-200 scale-110") : 
@@ -479,7 +479,7 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
 
                   <div className="space-y-6">
                     {fields.map((field, index) => (
-                      <div key={field.id} className={cn(
+                      <div key={`presc-field-${field.id || 'f'}-${index}`} className={cn(
                         "p-6 rounded-2xl border relative group transition-colors",
                         isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
                       )}>
@@ -515,8 +515,8 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
                               )}
                             >
                               <option value="" className={isDarkMode ? "bg-slate-900" : "bg-white"}>Chọn thuốc...</option>
-                              {drugs.map(d => (
-                                <option key={d.id} value={d.id} className={isDarkMode ? "bg-slate-900" : "bg-white"}>
+                              {drugs.map((d, dIdx) => (
+                                <option key={`presc-drug-opt-${d.id || 'd'}-${dIdx}`} value={d.id} className={isDarkMode ? "bg-slate-900" : "bg-white"}>
                                   {d.name} ({(d.activeIngredients || []).map(ing => `${ing.name} ${ing.amount}${ing.unit}`).join(' + ')})
                                 </option>
                               ))}
@@ -912,9 +912,9 @@ const PrescriptionForm: React.FC<PrescriptionFormProps> = ({ userProfile, isDark
                           item.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           item.id.toLowerCase().includes(searchQuery.toLowerCase())
                         )
-                        .map((item) => (
+                        .map((item, itIdx) => (
                           <tr 
-                            key={item.id} 
+                            key={`presc-hist-${item.id || 'h'}-${itIdx}`} 
                             onClick={() => setSelectedHistoryItem(item)}
                             className={cn(
                               "group cursor-pointer transition-all",

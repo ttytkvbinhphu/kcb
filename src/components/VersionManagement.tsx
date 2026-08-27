@@ -210,7 +210,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
           <div className="grid grid-cols-1 gap-4">
             {v.changes.map((change, cIdx) => (
               <motion.div 
-                key={cIdx}
+                key={`ver-details-change-${cIdx}`}
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: cIdx * 0.05 }}
@@ -282,7 +282,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
 
             {versions.map((v, idx) => (
               <motion.div
-                key={v.id}
+                key={`ver-list-item-${v.id || 'v'}-${idx}`}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.1 }}
@@ -435,10 +435,10 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
 
                 {/* User List */}
                 <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                  {allUsers.map((user) => {
+                  {allUsers.map((user, userIdx) => {
                     const hasRead = Array.isArray(selectedVersion.readBy) && selectedVersion.readBy.includes(user.uid);
                     return (
-                      <div key={user.uid} className="flex items-center justify-between gap-3 group">
+                      <div key={`ver-read-user-${user.uid || 'u'}-${userIdx}`} className="flex items-center justify-between gap-3 group">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className={cn(
                             "w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-xs shrink-0 overflow-hidden ring-2 ring-offset-2 transition-all",
@@ -599,7 +599,7 @@ const VersionManagement: React.FC<VersionLogViewProps> = ({ isDarkMode, userRole
                   </div>
                   <div className="space-y-3">
                     {editingVersion?.changes?.map((change, idx) => (
-                      <div key={idx} className="flex gap-2">
+                      <div key={`edit-ver-change-${idx}`} className="flex gap-2">
                         <select 
                           value={change.type}
                           onChange={e => {

@@ -213,14 +213,14 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
     return TASK_TYPES.find(t => t.id === type) || TASK_TYPES[TASK_TYPES.length - 1];
   };
 
-  const renderTaskCard = (todo: Todo, isKanban = false) => {
+  const renderTaskCard = (todo: Todo, isKanban = false, index?: number, statusKey?: string) => {
     const typeDetails = getTaskTypeDetails(todo.type);
     const TypeIcon = typeDetails.icon;
     const isOverdue = todo.dueDate && isPast(new Date(todo.dueDate)) && !todo.completed && !isToday(new Date(todo.dueDate));
     
     return (
       <motion.div
-        key={todo.id}
+        key={`${isKanban ? `kanban-${statusKey || 'st'}` : 'list'}-${todo.id || 'todo'}-${index ?? 0}`}
         layout
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -547,9 +547,9 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
           <div className="space-y-4">
             <label className="block text-[11px] font-black uppercase text-slate-400 tracking-[0.2em] ml-1">Loại công việc</label>
             <div className="grid grid-cols-1 gap-2">
-              {TASK_TYPES.slice(0, 6).map(type => (
+              {TASK_TYPES.slice(0, 6).map((type, tIdx) => (
                 <button
-                  key={type.id}
+                  key={`todo-type-${type.id}-${tIdx}`}
                   type="button"
                   onClick={() => setNewType(type.id as any)}
                   className={cn(
@@ -571,9 +571,9 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
             <div className="space-y-4">
               <label className="block text-[11px] font-black uppercase text-slate-400 tracking-[0.2em] ml-1">Độ ưu tiên</label>
               <div className="grid grid-cols-2 gap-3">
-                {PRIORITIES.map(priority => (
+                {PRIORITIES.map((priority, pIdx) => (
                   <button
-                    key={priority.id}
+                    key={`todo-prio-${priority.id}-${pIdx}`}
                     type="button"
                     onClick={() => setNewPriority(priority.id as any)}
                     className={cn(
@@ -699,11 +699,11 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
               {/* Sidebar Views */}
               <div className="space-y-1.5">
                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4 ml-2">Góc nhìn thông minh</p>
-                {SIDEBAR_VIEWS.map(view => {
+                {SIDEBAR_VIEWS.map((view, vIdx) => {
                   const Icon = view.icon;
                   return (
                     <button
-                      key={view.id}
+                      key={`todo-view-${view.id}-${vIdx}`}
                       onClick={() => setFilterTab(view.id as any)}
                       className={cn(
                         "w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all group",
@@ -735,9 +735,9 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
                 {departments.length === 0 ? (
                   <p className="text-[11px] font-bold text-slate-400 ml-2 italic">Chưa có khoa phòng nào</p>
                 ) : (
-                  departments.map(dept => (
+                  departments.map((dept, dIdx) => (
                     <button
-                      key={dept}
+                      key={`todo-dept-${dept || 'd'}-${dIdx}`}
                       onClick={() => setSearchTerm(dept || '')}
                       className={cn(
                         "w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all",
@@ -920,7 +920,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
                 )}>
                   {viewMode === 'list' ? (
                     <AnimatePresence mode="popLayout">
-                      {filteredTodos.map((todo) => renderTaskCard(todo))}
+                      {filteredTodos.map((todo, idx) => renderTaskCard(todo, false, idx))}
                     </AnimatePresence>
                   ) : (
                     <>
@@ -940,7 +940,7 @@ const TodoList: React.FC<TodoListProps> = ({ isDarkMode, onClose, inline }) => {
                               </div>
                             </div>
                             <div className="flex-1 space-y-6 overflow-y-auto no-scrollbar pb-10">
-                              {statusTodos.map(todo => renderTaskCard(todo, true))}
+                              {statusTodos.map((todo, idx) => renderTaskCard(todo, true, idx, status))}
                             </div>
                           </div>
                         );

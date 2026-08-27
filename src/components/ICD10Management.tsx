@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useDeferredValue } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Plus, Edit2, Trash2, X, Check, Filter, ClipboardList, Info, AlertTriangle, Pill, FileSpreadsheet, Loader2, ChevronsLeft, ChevronsRight, Pin, LayoutDashboard, Layers, HelpCircle, LayoutGrid, Network, Star, Copy, ExternalLink } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, writeBatch, updateDoc, addDoc, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -9,6 +9,30 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import DrugDetailModal from './DrugDetailModal';
 import ICDDetailModal from './ICDDetailModal';
+
+const removeAccents = (str?: string) => {
+  return (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase();
+};
+
+interface IndexedICD10 {
+  raw: ICD10;
+  codeLower: string;
+  codeNoAccents: string;
+  searchContentLower: string;
+  searchContentNoAccents: string;
+  guideLower: string;
+  guideNoAccents: string;
+  hasGuide: boolean;
+  firstChar: string;
+  categories: string[];
+  statuses: string[];
+  cleanCode: string;
+}
 
 interface ICD10ManagementProps {
   canManage: boolean;
@@ -22,6 +46,13 @@ interface ICD10ManagementProps {
   initialSearchTerm?: string | null;
   onClearInitialSearch?: () => void;
 }
+
+const ALL_SCOPE_FILTERS = ['code_name', 'guide'] as const;
+const ALL_SUGGESTION_FILTERS = ['has_suggestions', 'no_suggestions'] as const;
+const ALL_GUIDE_FILTERS = ['has_guide', 'no_guide'] as const;
+const ALL_STATUS_FILTERS = ['valid', 'expired', 'new', 'new_name'] as const;
+const ALL_CHAPTER_FILTERS = ['A-B', 'C-D', 'E-H', 'I-K', 'L-N', 'O-Q', 'R-S', 'U-Z'] as const;
+const ALL_CATEGORY_FILTERS = ['normal', 'appendix_a2', 'appendix_a3', 'restricted', 'appendix_a4', 'appendix_a5', 'appendix_a6', 'tt26'] as const;
 
 const ICD10Management: React.FC<ICD10ManagementProps> = ({ 
   canManage, 
@@ -38,11 +69,13 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const [icdList, setIcdList] = useState<ICD10[]>([]);
   const [drugList, setDrugList] = useState<Drug[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'has_suggestions' | 'no_suggestions'>('all');
-  const [icdCategoryFilter, setIcdCategoryFilter] = useState<string>('all');
-  const [icdStatusFilter, setIcdStatusFilter] = useState<'all' | 'expired' | 'new' | 'new_name'>('all');
-  const [icdChapterFilter, setIcdChapterFilter] = useState<string>('all');
-  const [icdGuideFilter, setIcdGuideFilter] = useState<'all' | 'has_guide' | 'no_guide'>('all');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [scopeFilters, setScopeFilters] = useState<string[]>([...ALL_SCOPE_FILTERS]);
+  const [suggestionFilters, setSuggestionFilters] = useState<string[]>([...ALL_SUGGESTION_FILTERS]);
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([...ALL_CATEGORY_FILTERS]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([...ALL_STATUS_FILTERS]);
+  const [chapterFilters, setChapterFilters] = useState<string[]>([...ALL_CHAPTER_FILTERS]);
+  const [guideFilters, setGuideFilters] = useState<string[]>([...ALL_GUIDE_FILTERS]);
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchDescModalOpen, setIsBatchDescModalOpen] = useState(false);
@@ -140,40 +173,93 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
   const isSearchingRef = useRef(false);
   const prevFiltersRef = useRef<{
     searchTerm: string;
-    filterStatus: string;
-    icdCategoryFilter: string;
-    icdChapterFilter: string;
-    icdGuideFilter: string;
-    icdStatusFilter: string;
+    scopeFilters: string[];
+    suggestionFilters: string[];
+    categoryFilters: string[];
+    chapterFilters: string[];
+    guideFilters: string[];
+    statusFilters: string[];
   }>({ 
     searchTerm: '', 
-    filterStatus: 'all', 
-    icdCategoryFilter: 'all', 
-    icdChapterFilter: 'all', 
-    icdGuideFilter: 'all', 
-    icdStatusFilter: 'all' 
+    scopeFilters: [...ALL_SCOPE_FILTERS],
+    suggestionFilters: [...ALL_SUGGESTION_FILTERS],
+    categoryFilters: [...ALL_CATEGORY_FILTERS],
+    chapterFilters: [...ALL_CHAPTER_FILTERS],
+    guideFilters: [...ALL_GUIDE_FILTERS],
+    statusFilters: [...ALL_STATUS_FILTERS]
   });
 
   const hasActiveFilters = useMemo(() => {
     return searchTerm !== '' || 
-      filterStatus !== 'all' || 
-      icdCategoryFilter !== 'all' || 
-      icdChapterFilter !== 'all' || 
-      icdGuideFilter !== 'all' || 
-      icdStatusFilter !== 'all';
-  }, [searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter, icdGuideFilter, icdStatusFilter]);
+      scopeFilters.length < ALL_SCOPE_FILTERS.length ||
+      suggestionFilters.length < ALL_SUGGESTION_FILTERS.length ||
+      categoryFilters.length < ALL_CATEGORY_FILTERS.length ||
+      chapterFilters.length < ALL_CHAPTER_FILTERS.length ||
+      guideFilters.length < ALL_GUIDE_FILTERS.length ||
+      statusFilters.length < ALL_STATUS_FILTERS.length;
+  }, [searchTerm, scopeFilters, suggestionFilters, categoryFilters, chapterFilters, guideFilters, statusFilters]);
 
   const handleClearAllFilters = () => {
     setSearchTerm('');
-    setFilterStatus('all');
-    setIcdCategoryFilter('all');
-    setIcdChapterFilter('all');
-    setIcdGuideFilter('all');
-    setIcdStatusFilter('all');
+    setScopeFilters([...ALL_SCOPE_FILTERS]);
+    setSuggestionFilters([...ALL_SUGGESTION_FILTERS]);
+    setCategoryFilters([...ALL_CATEGORY_FILTERS]);
+    setChapterFilters([...ALL_CHAPTER_FILTERS]);
+    setGuideFilters([...ALL_GUIDE_FILTERS]);
+    setStatusFilters([...ALL_STATUS_FILTERS]);
+  };
+
+  const toggleScopeFilter = (scope: string) => {
+    setScopeFilters(prev => 
+      prev.includes(scope) 
+        ? prev.filter(s => s !== scope) 
+        : [...prev, scope]
+    );
+    scrollToTop();
   };
 
   const toggleCategoryFilter = (category: string) => {
-    setIcdCategoryFilter(prev => prev === category ? 'all' : category);
+    setCategoryFilters(prev => 
+      prev.includes(category) 
+        ? prev.filter(c => c !== category) 
+        : [...prev, category]
+    );
+    scrollToTop();
+  };
+
+  const toggleSuggestionFilter = (filter: string) => {
+    setSuggestionFilters(prev => 
+      prev.includes(filter) 
+        ? prev.filter(f => f !== filter) 
+        : [...prev, filter]
+    );
+    scrollToTop();
+  };
+
+  const toggleGuideFilter = (filter: string) => {
+    setGuideFilters(prev => 
+      prev.includes(filter) 
+        ? prev.filter(f => f !== filter) 
+        : [...prev, filter]
+    );
+    scrollToTop();
+  };
+
+  const toggleStatusFilter = (filter: string) => {
+    setStatusFilters(prev => 
+      prev.includes(filter) 
+        ? prev.filter(f => f !== filter) 
+        : [...prev, filter]
+    );
+    scrollToTop();
+  };
+
+  const toggleChapterFilter = (chapter: string) => {
+    setChapterFilters(prev => 
+      prev.includes(chapter) 
+        ? prev.filter(c => c !== chapter) 
+        : [...prev, chapter]
+    );
     scrollToTop();
   };
 
@@ -380,100 +466,220 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
     }
   }, [icdList.length]);
 
-  const filteredList = useMemo(() => {
-    const list = icdList.filter(icd => {
-      const matchesSearch = (icd.code || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-        (icd.description || '').toLowerCase().includes((searchTerm || '').toLowerCase());
-      
-      if (!matchesSearch) return false;
+  // Pre-index normalized search strings and properties once when icdList updates
+  const indexedIcdList = useMemo<IndexedICD10[]>(() => {
+    return icdList.map(icd => {
+      const code = icd.code || '';
+      const desc = icd.description || '';
+      const oldName = icd.oldName || '';
+      const notes = icd.notes || '';
+      const chapter = icd.chapterName || '';
+      const block = icd.blockName || '';
+      const guide = icd.guide || '';
+      const hasGuide = !!(guide && guide.trim() !== '');
 
-      // Category filter
-      if (icdCategoryFilter !== 'all') {
-        if (icdCategoryFilter === 'appendix_a2' && !icd.isAppendixA2) return false;
-        if (icdCategoryFilter === 'appendix_a3' && !icd.isAppendixA3) return false;
-        if (icdCategoryFilter === 'appendix_a4' && !icd.isAppendixA4) return false;
-        if (icdCategoryFilter === 'appendix_a5' && !icd.isAppendixA5) return false;
-        if (icdCategoryFilter === 'appendix_a6' && !icd.isAppendixA6) return false;
-        if (icdCategoryFilter === 'restricted' && !icd.isRestricted) return false;
-        if (icdCategoryFilter === 'tt26' && !icd.isTT26) return false;
+      const codeLower = code.toLowerCase();
+      const codeNoAccents = removeAccents(code);
+
+      // Pre-combine searchable texts
+      const fullSearch = `${desc} ${oldName} ${notes} ${chapter} ${block}`;
+      const searchContentLower = fullSearch.toLowerCase();
+      const searchContentNoAccents = removeAccents(fullSearch);
+
+      const guideLower = guide.toLowerCase();
+      const guideNoAccents = hasGuide ? removeAccents(guide) : '';
+
+      const firstChar = code[0]?.toUpperCase() || '';
+
+      const categories: string[] = [];
+      if (icd.isAppendixA2) categories.push('appendix_a2');
+      if (icd.isAppendixA3) categories.push('appendix_a3');
+      if (icd.isRestricted) categories.push('restricted');
+      if (icd.isAppendixA4) categories.push('appendix_a4');
+      if (icd.isAppendixA5) categories.push('appendix_a5');
+      if (icd.isAppendixA6) categories.push('appendix_a6');
+      if (icd.isTT26) categories.push('tt26');
+      if (categories.length === 0) categories.push('normal');
+
+      const statuses: string[] = [];
+      if (icd.isExpired) {
+        statuses.push('expired');
+      } else {
+        statuses.push('valid');
+        if (icd.isNew) statuses.push('new');
+        if (oldName && oldName.trim() !== '') statuses.push('new_name');
       }
 
-      // Status filter
-      if (icdStatusFilter === 'expired' && !icd.isExpired) return false;
-      if (icdStatusFilter === 'new' && !icd.isNew) return false;
-      if (icdStatusFilter === 'new_name' && (!icd.oldName || icd.oldName.trim() === '')) return false;
-
-      // Chapter filter
-      if (icdChapterFilter !== 'all') {
-        const firstChar = (icd.code || '')[0]?.toUpperCase();
-        if (!firstChar) return false;
-
-        const filtersMap: Record<string, string[]> = {
-          'A-B': ['A', 'B'],
-          'C-D': ['C', 'D'],
-          'E-H': ['E', 'F', 'G', 'H'],
-          'I-K': ['I', 'J', 'K'],
-          'L-N': ['L', 'M', 'N'],
-          'O-Q': ['O', 'P', 'Q'],
-          'R-S': ['R', 'S', 'T'],
-          'U-Z': ['U', 'V', 'W', 'X', 'Y', 'Z']
-        };
-
-        if (!filtersMap[icdChapterFilter]?.includes(firstChar)) return false;
-      }
-
-      // Guide filter
-      if (icdGuideFilter === 'has_guide' && (!icd.guide || icd.guide.trim() === '')) return false;
-      if (icdGuideFilter === 'no_guide' && icd.guide && icd.guide.trim() !== '') return false;
-
-      const suggestions = drugsByIcd[(icd.code || '').trim().toUpperCase()];
-      const hasSuggestions = suggestions && suggestions.length > 0;
-
-      if (filterStatus === 'has_suggestions') return hasSuggestions;
-      if (filterStatus === 'no_suggestions') return !hasSuggestions;
-      
-      return true;
+      return {
+        raw: icd,
+        codeLower,
+        codeNoAccents,
+        searchContentLower,
+        searchContentNoAccents,
+        guideLower,
+        guideNoAccents,
+        hasGuide,
+        firstChar,
+        categories,
+        statuses,
+        cleanCode: code.trim().toUpperCase()
+      };
     });
+  }, [icdList]);
 
-    // Final display list - in management mode, we ignore pinned status for all visual calculations
-    const displayList = canManage 
-      ? list.map(item => ({ ...item, isPinned: false, showOnWorkspace: false }))
-      : list.map(item => ({ 
-          ...item, 
-          isPinned: (userProfile?.pinnedIcdCodes || []).includes(item.code),
-          showOnWorkspace: (userProfile?.workspaceIcdCodes || []).includes(item.code)
-        }));
+  const filteredList = useMemo(() => {
+    const trimmedQuery = (deferredSearchTerm || '').trim();
+    const queryLower = trimmedQuery.toLowerCase();
+    const queryNoAccents = removeAccents(trimmedQuery);
 
-    // Sort by pinned first, then by code (In management mode, isPinned is effectively false above)
-    return [...displayList].sort((a, b) => {
+    const searchCodeName = scopeFilters.includes('code_name');
+    const searchGuide = scopeFilters.includes('guide');
+
+    // If both scopes disabled, return empty
+    if (!searchCodeName && !searchGuide) return [];
+
+    const hasCategoryFilter = categoryFilters.length < ALL_CATEGORY_FILTERS.length;
+    const onlyAppendixSelected = hasCategoryFilter && categoryFilters.every(c => c !== 'normal');
+
+    const hasStatusFilter = statusFilters.length < ALL_STATUS_FILTERS.length;
+    const onlySpecialStatus = hasStatusFilter && statusFilters.every(s => s === 'new' || s === 'new_name');
+
+    const hasChapterFilter = chapterFilters.length < ALL_CHAPTER_FILTERS.length;
+    const filtersMap: Record<string, string[]> = {
+      'A-B': ['A', 'B'],
+      'C-D': ['C', 'D'],
+      'E-H': ['E', 'F', 'G', 'H'],
+      'I-K': ['I', 'J', 'K'],
+      'L-N': ['L', 'M', 'N'],
+      'O-Q': ['O', 'P', 'Q'],
+      'R-S': ['R', 'S', 'T'],
+      'U-Z': ['U', 'V', 'W', 'X', 'Y', 'Z']
+    };
+
+    const hasGuideFilter = guideFilters.length < ALL_GUIDE_FILTERS.length;
+    const hasSuggestionFilter = suggestionFilters.length < ALL_SUGGESTION_FILTERS.length;
+
+    const pinnedSet = new Set(userProfile?.pinnedIcdCodes || []);
+    const workspaceSet = new Set(userProfile?.workspaceIcdCodes || []);
+
+    const list: ICD10[] = [];
+
+    for (let i = 0; i < indexedIcdList.length; i++) {
+      const item = indexedIcdList[i];
+
+      // 1. Scope check when no query
+      if (!searchCodeName && searchGuide && !trimmedQuery) {
+        if (!item.hasGuide) continue;
+      }
+
+      // 2. Keyword query filter (0 regex calls during keystroke, fast native string checks)
+      if (trimmedQuery) {
+        let matches = false;
+        if (searchCodeName) {
+          matches =
+            item.codeLower.includes(queryLower) ||
+            item.codeNoAccents.includes(queryNoAccents) ||
+            item.searchContentLower.includes(queryLower) ||
+            item.searchContentNoAccents.includes(queryNoAccents);
+        }
+        if (!matches && searchGuide && item.hasGuide) {
+          matches =
+            item.guideLower.includes(queryLower) ||
+            item.guideNoAccents.includes(queryNoAccents);
+        }
+        if (!matches) continue;
+      }
+
+      // 3. Category filter
+      if (hasCategoryFilter) {
+        if (onlyAppendixSelected) {
+          if (!item.categories.some(c => c !== 'normal' && categoryFilters.includes(c))) {
+            continue;
+          }
+        } else {
+          if (!item.categories.some(c => categoryFilters.includes(c))) {
+            continue;
+          }
+        }
+      }
+
+      // 4. Status filter
+      if (hasStatusFilter) {
+        if (onlySpecialStatus) {
+          if (!item.statuses.some(s => (s === 'new' || s === 'new_name') && statusFilters.includes(s))) {
+            continue;
+          }
+        } else {
+          if (!item.statuses.some(s => statusFilters.includes(s))) {
+            continue;
+          }
+        }
+      }
+
+      // 5. Chapter filter
+      if (hasChapterFilter) {
+        if (!item.firstChar) continue;
+        const itemChapter = Object.keys(filtersMap).find(k => filtersMap[k].includes(item.firstChar));
+        if (!itemChapter || !chapterFilters.includes(itemChapter)) {
+          continue;
+        }
+      }
+
+      // 6. Guide filter
+      if (hasGuideFilter) {
+        if (item.hasGuide && !guideFilters.includes('has_guide')) continue;
+        if (!item.hasGuide && !guideFilters.includes('no_guide')) continue;
+      }
+
+      // 7. Suggestion filter
+      if (hasSuggestionFilter) {
+        const suggestions = drugsByIcd[item.cleanCode];
+        const hasSuggestions = suggestions && suggestions.length > 0;
+        if (hasSuggestions && !suggestionFilters.includes('has_suggestions')) continue;
+        if (!hasSuggestions && !suggestionFilters.includes('no_suggestions')) continue;
+      }
+
+      // Format display item
+      if (canManage) {
+        list.push({ ...item.raw, isPinned: false, showOnWorkspace: false });
+      } else {
+        list.push({
+          ...item.raw,
+          isPinned: pinnedSet.has(item.raw.code),
+          showOnWorkspace: workspaceSet.has(item.raw.code)
+        });
+      }
+    }
+
+    // Sort: pinned first, then by code
+    return list.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
       return (a.code || '').localeCompare(b.code || '');
     });
-  }, [icdList, searchTerm, filterStatus, icdChapterFilter, icdCategoryFilter, icdGuideFilter, icdStatusFilter, drugsByIcd, canManage, userProfile]);
+  }, [indexedIcdList, deferredSearchTerm, scopeFilters, suggestionFilters, categoryFilters, chapterFilters, guideFilters, statusFilters, drugsByIcd, canManage, userProfile]);
 
   // Reset to page 1 when search term or filter changes, and restore previous page when cleared
   useEffect(() => {
     const prev = prevFiltersRef.current;
-    const categoryFiltersChanged = prev.icdCategoryFilter !== icdCategoryFilter;
 
     const filtersChanged = 
       prev.searchTerm !== searchTerm || 
-      prev.filterStatus !== filterStatus || 
-      categoryFiltersChanged || 
-      prev.icdChapterFilter !== icdChapterFilter ||
-      prev.icdGuideFilter !== icdGuideFilter ||
-      prev.icdStatusFilter !== icdStatusFilter;
-
-    const hasSearchOrFilter = searchTerm || 
-      filterStatus !== 'all' || 
-      icdCategoryFilter !== 'all' || 
-      icdChapterFilter !== 'all' || 
-      icdGuideFilter !== 'all' || 
-      icdStatusFilter !== 'all';
+      prev.scopeFilters.length !== scopeFilters.length ||
+      prev.suggestionFilters.length !== suggestionFilters.length ||
+      prev.categoryFilters.length !== categoryFilters.length ||
+      prev.chapterFilters.length !== chapterFilters.length ||
+      prev.guideFilters.length !== guideFilters.length ||
+      prev.statusFilters.length !== statusFilters.length ||
+      scopeFilters.some(f => !prev.scopeFilters.includes(f)) ||
+      suggestionFilters.some(f => !prev.suggestionFilters.includes(f)) ||
+      categoryFilters.some(f => !prev.categoryFilters.includes(f)) ||
+      chapterFilters.some(f => !prev.chapterFilters.includes(f)) ||
+      guideFilters.some(f => !prev.guideFilters.includes(f)) ||
+      statusFilters.some(f => !prev.statusFilters.includes(f));
 
     if (filtersChanged) {
-      if (hasSearchOrFilter) {
+      if (hasActiveFilters) {
         if (!isSearchingRef.current) {
           isSearchingRef.current = true;
         }
@@ -484,11 +690,19 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           isSearchingRef.current = false;
         }
       }
-      prevFiltersRef.current = { searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter, icdGuideFilter, icdStatusFilter };
+      prevFiltersRef.current = { 
+        searchTerm, 
+        scopeFilters, 
+        suggestionFilters, 
+        categoryFilters, 
+        chapterFilters, 
+        guideFilters, 
+        statusFilters 
+      };
     } else if (!isSearchingRef.current) {
        previousPageRef.current = currentPage;
-     }
-  }, [searchTerm, filterStatus, icdCategoryFilter, icdChapterFilter, icdGuideFilter, icdStatusFilter, currentPage]);
+    }
+  }, [searchTerm, scopeFilters, suggestionFilters, categoryFilters, chapterFilters, guideFilters, statusFilters, hasActiveFilters, currentPage]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage);
   const paginatedList = useMemo(() => {
@@ -802,60 +1016,96 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       {(() => {
         const portalTarget = getPortalTarget();
         return portalTarget ? createPortal(
-          <div className="flex items-center gap-2 w-full lg:hidden pr-2">
+          <div className="flex flex-col gap-1.5 w-full lg:hidden pr-2">
             {!isGuideModalOpen ? (
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                <input
-                  type="text"
-                  placeholder="Tìm ICD-10..."
-                  className={cn(
-                    "w-full pl-8 pr-16 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
-                    isDarkMode 
-                      ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
-                      : "bg-white border-slate-200 text-slate-900 shadow-sm"
-                  )}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {searchTerm && (
-                    <button 
-                      onClick={() => setSearchTerm('')}
-                      className="p-1 text-slate-400 hover:text-slate-600"
+              <div className="flex flex-col gap-1.5 w-full">
+                <div className="relative flex-1 flex items-center">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder={
+                      scopeFilters.includes('guide') && !scopeFilters.includes('code_name')
+                        ? "Tìm trong Hướng dẫn WHO..."
+                        : scopeFilters.includes('code_name') && !scopeFilters.includes('guide')
+                        ? "Tìm mã hoặc tên bệnh..."
+                        : "Tìm mã, tên, Hướng dẫn WHO..."
+                    }
+                    className={cn(
+                      "w-full pl-8 pr-20 py-1.5 border rounded-lg focus:ring-1 focus:ring-emerald-500 transition-all text-[11px] font-bold",
+                      isDarkMode 
+                        ? "bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500" 
+                        : "bg-white border-slate-200 text-slate-900 shadow-sm"
+                    )}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {searchTerm && (
+                      <button 
+                        onClick={() => setSearchTerm('')}
+                        className="p-1 text-slate-400 hover:text-slate-600"
+                        title="Xóa tìm kiếm"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setActiveGuideTabIdx(0);
+                        setIsGuideModalOpen(!isGuideModalOpen);
+                      }}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        isGuideModalOpen
+                          ? "bg-amber-500 text-white shadow-sm"
+                          : "text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                      )}
+                      title="Hướng dẫn & Trợ giúp"
                     >
-                      <X size={12} />
+                      <HelpCircle size={14} />
                     </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setActiveGuideTabIdx(0);
-                      setIsGuideModalOpen(!isGuideModalOpen);
-                    }}
-                    className={cn(
-                      "p-1.5 rounded-md transition-all",
-                      isGuideModalOpen
-                        ? "bg-amber-500 text-white shadow-sm"
-                        : "text-amber-500 hover:bg-amber-100 dark:hover:bg-amber-950/40"
-                    )}
-                    title="Hướng dẫn & Trợ giúp"
-                  >
-                    <HelpCircle size={14} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowFilters(!showFilters);
-                      scrollToTop();
-                    }}
-                    className={cn(
-                      "p-1 rounded-md transition-all",
-                      showFilters 
-                        ? "bg-emerald-600 text-white shadow-sm" 
-                        : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
-                    )}
-                  >
-                    <Filter size={14} />
-                  </button>
+                    <button
+                      onClick={() => {
+                        setShowFilters(!showFilters);
+                        scrollToTop();
+                      }}
+                      className={cn(
+                        "p-1 rounded-md transition-all",
+                        showFilters 
+                          ? "bg-emerald-600 text-white shadow-sm" 
+                          : (isDarkMode ? "text-slate-400 hover:bg-slate-700" : "text-slate-400 hover:bg-slate-100")
+                      )}
+                      title="Bộ lọc nâng cao"
+                    >
+                      <Filter size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mobile Portal Scope Selector */}
+                <div className="flex items-center gap-1">
+                  {[
+                    { id: 'code_name', label: 'Mã & Tên' },
+                    { id: 'guide', label: 'H.Dẫn WHO' }
+                  ].map((s, sIdx) => (
+                    <button
+                      key={`mob-portal-scope-${s.id}-${sIdx}`}
+                      type="button"
+                      onClick={() => toggleScopeFilter(s.id)}
+                      className={cn(
+                        "flex-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all text-center border",
+                        scopeFilters.includes(s.id)
+                          ? (isDarkMode 
+                              ? "bg-emerald-600 border-emerald-500 text-white" 
+                              : "bg-emerald-600 border-emerald-600 text-white shadow-xs")
+                          : (isDarkMode 
+                              ? "bg-slate-800/80 border-slate-700/60 text-slate-500 line-through opacity-60" 
+                              : "bg-slate-100 border-slate-200 text-slate-400 line-through opacity-60")
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             ) : (
@@ -878,13 +1128,19 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
       <div className="mb-2 lg:mb-10 space-y-6">
         {/* Guest Search Bar for Mobile (since portal subheader is missing in guest modal) */}
         {!userRole && !isGuideModalOpen && (
-          <div className="lg:hidden mb-4 space-y-4">
+          <div className="lg:hidden mb-4 space-y-2">
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="text"
-                  placeholder="Tìm mã hoặc tên bệnh..."
+                  placeholder={
+                    scopeFilters.includes('guide') && !scopeFilters.includes('code_name')
+                      ? "Tìm từ khóa trong Hướng dẫn WHO 2019..."
+                      : scopeFilters.includes('code_name') && !scopeFilters.includes('guide')
+                      ? "Tìm theo mã hoặc tên bệnh..."
+                      : "Tìm mã, tên bệnh, Hướng dẫn WHO..."
+                  }
                   className={cn(
                     "w-full pl-10 pr-10 py-3 border rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all text-xs font-bold",
                     isDarkMode 
@@ -933,6 +1189,35 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 <Filter size={20} />
               </button>
             </div>
+
+            {/* Guest Mobile Scope Selector */}
+            <div className={cn(
+              "flex items-center gap-1.5 p-1 rounded-xl border transition-colors",
+              isDarkMode ? "bg-slate-800/80 border-slate-700/60" : "bg-slate-100 border-slate-200"
+            )}>
+              {[
+                { id: 'code_name', label: 'Mã & Tên' },
+                { id: 'guide', label: 'H.Dẫn WHO' }
+              ].map((s, sIdx) => (
+                <button
+                  key={`guest-mob-scope-${s.id}-${sIdx}`}
+                  type="button"
+                  onClick={() => toggleScopeFilter(s.id)}
+                  className={cn(
+                    "flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center",
+                    scopeFilters.includes(s.id)
+                      ? (isDarkMode 
+                          ? "bg-emerald-600 text-white shadow-sm font-black" 
+                          : "bg-white text-emerald-700 shadow-sm border border-slate-200/50 font-black")
+                      : (isDarkMode 
+                          ? "text-slate-500 line-through opacity-60" 
+                          : "text-slate-400 line-through opacity-60")
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -951,17 +1236,55 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               )}>
                 {/* Mobile Reset Filters Button */}
                 {hasActiveFilters && (
-                  <div className="flex items-center justify-between pb-2 border-b border-dashed border-slate-200 dark:border-slate-800">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bộ lọc đang hoạt động</span>
+                  <div className={cn("flex items-center justify-between pb-2 border-b border-dashed", isDarkMode ? "border-slate-800" : "border-slate-200")}>
+                    <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Bộ lọc đang hoạt động</span>
                     <button
                       onClick={handleClearAllFilters}
-                      className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-colors"
+                      title="Tắt nhanh lọc"
+                      className={cn(
+                        "p-1 rounded-lg text-rose-500 hover:text-rose-600 transition-colors",
+                        isDarkMode ? "hover:bg-rose-950/40" : "hover:bg-rose-50"
+                      )}
                     >
-                      <Trash2 size={12} />
-                      Tắt nhanh lọc
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 )}
+
+                {/* Search Scope Filter Mobile */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="w-1 h-3 bg-emerald-500 rounded-full" />
+                    <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Phạm vi tìm kiếm</span>
+                  </div>
+                  <div className={cn(
+                    "flex items-center gap-1.5 p-1 rounded-xl border transition-colors",
+                    isDarkMode ? "bg-slate-800/80 border-slate-700/60" : "bg-slate-100 border-slate-200"
+                  )}>
+                    {[
+                      { id: 'code_name', label: 'Mã & Tên' },
+                      { id: 'guide', label: 'H.Dẫn WHO' }
+                    ].map((s, sIdx) => (
+                      <button
+                        key={`mob-filt-scope-${s.id}-${sIdx}`}
+                        type="button"
+                        onClick={() => toggleScopeFilter(s.id)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center",
+                          scopeFilters.includes(s.id)
+                            ? (isDarkMode 
+                                ? "bg-emerald-600 text-white shadow-sm font-black" 
+                                : "bg-white text-emerald-700 shadow-sm border border-slate-200/50 font-black")
+                            : (isDarkMode 
+                                ? "text-slate-500 line-through opacity-60" 
+                                : "text-slate-400 line-through opacity-60")
+                        )}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Category Filters Mobile */}
                 <div className="flex flex-col gap-2">
@@ -971,7 +1294,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Phân loại danh mục</span>
                     </div>
                     <div className="flex flex-wrap gap-1 items-center justify-end">
-                      {icdCategoryFilter === 'appendix_a2' && (
+                      {categoryFilters.includes('appendix_a2') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-indigo-50 dark:bg-indigo-950/40 rounded",
                           isDarkMode ? "text-indigo-400" : "text-indigo-500"
@@ -979,7 +1302,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           24
                         </span>
                       )}
-                      {icdCategoryFilter === 'appendix_a3' && (
+                      {categoryFilters.includes('appendix_a3') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-amber-50 dark:bg-amber-950/40 rounded",
                           isDarkMode ? "text-amber-400" : "text-amber-500"
@@ -987,7 +1310,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           25
                         </span>
                       )}
-                      {icdCategoryFilter === 'restricted' && (
+                      {categoryFilters.includes('restricted') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-rose-50 dark:bg-rose-950/40 rounded",
                           isDarkMode ? "text-rose-400" : "text-rose-500"
@@ -995,7 +1318,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           26
                         </span>
                       )}
-                      {icdCategoryFilter === 'appendix_a4' && (
+                      {categoryFilters.includes('appendix_a4') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-blue-50 dark:bg-blue-950/40 rounded",
                           isDarkMode ? "text-blue-400" : "text-blue-500"
@@ -1003,7 +1326,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           27
                         </span>
                       )}
-                      {icdCategoryFilter === 'appendix_a5' && (
+                      {categoryFilters.includes('appendix_a5') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-pink-50 dark:bg-pink-950/40 rounded",
                           isDarkMode ? "text-pink-400" : "text-pink-500"
@@ -1011,7 +1334,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           28
                         </span>
                       )}
-                      {icdCategoryFilter === 'appendix_a6' && (
+                      {categoryFilters.includes('appendix_a6') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-cyan-50 dark:bg-cyan-950/40 rounded",
                           isDarkMode ? "text-cyan-400" : "text-cyan-500"
@@ -1019,7 +1342,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           29
                         </span>
                       )}
-                      {icdCategoryFilter === 'tt26' && (
+                      {categoryFilters.includes('tt26') && (
                         <span className={cn(
                           "text-[8px] font-black uppercase tracking-wider px-1 bg-fuchsia-50 dark:bg-fuchsia-950/40 rounded",
                           isDarkMode ? "text-fuchsia-400" : "text-fuchsia-500"
@@ -1029,26 +1352,15 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       )}
                     </div>
                   </div>
-                    <div className="flex items-center gap-1 text-center">
-                    <button
-                      onClick={() => toggleCategoryFilter('all')}
-                      className={cn(
-                        "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'all'
-                          ? "bg-emerald-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
-                      )}
-                    >
-                      Tất cả
-                    </button>
+                    <div className="flex items-center gap-1 text-center flex-wrap">
                     {canSeeAppendixA2 && (
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a2')}
                         className={cn(
-                          "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a2'
-                            ? "bg-indigo-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                          categoryFilters.includes('appendix_a2')
+                            ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500/20"
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         24
@@ -1058,10 +1370,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a3')}
                         className={cn(
-                          "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a3'
-                            ? "bg-amber-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                          categoryFilters.includes('appendix_a3')
+                            ? "bg-amber-600 text-white shadow-sm ring-1 ring-amber-500/20"
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         25
@@ -1070,10 +1382,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <button
                       onClick={() => toggleCategoryFilter('restricted')}
                       className={cn(
-                        "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'restricted'
-                          ? "bg-rose-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                        "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                        categoryFilters.includes('restricted')
+                          ? "bg-rose-600 text-white shadow-sm ring-1 ring-rose-500/20"
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       26
@@ -1082,10 +1394,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a4')}
                         className={cn(
-                          "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a4'
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                          categoryFilters.includes('appendix_a4')
+                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-500/20"
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         27
@@ -1095,10 +1407,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a5')}
                         className={cn(
-                          "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a5'
-                            ? "bg-pink-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                          categoryFilters.includes('appendix_a5')
+                            ? "bg-pink-600 text-white shadow-sm ring-1 ring-pink-500/20"
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         28
@@ -1108,10 +1420,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a6')}
                         className={cn(
-                          "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a6'
-                            ? "bg-cyan-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                          categoryFilters.includes('appendix_a6')
+                            ? "bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-500/20"
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         29
@@ -1120,10 +1432,10 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <button
                       onClick={() => toggleCategoryFilter('tt26')}
                       className={cn(
-                        "px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'tt26'
-                          ? "bg-fuchsia-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                        "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                        categoryFilters.includes('tt26')
+                          ? "bg-fuchsia-600 text-white shadow-sm ring-1 ring-fuchsia-500/20"
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       TT26
@@ -1135,44 +1447,33 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   <div className={cn("flex flex-col gap-2 pt-2 border-t", isDarkMode ? "border-slate-800" : "border-emerald-100")}>
                     <div className="flex items-center gap-2 px-1">
                       <div className="w-1 h-3 bg-emerald-500 rounded-full" />
-                      <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Trạng thái gợi ý</span>
+                      <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Gợi ý thuốc</span>
                     </div>
                     <div className={cn(
                       "flex flex-wrap items-center gap-2 p-1.5 rounded-2xl border transition-all duration-300",
-                      filterStatus !== 'all'
+                      suggestionFilters.length < ALL_SUGGESTION_FILTERS.length
                         ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md shadow-emerald-500/5 bg-emerald-500/5"
                         : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-white border-slate-200")
                     )}>
                       <button
-                        onClick={() => setFilterStatus('all')}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                          filterStatus === 'all'
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
-                        )}
-                      >
-                        Tất cả
-                      </button>
-                      <button
-                        onClick={() => setFilterStatus('has_suggestions')}
+                        onClick={() => toggleSuggestionFilter('has_suggestions')}
                         className={cn(
                           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                          filterStatus === 'has_suggestions'
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          suggestionFilters.includes('has_suggestions')
+                            ? (isDarkMode ? "bg-emerald-600 text-white shadow-sm" : "bg-emerald-600 text-white shadow-sm")
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         <Check size={12} />
-                        Có gợi ý
+                        Có
                       </button>
                       <button
-                        onClick={() => setFilterStatus('no_suggestions')}
+                        onClick={() => toggleSuggestionFilter('no_suggestions')}
                         className={cn(
                           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                          filterStatus === 'no_suggestions'
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          suggestionFilters.includes('no_suggestions')
+                            ? (isDarkMode ? "bg-emerald-600 text-white shadow-sm" : "bg-emerald-600 text-white shadow-sm")
+                            : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                         )}
                       >
                         <X size={12} />
@@ -1186,44 +1487,33 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 <div className={cn("flex flex-col gap-2 pt-2 border-t", isDarkMode ? "border-slate-800" : "border-emerald-100")}>
                   <div className="flex items-center gap-2 px-1">
                     <div className="w-1 h-3 bg-violet-500 rounded-full" />
-                    <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Hướng dẫn</span>
+                    <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Hướng dẫn của WHO 2019</span>
                   </div>
                   <div className={cn(
                     "flex flex-wrap items-center gap-2 p-1.5 rounded-2xl border transition-all duration-300",
-                    icdGuideFilter !== 'all'
+                    guideFilters.length < ALL_GUIDE_FILTERS.length
                       ? "border-violet-500 ring-2 ring-violet-500/20 shadow-md shadow-violet-500/5 bg-violet-500/5"
                       : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-white border-slate-200")
                   )}>
                     <button
-                      onClick={() => setIcdGuideFilter('all')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdGuideFilter === 'all'
-                          ? "bg-violet-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
-                      )}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      onClick={() => setIcdGuideFilter('has_guide')}
+                      onClick={() => toggleGuideFilter('has_guide')}
                       className={cn(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdGuideFilter === 'has_guide'
-                          ? "bg-violet-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                        guideFilters.includes('has_guide')
+                          ? (isDarkMode ? "bg-violet-600 text-white shadow-sm" : "bg-violet-600 text-white shadow-sm")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       <Check size={12} />
-                      Có H.Dẫn
+                      Có
                     </button>
                     <button
-                      onClick={() => setIcdGuideFilter('no_guide')}
+                      onClick={() => toggleGuideFilter('no_guide')}
                       className={cn(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdGuideFilter === 'no_guide'
-                          ? "bg-violet-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                        guideFilters.includes('no_guide')
+                          ? (isDarkMode ? "bg-violet-600 text-white shadow-sm" : "bg-violet-600 text-white shadow-sm")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       <X size={12} />
@@ -1231,8 +1521,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     </button>
                   </div>
                 </div>
-
-
 
                 {/* Status Filter (New, Expired, New Name) */}
                 <div className={cn("flex flex-col gap-2 pt-2 border-t", isDarkMode ? "border-slate-800" : "border-emerald-100")}>
@@ -1242,50 +1530,39 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   </div>
                   <div className={cn(
                     "flex flex-wrap items-center gap-2 p-1.5 rounded-2xl border transition-all duration-300",
-                    icdStatusFilter !== 'all'
+                    statusFilters.length < ALL_STATUS_FILTERS.length
                       ? "border-amber-500 ring-2 ring-amber-500/20 shadow-md shadow-amber-500/5 bg-amber-500/5"
                       : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-white border-slate-200")
                   )}>
                     <button
-                      onClick={() => setIcdStatusFilter('all')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdStatusFilter === 'all'
-                          ? "bg-amber-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
-                      )}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      onClick={() => setIcdStatusFilter('expired')}
+                      onClick={() => toggleStatusFilter('expired')}
                       className={cn(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdStatusFilter === 'expired'
+                        statusFilters.includes('expired')
                           ? "bg-red-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       Hết HL
                     </button>
                     <button
-                      onClick={() => setIcdStatusFilter('new')}
+                      onClick={() => toggleStatusFilter('new')}
                       className={cn(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdStatusFilter === 'new'
+                        statusFilters.includes('new')
                           ? "bg-green-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       Mã Mới
                     </button>
                     <button
-                      onClick={() => setIcdStatusFilter('new_name')}
+                      onClick={() => toggleStatusFilter('new_name')}
                       className={cn(
                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdStatusFilter === 'new_name'
+                        statusFilters.includes('new_name')
                           ? "bg-purple-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       Tên Mới
@@ -1299,7 +1576,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   isDrugSuggestionsAllowed ? (isDarkMode ? "pt-2 border-t border-slate-800" : "pt-2 border-t border-emerald-100") : ""
                 )}>
                   {[
-                    { id: 'all', label: 'Tất cả chương' },
                     { id: 'A-B', label: 'Truyền nhiễm (A-B)' },
                     { id: 'C-D', label: 'Khối u (C-D)' },
                     { id: 'E-H', label: 'Nội tiết/Mắt/Tai (E-H)' },
@@ -1308,15 +1584,15 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     { id: 'O-Q', label: 'Sản/Nhi/Dị tật (O-Q)' },
                     { id: 'R-S', label: 'Triệu chứng (R-S)' },
                     { id: 'U-Z', label: 'Tình trạng (U-Z)' }
-                  ].map(filter => (
+                  ].map((filter, fIdx) => (
                     <button
-                      key={filter.id}
-                      onClick={() => setIcdChapterFilter(filter.id)}
+                      key={`mob-chap-filter-${filter.id}-${fIdx}`}
+                      onClick={() => toggleChapterFilter(filter.id)}
                       className={cn(
                         "whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                        icdChapterFilter === filter.id
+                        chapterFilters.includes(filter.id)
                           ? "bg-blue-600 text-white shadow-sm"
-                          : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-white text-slate-500 border border-slate-200")
+                          : (isDarkMode ? "bg-slate-800/60 text-slate-500 line-through opacity-60" : "bg-slate-100 text-slate-400 border border-slate-200 line-through opacity-60")
                       )}
                     >
                       {filter.label}
@@ -1359,26 +1635,16 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               {!isGuideModalOpen ? (
                 <>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleCategoryFilter('all')}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'all'
-                          ? "bg-emerald-600 text-white shadow-lg shadow-emerald-200 dark:shadow-none"
-                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
-                      )}
-                    >
-                      Tất cả
-                    </button>
                     {canSeeAppendixA2 && (
                       <button
                         onClick={() => toggleCategoryFilter('appendix_a2')}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a2'
+                          categoryFilters.includes('appendix_a2')
                             ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none"
-                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                            : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                         )}
+                        title="24. Mã không được dùng là bệnh chính"
                       >
                         24
                       </button>
@@ -1388,10 +1654,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         onClick={() => toggleCategoryFilter('appendix_a3')}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a3'
+                          categoryFilters.includes('appendix_a3')
                             ? "bg-amber-600 text-white shadow-lg shadow-amber-200 dark:shadow-none"
-                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                            : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                         )}
+                        title="25. Mã không khuyến khích dùng là bệnh chính"
                       >
                         25
                       </button>
@@ -1400,10 +1667,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       onClick={() => toggleCategoryFilter('restricted')}
                       className={cn(
                         "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'restricted'
+                        categoryFilters.includes('restricted')
                           ? "bg-rose-600 text-white shadow-lg shadow-rose-200 dark:shadow-none"
-                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                          : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                       )}
+                      title="26. Mã không được sử dụng vì có mã 4 hoặc 5 ký tự cụ thể hơn"
                     >
                       26
                     </button>
@@ -1412,10 +1680,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         onClick={() => toggleCategoryFilter('appendix_a4')}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a4'
+                          categoryFilters.includes('appendix_a4')
                             ? "bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-none"
-                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                            : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                         )}
+                        title="27. Chỉ sử dụng mã hóa nguyên nhân tử vong"
                       >
                         27
                       </button>
@@ -1425,10 +1694,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         onClick={() => toggleCategoryFilter('appendix_a5')}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a5'
+                          categoryFilters.includes('appendix_a5')
                             ? "bg-pink-600 text-white shadow-lg shadow-pink-200 dark:shadow-none"
-                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                            : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                         )}
+                        title="28. Các mã bệnh chỉ có hoặc chủ yếu có ở nữ giới"
                       >
                         28
                       </button>
@@ -1438,10 +1708,11 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         onClick={() => toggleCategoryFilter('appendix_a6')}
                         className={cn(
                           "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                          icdCategoryFilter === 'appendix_a6'
+                          categoryFilters.includes('appendix_a6')
                             ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200 dark:shadow-none"
-                            : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                            : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                         )}
+                        title="29. Các mã bệnh chỉ có hoặc chủ yếu có ở nam giới"
                       >
                         29
                       </button>
@@ -1450,16 +1721,17 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                       onClick={() => toggleCategoryFilter('tt26')}
                       className={cn(
                         "px-3 py-1.5 rounded-md text-xs font-black uppercase tracking-widest transition-all",
-                        icdCategoryFilter === 'tt26'
+                        categoryFilters.includes('tt26')
                           ? "bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-200 dark:shadow-none"
-                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:bg-slate-800" : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50")
+                          : (isDarkMode ? "bg-slate-900 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                       )}
+                      title="Bệnh, nhóm bệnh được áp dụng kê đơn thuốc ngoại trú trên 30 ngày"
                     >
                       TT26
                     </button>
                   </div>
                   <AnimatePresence>
-                    {icdCategoryFilter === 'appendix_a2' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a2' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1472,7 +1744,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         24. Mã không được dùng là bệnh chính
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'appendix_a3' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a3' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1485,7 +1757,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         25. MÃ KHÔNG KHUYẾN KHÍCH DÙNG LÀ BỆNH CHÍNH
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'appendix_a4' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a4' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1498,7 +1770,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         27. CHỈ SỬ DỤNG MÃ HÓA NGUYÊN NHÂN TỬ VONG
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'appendix_a5' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a5' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1511,7 +1783,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         28. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NỮ GIỚI
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'appendix_a6' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a6' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1524,7 +1796,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         29. CÁC MÃ BỆNH CHỈ CÓ HOẶC CHỦ YẾU CÓ Ở NAM GIỚI
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'restricted' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'restricted' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1537,7 +1809,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                         26. Mã không được sử dụng vì có mã 4 hoặc 5 ký tự cụ thể hơn
                       </motion.p>
                     )}
-                    {icdCategoryFilter === 'tt26' && (
+                    {categoryFilters.length === 1 && categoryFilters[0] === 'tt26' && (
                       <motion.p
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1643,9 +1915,9 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                           { id: 'sm', label: 'A-', sizeClass: 'text-[10px]' },
                           { id: 'base', label: 'A', sizeClass: 'text-xs' },
                           { id: 'lg', label: 'A+', sizeClass: 'text-sm' }
-                        ].map((btn) => (
+                        ].map((btn, bIdx) => (
                           <button
-                            key={btn.id}
+                            key={`guide-font-${btn.id}-${bIdx}`}
                             onClick={() => setGuideFontSize(btn.id as any)}
                             className={cn(
                               "px-2.5 py-1 rounded font-black transition-all",
@@ -1682,7 +1954,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <div className="hidden lg:flex flex-col gap-1.5">
                       {guideData.tabs && guideData.tabs.map((tab, idx) => (
                         <button
-                          key={tab.id || idx}
+                          key={`guide-tab-desktop-${tab.id || 'tab'}-${idx}`}
                           onClick={() => {
                             setActiveGuideTabIdx(idx);
                             setGuideSearchTerm('');
@@ -1711,7 +1983,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                     <div className="lg:hidden flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
                       {guideData.tabs && guideData.tabs.map((tab, idx) => (
                         <button
-                          key={tab.id || idx}
+                          key={`guide-tab-mob-${tab.id || 'tab'}-${idx}`}
                           onClick={() => {
                             setActiveGuideTabIdx(idx);
                             setGuideSearchTerm('');
@@ -1775,7 +2047,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                                 <motion.div
                                   initial={{ opacity: 0, y: 5 }}
                                   animate={{ opacity: 1, y: 0 }}
-                                  key={mIdx}
+                                  key={`guide-match-${match.tabIdx}-${match.paraIdx}-${mIdx}`}
                                   className={cn(
                                     "p-4 rounded-xl border text-left space-y-2 transition-all relative group/para",
                                     isDarkMode ? "bg-slate-950/30 border-slate-800 hover:bg-slate-950/50" : "bg-slate-50 border-slate-150 hover:bg-white hover:shadow-sm"
@@ -1826,7 +2098,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: pIdx * 0.03 }}
-                                key={pIdx}
+                                key={`guide-para-${activeGuideTabIdx}-${pIdx}`}
                                 className={cn(
                                   "p-4 rounded-xl border text-left transition-all relative group/para",
                                   isDarkMode 
@@ -1930,13 +2202,21 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
           <div className="flex flex-col gap-5">
             <div className="flex flex-col lg:flex-row gap-4 items-center w-full">
               {/* Search Bar - Main Anchor */}
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <div className="relative flex-1 w-full flex items-center">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                 <input
                   type="text"
-                  placeholder={icdCategoryFilter === 'appendix_a2' ? "Tìm trong danh sách Không là bệnh chính..." : "Tìm mã quốc tế hoặc tên bệnh lý (VD: A00, Tưa miệng...)"}
+                  placeholder={
+                    scopeFilters.includes('guide') && !scopeFilters.includes('code_name')
+                      ? "Tìm từ khóa trong Hướng dẫn WHO 2019 (VD: sốc, nhiễm trùng, biến chứng...)"
+                      : scopeFilters.includes('code_name') && !scopeFilters.includes('guide')
+                      ? "Tìm theo Mã ICD-10 hoặc Tên bệnh lý (VD: A00, Tưa miệng...)"
+                      : (categoryFilters.length === 1 && categoryFilters[0] === 'appendix_a2'
+                          ? "Tìm trong danh sách Không là bệnh chính..." 
+                          : "Tìm tất cả: Mã quốc tế, tên bệnh lý, Hướng dẫn WHO 2019...")
+                  }
                   className={cn(
-                    "w-full pl-12 pr-12 py-4 border rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all text-sm font-medium",
+                    "w-full pl-12 pr-52 py-4 border rounded-2xl focus:ring-2 focus:ring-emerald-500 transition-all text-sm font-medium",
                     isDarkMode 
                       ? "bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:bg-slate-800" 
                       : "bg-white border-slate-200 text-slate-900 focus:bg-white shadow-lg shadow-slate-200/50"
@@ -1948,57 +2228,85 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   <button
                     onClick={() => setSearchTerm('')}
                     className={cn(
-                      "absolute right-4 top-1/2 -translate-y-1/2 transition-all p-1.5 rounded-xl",
+                      "absolute right-[180px] top-1/2 -translate-y-1/2 transition-all p-1.5 rounded-xl",
                       isDarkMode ? "text-slate-500 hover:text-white hover:bg-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                     )}
+                    title="Xóa tìm kiếm"
                   >
                     <X size={18} />
                   </button>
                 )}
+                {/* Desktop Scope Selector Group */}
+                <div className={cn(
+                  "absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 p-1 rounded-xl border shadow-xs transition-colors",
+                  isDarkMode ? "bg-slate-800 border-slate-700" : "bg-slate-100 border-slate-200"
+                )}>
+                  {[
+                    { id: 'code_name', label: 'Mã & Tên' },
+                    { id: 'guide', label: 'H.Dẫn WHO' }
+                  ].map((s, sIdx) => (
+                    <button
+                      key={`desk-scope-${s.id}-${sIdx}`}
+                      type="button"
+                      onClick={() => toggleScopeFilter(s.id)}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap",
+                        scopeFilters.includes(s.id)
+                          ? (isDarkMode 
+                              ? "bg-emerald-600 text-white shadow-sm font-black" 
+                              : "bg-white text-emerald-700 shadow-sm border border-slate-200/60 font-black")
+                          : (isDarkMode 
+                              ? "text-slate-500 line-through opacity-60 hover:opacity-100" 
+                              : "text-slate-400 line-through opacity-60 hover:opacity-100")
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Quick Reset Filters Button */}
               {hasActiveFilters && (
                 <button
                   onClick={handleClearAllFilters}
+                  title="Tắt nhanh lọc"
                   className={cn(
-                    "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold transition-all active:scale-95 text-xs border whitespace-nowrap shadow-sm",
+                    "flex items-center justify-center p-3.5 rounded-2xl font-bold transition-all active:scale-95 border whitespace-nowrap shadow-sm shrink-0",
                     isDarkMode 
                       ? "bg-slate-800 border-slate-700 hover:bg-slate-700 text-rose-400 hover:text-rose-300" 
                       : "bg-white border-slate-200 hover:bg-rose-50 text-rose-600 hover:text-rose-700 shadow-slate-200/50"
                   )}
                 >
-                  <X size={16} />
-                  <span>Tắt nhanh lọc</span>
+                  <X size={18} />
                 </button>
               )}
               
               {/* Status Filters Group */}
               {isDrugSuggestionsAllowed && (
-                <div className="flex flex-col gap-2 min-w-[280px]">
+                <div className="flex flex-col gap-2 min-w-[140px]">
                   <div className="flex items-center gap-2 px-1">
                   <div className="w-1 h-3 bg-emerald-500 rounded-full" />
-                  <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Trạng thái gợi ý</span>
+                  <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Gợi ý thuốc</span>
                 </div>
                 <div className={cn(
-                  "flex items-center gap-1 p-1.5 rounded-2xl border transition-all duration-300",
-                  filterStatus !== 'all'
+                  "flex items-center gap-1 p-1 rounded-xl border transition-all duration-300",
+                  suggestionFilters.length < ALL_SUGGESTION_FILTERS.length
                     ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-md shadow-emerald-500/5"
                     : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-slate-50 border-slate-100")
                 )}>
                   {[
-                    { id: 'all', label: 'Tất cả' },
-                    { id: 'has_suggestions', label: 'Có gợi ý', icon: Check },
+                    { id: 'has_suggestions', label: 'Có', icon: Check },
                     { id: 'no_suggestions', label: 'Chưa có', icon: X }
-                  ].map(stat => (
+                  ].map((stat, stIdx) => (
                     <button
-                      key={stat.id}
-                      onClick={() => setFilterStatus(stat.id as any)}
+                      key={`desk-sugg-filt-${stat.id}-${stIdx}`}
+                      onClick={() => toggleSuggestionFilter(stat.id)}
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
-                        filterStatus === stat.id
+                        "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
+                        suggestionFilters.includes(stat.id)
                           ? (isDarkMode ? "bg-slate-700 text-emerald-400 shadow-md ring-1 ring-emerald-500/10" : "bg-white text-emerald-600 shadow-md ring-1 ring-emerald-500/10")
-                          : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                          : (isDarkMode ? "text-slate-500 line-through opacity-60 hover:opacity-100" : "text-slate-400 line-through opacity-60 hover:opacity-100")
                       )}
                     >
                       {stat.icon && <stat.icon size={12} />}
@@ -2010,30 +2318,29 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
               )}
 
               {/* Guide Filters Group */}
-              <div className="flex flex-col gap-2 min-w-[280px]">
+              <div className="flex flex-col gap-2 min-w-[150px]">
                 <div className="flex items-center gap-2 px-1">
                   <div className="w-1 h-3 bg-violet-500 rounded-full" />
-                  <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Hướng dẫn</span>
+                  <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Hướng dẫn của WHO 2019</span>
                 </div>
                 <div className={cn(
-                  "flex items-center gap-1 p-1.5 rounded-2xl border transition-all duration-300",
-                  icdGuideFilter !== 'all'
+                  "flex items-center gap-1 p-1 rounded-xl border transition-all duration-300",
+                  guideFilters.length < ALL_GUIDE_FILTERS.length
                     ? "border-violet-500 ring-2 ring-violet-500/20 shadow-md shadow-violet-500/5"
                     : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-slate-50 border-slate-100")
                 )}>
                   {[
-                    { id: 'all', label: 'Tất cả' },
-                    { id: 'has_guide', label: 'Có H.Dẫn', icon: Check },
+                    { id: 'has_guide', label: 'Có', icon: Check },
                     { id: 'no_guide', label: 'Không', icon: X }
-                  ].map(stat => (
+                  ].map((stat, gIdx) => (
                     <button
-                      key={stat.id}
-                      onClick={() => setIcdGuideFilter(stat.id as any)}
+                      key={`desk-guide-filt-${stat.id}-${gIdx}`}
+                      onClick={() => toggleGuideFilter(stat.id)}
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
-                        icdGuideFilter === stat.id
+                        "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
+                        guideFilters.includes(stat.id)
                           ? (isDarkMode ? "bg-slate-700 text-violet-400 shadow-md ring-1 ring-violet-500/10" : "bg-white text-violet-600 shadow-md ring-1 ring-violet-500/10")
-                          : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                          : (isDarkMode ? "text-slate-500 line-through opacity-60 hover:opacity-100" : "text-slate-400 line-through opacity-60 hover:opacity-100")
                       )}
                     >
                       {stat.icon && <stat.icon size={12} />}
@@ -2043,34 +2350,31 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 </div>
               </div>
 
-
-
               {/* Status Code Filters Group */}
-              <div className="flex flex-col gap-2 min-w-[320px]">
+              <div className="flex flex-col gap-2 min-w-[200px]">
                 <div className="flex items-center gap-2 px-1">
                   <div className="w-1 h-3 bg-amber-500 rounded-full" />
                   <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-500")}>Trạng thái mã</span>
                 </div>
                 <div className={cn(
-                  "flex items-center gap-1 p-1.5 rounded-2xl border transition-all duration-300",
-                  icdStatusFilter !== 'all'
+                  "flex items-center gap-1 p-1 rounded-xl border transition-all duration-300",
+                  statusFilters.length < ALL_STATUS_FILTERS.length
                     ? "border-amber-500 ring-2 ring-amber-500/20 shadow-md shadow-amber-500/5"
                     : (isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-slate-50 border-slate-100")
                 )}>
                   {[
-                    { id: 'all', label: 'Tất cả' },
                     { id: 'expired', label: 'Hết HL' },
                     { id: 'new', label: 'Mã Mới' },
                     { id: 'new_name', label: 'Tên Mới' }
-                  ].map(stat => (
+                  ].map((stat, stIdx) => (
                     <button
-                      key={stat.id}
-                      onClick={() => setIcdStatusFilter(stat.id as any)}
+                      key={`desk-status-filt-${stat.id}-${stIdx}`}
+                      onClick={() => toggleStatusFilter(stat.id)}
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
-                        icdStatusFilter === stat.id
+                        "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap",
+                        statusFilters.includes(stat.id)
                           ? (isDarkMode ? "bg-slate-700 text-amber-400 shadow-md ring-1 ring-amber-500/10" : "bg-white text-amber-600 shadow-md ring-1 ring-amber-500/10")
-                          : (isDarkMode ? "text-slate-400 hover:text-slate-300" : "text-slate-500 hover:text-slate-700")
+                          : (isDarkMode ? "text-slate-500 line-through opacity-60 hover:opacity-100" : "text-slate-400 line-through opacity-60 hover:opacity-100")
                       )}
                     >
                       {stat.label}
@@ -2091,7 +2395,6 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 isDarkMode ? "bg-slate-800/40 border-slate-800" : "bg-slate-50 border-slate-100"
               )}>
                 {[
-                  { id: 'all', label: 'Tất cả chương', color: 'bg-slate-500' },
                   { id: 'A-B', label: 'Truyền nhiễm (A-B)', color: 'bg-emerald-500' },
                   { id: 'C-D', label: 'Khối u (C-D)', color: 'bg-rose-500' },
                   { id: 'E-H', label: 'Nội tiết/Mắt (E-H)', color: 'bg-amber-500' },
@@ -2100,20 +2403,20 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   { id: 'O-Q', label: 'Sản/Nhi/Dị tật (O-Q)', color: 'bg-pink-500' },
                   { id: 'R-S', label: 'Triệu chứng (R-S)', color: 'bg-slate-600' },
                   { id: 'U-Z', label: 'Tình trạng (U-Z)', color: 'bg-teal-600' }
-                ].map(filter => (
+                ].map((filter, fIdx) => (
                   <button
-                    key={filter.id}
-                    onClick={() => setIcdChapterFilter(filter.id)}
+                    key={`desk-chap-filt-${filter.id}-${fIdx}`}
+                    onClick={() => toggleChapterFilter(filter.id)}
                     className={cn(
                       "flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all whitespace-nowrap group",
-                      icdChapterFilter === filter.id
+                      chapterFilters.includes(filter.id)
                         ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20 translate-y-[-2px]"
-                        : (isDarkMode ? "bg-slate-900/50 text-slate-400 hover:bg-slate-900" : "bg-white text-slate-500 border border-slate-200 hover:border-blue-400")
+                        : (isDarkMode ? "bg-slate-900/50 text-slate-500 line-through opacity-60 hover:opacity-100" : "bg-white text-slate-400 border border-slate-200 line-through opacity-60 hover:opacity-100")
                     )}
                   >
                     <div className={cn(
                       "w-4 h-1 rounded-full mb-1 transition-all",
-                      icdChapterFilter === filter.id ? "bg-white" : filter.color
+                      chapterFilters.includes(filter.id) ? "bg-white" : filter.color
                     )} />
                     {filter.label}
                   </button>
@@ -2122,7 +2425,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
             </div>
           </div>
           
-          {(searchTerm || filterStatus !== 'all') && (
+          {(hasActiveFilters) && (
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <span className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
@@ -2130,14 +2433,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                 </span>
               </div>
               <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setFilterStatus('all');
-                  setIcdCategoryFilter('all');
-                  setIcdChapterFilter('all');
-                  setIcdGuideFilter('all');
-                  setIcdStatusFilter('all');
-                }}
+                onClick={handleClearAllFilters}
                 className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-colors flex items-center gap-1"
               >
                 <Trash2 size={12} />
@@ -2318,6 +2614,24 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
                   )}
                 </div>
 
+                {icd.guide && (
+                  <div className="mb-3 p-2.5 rounded-xl border border-violet-100 dark:border-violet-900/30 bg-violet-50/50 dark:bg-violet-950/20">
+                    <p className={cn(
+                      "text-[10px] font-black uppercase tracking-widest mb-1 transition-colors flex items-center gap-1.5",
+                      isDarkMode ? "text-violet-400" : "text-violet-700"
+                    )}>
+                      <Info size={12} className="shrink-0" />
+                      Hướng dẫn WHO 2019
+                    </p>
+                    <p className={cn(
+                      "text-[11px] font-medium leading-relaxed whitespace-pre-wrap transition-colors",
+                      isDarkMode ? "text-slate-300" : "text-slate-700"
+                    )}>
+                      {icd.guide}
+                    </p>
+                  </div>
+                )}
+
                 {icd.notes && canSeeNotes && (
                   <div className="mb-3">
                     <p className={cn(
@@ -2349,7 +2663,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
                           return (
                             <button 
-                              key={idx} 
+                              key={`mob-sugg-drug-${icd.code || 'c'}-${drugName}-${idx}`} 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (drugObj) {
@@ -2697,7 +3011,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
                             return (
                               <button 
-                                key={idx} 
+                                key={`desk-sugg-drug-${icd.code || 'c'}-${drugName}-${idx}`} 
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (drugObj) {
@@ -2906,7 +3220,7 @@ const ICD10Management: React.FC<ICD10ManagementProps> = ({
 
                   return (
                     <button
-                      key={pageNum}
+                      key={`icd-page-${pageNum}-${i}`}
                       onClick={() => setCurrentPage(pageNum)}
                       className={cn(
                         "w-8 h-8 lg:w-10 lg:h-10 rounded-xl font-bold text-xs lg:text-sm transition-all",

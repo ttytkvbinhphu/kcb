@@ -50,7 +50,7 @@ const HighlightText = ({ text, search, className }: { text: string; search: stri
     <span className={className}>
       {parts.map((part, i) => 
         part.toLowerCase() === search.toLowerCase() 
-          ? <mark key={i} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">{part}</mark> 
+          ? <mark key={`pt-hl-${i}-${part.slice(0, 5)}`} className="bg-yellow-200 dark:bg-yellow-500/30 text-slate-900 dark:text-white rounded-sm px-0.5 font-bold">{part}</mark> 
           : part
       )}
     </span>
@@ -639,9 +639,9 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                     { id: 'bhyt', label: 'Có BHYT', count: patients.filter(p => !!p.MA_THE_BHYT).length, active: activeFilter === 'bhyt' },
                     { id: 'male', label: 'Bệnh nhân Nam', count: patients.filter(p => p.GIOI_TINH === '1').length, active: activeFilter === 'male' },
                     { id: 'female', label: 'Bệnh nhân Nữ', count: patients.filter(p => p.GIOI_TINH === '2').length, active: activeFilter === 'female' }
-                  ].map(filter => (
+                  ].map((filter, fIdx) => (
                     <button 
-                      key={filter.id}
+                      key={`patient-filter-${filter.id}-${fIdx}`}
                       onClick={() => setActiveFilter(filter.id)}
                       className={cn(
                         "w-full px-4 py-3 rounded-2xl text-left text-xs font-black transition-all flex items-center justify-between group",
@@ -690,13 +690,13 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                   <p className="text-[11px] text-slate-400 italic px-1">Chưa có nhóm đối tượng</p>
                 ) : (
                   <div className="space-y-1">
-                    {patientGroups.map(group => {
+                    {patientGroups.map((group, gIdx) => {
                       const count = patients.filter(p => p.MA_DOITUONG_KCB === group.id).length;
                       const isActive = activeFilter === group.id;
                       const colorClasses = getBadgeColorClasses(group.color);
                       return (
                         <button 
-                          key={group.id}
+                          key={`patient-grp-btn-${group.id || 'grp'}-${gIdx}`}
                           onClick={() => setActiveFilter(isActive ? 'all' : group.id)}
                           className={cn(
                             "w-full px-4 py-2.5 rounded-2xl text-left text-xs font-black transition-all flex items-center justify-between group border",
@@ -798,9 +798,9 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    displayPatients.map((patient) => (
+                    displayPatients.map((patient, patIdx) => (
                       <tr 
-                        key={patient.MA_LK}
+                        key={`patient-row-${patient.MA_LK || 'pat'}-${patIdx}`}
                         className={cn(
                           "group transition-all",
                           isDarkMode ? "hover:bg-slate-800/30" : "hover:bg-blue-50/40"
@@ -1047,8 +1047,8 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                       onChange={(e) => setManualPatient({...manualPatient, MA_DOITUONG_KCB: e.target.value})}
                     >
                       <option value="">-- Chọn nhóm đối tượng --</option>
-                      {patientGroups.map(g => (
-                        <option key={g.id} value={g.id}>{g.name} {g.code ? `(${g.code})` : ''}</option>
+                      {patientGroups.map((g, gIdx) => (
+                        <option key={`pat-grp-opt-${g.id || 'grp'}-${gIdx}`} value={g.id}>{g.name} {g.code ? `(${g.code})` : ''}</option>
                       ))}
                     </select>
                   </div>
@@ -1397,7 +1397,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                             <tr><td colSpan={6} className="py-8 text-center text-slate-500">Không có dữ liệu thuốc.</td></tr>
                           ) : (
                             patientDetails.drugs.map((drug, idx) => (
-                              <tr key={idx} className={cn(
+                              <tr key={`pt-drug-row-${drug.MA_THUOC || 'd'}-${idx}`} className={cn(
                                 "border-b transition-colors",
                                 isDarkMode ? "border-slate-800/50" : "border-slate-50"
                               )}>
@@ -1456,7 +1456,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                             <tr><td colSpan={5} className="py-8 text-center text-slate-500">Không có dữ liệu vật tư.</td></tr>
                           ) : (
                             patientDetails.supplies.map((supply, idx) => (
-                              <tr key={idx} className={cn(
+                              <tr key={`pt-supply-row-${supply.MA_VAT_TU || supply.MA_DICH_VU || 's'}-${idx}`} className={cn(
                                 "border-b transition-colors",
                                 isDarkMode ? "border-slate-800/50" : "border-slate-50"
                               )}>
@@ -1486,7 +1486,7 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                         <div className="col-span-2 py-8 text-center text-slate-500">Không có dữ liệu cận lâm sàng.</div>
                       ) : (
                         patientDetails.subclinical.map((item, idx) => (
-                          <div key={idx} className={cn("p-4 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-slate-50 border-slate-100")}>
+                          <div key={`pt-subclin-${item.MA_CHI_SO || 'c'}-${idx}`} className={cn("p-4 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-slate-50 border-slate-100")}>
                             <div className="flex justify-between items-start mb-2">
                               <h5 className="font-bold text-sm">{item.TEN_CHI_SO}</h5>
                               <span className="text-xs font-mono text-slate-500">{item.MA_CHI_SO}</span>
@@ -1636,13 +1636,13 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-[9px] block">Màu sắc hiển thị</label>
                         <div className="flex flex-wrap gap-2">
-                          {['blue', 'emerald', 'amber', 'rose', 'purple', 'sky', 'indigo', 'brown', 'gray', 'pink'].map((color) => {
+                          {['blue', 'emerald', 'amber', 'rose', 'purple', 'sky', 'indigo', 'brown', 'gray', 'pink'].map((color, cIdx) => {
                             const colorClasses = getBadgeColorClasses(color);
                             const isSelected = groupColorInput === color;
                             return (
                               <button
                                 type="button"
-                                key={color}
+                                key={`grp-color-${color}-${cIdx}`}
                                 onClick={() => setGroupColorInput(color)}
                                 className={cn(
                                   "w-8 h-8 rounded-full flex items-center justify-center transition-all border-2",
@@ -1697,12 +1697,12 @@ const PatientManagement: React.FC<PatientManagementProps> = ({
                       <p className="text-xs text-slate-400 italic py-8 text-center">Chưa có nhóm nào được tạo</p>
                     ) : (
                       <div className="space-y-2 overflow-y-auto max-h-[40vh] pr-1 custom-scrollbar">
-                        {patientGroups.map((group) => {
+                        {patientGroups.map((group, grpIdx) => {
                           const colorClasses = getBadgeColorClasses(group.color);
                           const isBeingEdited = editingGroupId === group.id;
                           return (
                             <div 
-                              key={group.id}
+                              key={`pat-group-item-${group.id || 'grp'}-${grpIdx}`}
                               className={cn(
                                 "p-3 rounded-2xl border transition-all flex items-center justify-between",
                                 isBeingEdited 

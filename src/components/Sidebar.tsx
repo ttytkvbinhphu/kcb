@@ -194,9 +194,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       const savedOrder = localStorage.getItem(`sidebar_order_${userRole}_admin`);
       if (savedOrder) {
         try {
-          const orderIds = JSON.parse(savedOrder) as string[];
+          const orderIds = Array.from(new Set(JSON.parse(savedOrder) as string[]));
           const ordered = orderIds.map(id => adminOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
-          const missing = adminOnly.filter(item => !orderIds.includes(item.id));
+          const orderedIds = new Set(ordered.map(item => item.id));
+          const missing = adminOnly.filter(item => !orderedIds.has(item.id));
           setItems([...ordered, ...missing]);
         } catch (e) { setItems(adminOnly); }
       } else { setItems(adminOnly); }
@@ -208,9 +209,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       const savedGeneralOrder = localStorage.getItem(`sidebar_order_${userRole}_member_general`);
       if (savedGeneralOrder) {
         try {
-          const orderIds = JSON.parse(savedGeneralOrder) as string[];
+          const orderIds = Array.from(new Set(JSON.parse(savedGeneralOrder) as string[]));
           const ordered = orderIds.map(id => generalOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
-          const missing = generalOnly.filter(item => !orderIds.includes(item.id));
+          const orderedIds = new Set(ordered.map(item => item.id));
+          const missing = generalOnly.filter(item => !orderedIds.has(item.id));
           setItems([...ordered, ...missing]);
         } catch (e) { setItems(generalOnly); }
       } else { setItems(generalOnly); }
@@ -219,9 +221,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       const savedPharmacyOrder = localStorage.getItem(`sidebar_order_${userRole}_member_pharmacy`);
       if (savedPharmacyOrder) {
         try {
-          const orderIds = JSON.parse(savedPharmacyOrder) as string[];
+          const orderIds = Array.from(new Set(JSON.parse(savedPharmacyOrder) as string[]));
           const ordered = orderIds.map(id => pharmacyOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
-          const missing = pharmacyOnly.filter(item => !orderIds.includes(item.id));
+          const orderedIds = new Set(ordered.map(item => item.id));
+          const missing = pharmacyOnly.filter(item => !orderedIds.has(item.id));
           setPharmacyItems([...ordered, ...missing]);
         } catch (e) { setPharmacyItems(pharmacyOnly); }
       } else { setPharmacyItems(pharmacyOnly); }
@@ -270,7 +273,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     localStorage.setItem(`sidebar_order_${userRole}_member_pharmacy`, JSON.stringify(newOrder.map(i => i.id)));
   };
 
-  const renderItem = (item: SidebarItem) => {
+  const renderItem = (item: SidebarItem, idx: number, section: string = 'main') => {
     const status = featureStates[item.id];
     const isMaintenance = status === 'maintenance';
     const isClosed = status === 'closed';
@@ -289,7 +292,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     return (
       <Reorder.Item
-        key={item.id}
+        key={`sb-${section}-${item.id || 'item'}-${idx}`}
         value={item}
         drag={isEditMode ? "y" : false}
         layout="position"
@@ -389,12 +392,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 { id: 'drugs', label: 'Biệt dược', icon: Pill },
                 { id: 'groups', label: 'Nhóm thuốc', icon: FolderTree },
                 { id: 'ingredients', label: 'Hoạt chất', icon: Activity }
-              ].map((subItem) => {
+              ].map((subItem, subIdx) => {
                 const isSubActive = activeTab === 'view_directory' && drugDirectoryViewMode === subItem.id;
                 const SubIcon = subItem.icon;
                 return (
                   <button
-                    key={subItem.id}
+                    key={`view-sub-${subItem.id}-${subIdx}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveTab('view_directory');
@@ -435,12 +438,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                 { id: 'ingredients', label: 'Hoạt chất', icon: Activity },
                 { id: 'excipients', label: 'Tá dược', icon: Database },
                 { id: 'companies', label: 'Công ty', icon: Briefcase }
-              ].map((subItem) => {
+              ].map((subItem, subIdx) => {
                 const isSubActive = activeTab === 'manage_directory' && drugDirectoryViewMode === subItem.id;
                 const SubIcon = subItem.icon;
                 return (
                   <button
-                    key={subItem.id}
+                    key={`manage-sub-${subItem.id}-${subIdx}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setActiveTab('manage_directory');
@@ -516,43 +519,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         document.body
       )}
 
-      {/* Mobile Overlay */}
-      <div 
-        className={cn(
-          "fixed inset-0 bg-slate-900/60 z-40 lg:hidden transition-opacity duration-300",
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        )}
-        onClick={() => setIsOpen(false)}
-      />
-
-      {/* Sidebar */}
-      <div className={cn(
-        "h-[100dvh] max-h-[100dvh] flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 lg:translate-x-0",
+      {/* Desktop Sidebar (hidden on mobile, replaced by MobileBottomNav) */}
+      <aside className={cn(
+        "h-[100dvh] max-h-[100dvh] hidden lg:flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 translate-x-0",
         isCollapsed ? "w-[80px]" : "w-[260px]",
         isAdminMode 
           ? (isDarkMode ? "bg-slate-950 border-indigo-900/30 text-white" : "bg-white border-indigo-100 text-slate-900")
-          : (isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900"),
-        isOpen ? "translate-x-0" : "-translate-x-full"
+          : (isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900")
       )}>
         <div className={cn("p-2 sm:p-3 border-b relative", isDarkMode ? "border-slate-800" : "border-slate-100")}>
-          <button 
-            onClick={() => setIsOpen(false)}
-            className={cn(
-              "lg:hidden absolute top-2 right-2 p-1.5 rounded-lg transition-colors z-10",
-              isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
-            )}
-          >
-            <X size={18} className="text-slate-400" />
-          </button>
-
           {/* Pc Toggle Button */}
           {setIsCollapsed && (
             <button 
               onClick={() => setIsCollapsed(!isCollapsed)}
               className={cn(
-                "hidden lg:flex absolute -right-3 top-6 w-6 h-6 rounded-full border items-center justify-center z-[60] transition-all",
+                "hidden lg:flex absolute -right-3 top-6 w-6 h-6 rounded-full border items-center justify-center z-[60] transition-all cursor-pointer",
                 isDarkMode ? "bg-slate-900 border-slate-700 hover:text-white" : "bg-white border-slate-200 hover:text-primary shadow-sm"
               )}
+              title={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
             >
               {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
             </button>
@@ -665,7 +649,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
             <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="space-y-0.5">
-              {items.map(renderItem)}
+              {items.map((item, idx) => renderItem(item, idx, isAdminMode ? 'admin' : 'general'))}
             </Reorder.Group>
           </div>
 
@@ -682,7 +666,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <div className={cn("h-px flex-1 transition-all duration-300", isCollapsed ? "opacity-0 w-0 flex-none" : "opacity-100", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
               </div>
               <Reorder.Group axis="y" values={pharmacyItems} onReorder={handleReorderPharmacy} className="space-y-0.5">
-                {pharmacyItems.map(renderItem)}
+                {pharmacyItems.map((item, idx) => renderItem(item, idx, 'pharmacy'))}
               </Reorder.Group>
             </div>
           )}
@@ -766,7 +750,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-      </div>
+      </aside>
     </>
   );
 };

@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc, setDoc } from '../firebase';
-import { UserProfile, Notification, ICD10, Drug, Patient } from '../types';
+import { UserProfile, Notification, ICD10, Drug, Patient, SystemSettings } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import DrugDetailModal from './DrugDetailModal';
 
@@ -47,6 +47,7 @@ interface DashboardProps {
   onLogout?: () => void;
   setExternalIcdSearchQuery?: (query: string | null) => void;
   setExternalPatientSearchQuery?: (query: string | null) => void;
+  systemSettings?: SystemSettings;
 }
 
 interface SortableItemProps {
@@ -123,9 +124,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   onLogout,
   setExternalIcdSearchQuery,
   setExternalPatientSearchQuery,
+  systemSettings,
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isCustomizing, setIsCustomizing] = useState(false);
   const [quickDrugModal, setQuickDrugModal] = useState<{ drug: Drug | null; isOpen: boolean }>({
     drug: null,
     isOpen: false,
@@ -201,9 +202,11 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [workspacePatients, setWorkspacePatients] = useState<Patient[]>([]);
   const [drugsByIcd, setDrugsByIcd] = useState<Record<string, string[]>>({});
   const [newDrugs, setNewDrugs] = useState<Drug[]>([]);
+  const [updatingDrugs, setUpdatingDrugs] = useState<Drug[]>([]);
   const [updatedDrugs, setUpdatedDrugs] = useState<Drug[]>([]);
   const [showUtilityDrawer, setShowUtilityDrawer] = useState(false);
   const newDrugsSliderRef = React.useRef<HTMLDivElement>(null);
+  const updatingDrugsSliderRef = React.useRef<HTMLDivElement>(null);
   const updatedDrugsSliderRef = React.useRef<HTMLDivElement>(null);
 
   const scrollNewDrugsLeft = () => {
@@ -215,6 +218,24 @@ const Dashboard: React.FC<DashboardProps> = ({
   const scrollNewDrugsRight = () => {
     if (newDrugsSliderRef.current) {
       const el = newDrugsSliderRef.current;
+      const isAtEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 15;
+      if (isAtEnd) {
+        el.scrollTo({ left: 0, behavior: "smooth" });
+      } else {
+        el.scrollBy({ left: 340, behavior: "smooth" });
+      }
+    }
+  };
+
+  const scrollUpdatingDrugsLeft = () => {
+    if (updatingDrugsSliderRef.current) {
+      updatingDrugsSliderRef.current.scrollBy({ left: -340, behavior: "smooth" });
+    }
+  };
+
+  const scrollUpdatingDrugsRight = () => {
+    if (updatingDrugsSliderRef.current) {
+      const el = updatingDrugsSliderRef.current;
       const isAtEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 15;
       if (isAtEnd) {
         el.scrollTo({ left: 0, behavior: "smooth" });
@@ -247,13 +268,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     const unsubscribe = onSnapshot(collection(db, 'drugs'), (snapshot) => {
       const map: Record<string, string[]> = {};
       const newDrugsList: Drug[] = [];
+      const updatingDrugsList: Drug[] = [];
       const updatedDrugsList: Drug[] = [];
       snapshot.docs.forEach(doc => {
         const drug = doc.data() as Drug;
         if (drug.isNew) {
           newDrugsList.push(drug);
         }
-        if (drug.isUpdated) {
+        if (drug.isUpdated === 'updating') {
+          updatingDrugsList.push(drug);
+        } else if (drug.isUpdated === true || (drug.isUpdated && typeof drug.isUpdated === 'string' && drug.isUpdated !== 'false')) {
           updatedDrugsList.push(drug);
         }
         const codes = new Set<string>();
@@ -289,6 +313,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       });
       setDrugsByIcd(map);
       setNewDrugs(newDrugsList);
+      setUpdatingDrugs(updatingDrugsList);
       setUpdatedDrugs(updatedDrugsList);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'drugs_mapping');
@@ -298,6 +323,26 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     if (!isApproved) return;
+    if (systemSettings?.workspaceSlideAutoPlay === false) return;
+    const slideSpeed = Math.max(1, systemSettings?.workspaceSlideSpeed ?? 5) * 1000;
+    const interval = setInterval(() => {
+      if (updatingDrugsSliderRef.current && updatingDrugs.length > 1) {
+        const el = updatingDrugsSliderRef.current;
+        const isAtEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 15;
+        if (isAtEnd) {
+          el.scrollTo({ left: 0, behavior: "smooth" });
+        } else {
+          el.scrollBy({ left: 340, behavior: "smooth" });
+        }
+      }
+    }, slideSpeed);
+    return () => clearInterval(interval);
+  }, [updatingDrugs, isApproved, systemSettings?.workspaceSlideSpeed, systemSettings?.workspaceSlideAutoPlay]);
+
+  useEffect(() => {
+    if (!isApproved) return;
+    if (systemSettings?.workspaceSlideAutoPlay === false) return;
+    const slideSpeed = Math.max(1, systemSettings?.workspaceSlideSpeed ?? 5) * 1000;
     const interval = setInterval(() => {
       if (updatedDrugsSliderRef.current && updatedDrugs.length > 1) {
         const el = updatedDrugsSliderRef.current;
@@ -308,12 +353,14 @@ const Dashboard: React.FC<DashboardProps> = ({
           el.scrollBy({ left: 340, behavior: "smooth" });
         }
       }
-    }, 5000);
+    }, slideSpeed);
     return () => clearInterval(interval);
-  }, [updatedDrugs, isApproved]);
+  }, [updatedDrugs, isApproved, systemSettings?.workspaceSlideSpeed, systemSettings?.workspaceSlideAutoPlay]);
 
   useEffect(() => {
     if (!isApproved) return;
+    if (systemSettings?.workspaceSlideAutoPlay === false) return;
+    const slideSpeed = Math.max(1, systemSettings?.workspaceSlideSpeed ?? 5) * 1000;
     const interval = setInterval(() => {
       if (newDrugsSliderRef.current && newDrugs.length > 1) {
         const el = newDrugsSliderRef.current;
@@ -324,9 +371,9 @@ const Dashboard: React.FC<DashboardProps> = ({
           el.scrollBy({ left: 340, behavior: "smooth" });
         }
       }
-    }, 5000);
+    }, slideSpeed);
     return () => clearInterval(interval);
-  }, [newDrugs, isApproved]);
+  }, [newDrugs, isApproved, systemSettings?.workspaceSlideSpeed, systemSettings?.workspaceSlideAutoPlay]);
 
   const [allIcdList, setAllIcdList] = useState<ICD10[]>([]);
 
@@ -864,107 +911,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             <span className="font-mono font-bold text-primary">{format(currentTime, 'HH:mm:ss')}</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsCustomizing(!isCustomizing)}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm",
-              isCustomizing
-                ? "bg-indigo-500 text-white shadow-indigo-200"
-                : (isDarkMode ? "bg-slate-800 text-slate-300 border border-slate-700" : "bg-white text-slate-700 border border-slate-100")
-            )}
-          >
-            {isCustomizing ? <Eye size={14} /> : <Settings size={14} />}
-            {isCustomizing ? "Hoàn tất tùy chỉnh" : "Tùy chỉnh nút"}
-          </button>
-          <button
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-lg font-bold text-xs transition-all shadow-sm",
-              isEditMode
-                ? "bg-primary text-white shadow-primary/20"
-                : (isDarkMode ? "bg-slate-800 text-slate-300 border border-slate-700" : "bg-white text-slate-700 border border-slate-100")
-            )}
-          >
-            <Layout size={14} className={isEditMode ? "animate-pulse" : ""} />
-            {isEditMode ? "Đang chỉnh sửa" : "Chỉnh sửa giao diện"}
-          </button>
-          {isEditMode && (
-            <button
-              onClick={resetLayout}
-              className={cn(
-                "p-1.5 rounded-lg transition-all border",
-                isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-white" : "bg-white border-slate-100 text-slate-500 hover:text-slate-900"
-              )}
-              title="Khôi phục mặc định"
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-        </div>
       </header>
-
-
 
       <div className={cn(
         "grid grid-cols-1 lg:grid-cols-4 gap-6",
       )}>
         <div className="lg:col-span-3 space-y-8">
-          <AnimatePresence>
-            {isCustomizing && (
-              <motion.section
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className={cn(
-                  "p-6 rounded-3xl border transition-all",
-                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/40"
-                )}>
-                  <h3 className={cn(
-                    "text-sm font-black mb-6 uppercase tracking-[0.2em] transition-colors flex items-center gap-2",
-                    isDarkMode ? "text-white" : "text-slate-800"
-                  )}>
-                    <Settings size={16} className="text-primary" />
-                    Bật/Tắt các phím tắt nhanh
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {configurableActions.map(action => {
-                      const isHidden = hiddenActions.includes(action.id);
-                      return (
-                        <button
-                          key={action.id}
-                          onClick={() => handleToggleActionVisibility(action.id)}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group",
-                            isHidden
-                              ? (isDarkMode ? "bg-slate-950 border-slate-800/50 opacity-40" : "bg-slate-50 border-slate-100 opacity-40")
-                              : (isDarkMode ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200 shadow-sm")
-                          )}
-                        >
-                          <div className={cn("p-2 rounded-lg text-white shrink-0", action.color)}>
-                            <action.icon size={14} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={cn("text-[10px] font-black uppercase tracking-tight truncate", isDarkMode ? "text-white" : "text-slate-900")}>
-                              {action.label}
-                            </p>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              {isHidden ? <EyeOff size={10} className="text-rose-500" /> : <Eye size={10} className="text-emerald-500" />}
-                              <span className={cn("text-[8px] font-bold uppercase", isHidden ? "text-rose-500" : "text-emerald-500")}>
-                                {isHidden ? "Đã ẩn" : "Đang hiện"}
-                              </span>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
 
           {clinicalActions.length > 0 && (
             <section>
@@ -1158,21 +1110,202 @@ const Dashboard: React.FC<DashboardProps> = ({
             </section>
           )}
 
-          {/* Thuốc mới cập nhật Section */}
+          {/* Thuốc đang cập nhật Section */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={cn(
+                "text-base lg:text-lg font-black flex items-center gap-2 transition-colors uppercase tracking-widest text-amber-500",
+              )}>
+                <div className="w-1.5 h-6 bg-amber-500 rounded-full" />
+                Thuốc đang cập nhật
+                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-black border border-amber-500/20">
+                  {updatingDrugs.length}
+                </span>
+              </h3>
+
+              {updatingDrugs.length > 0 && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <button
+                    onClick={scrollUpdatingDrugsLeft}
+                    className={cn(
+                      "p-2 rounded-full border transition-all duration-300 active:scale-95 hover:scale-110",
+                      isDarkMode
+                        ? "border-slate-800 text-slate-400 hover:bg-amber-950/30 hover:text-amber-400 hover:border-amber-800"
+                        : "border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-300"
+                    )}
+                    title="Trượt sang trái"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={scrollUpdatingDrugsRight}
+                    className={cn(
+                      "p-2 rounded-full border transition-all duration-300 active:scale-95 hover:scale-110",
+                      isDarkMode
+                        ? "border-slate-800 text-slate-400 hover:bg-amber-950/30 hover:text-amber-400 hover:border-amber-800"
+                        : "border-slate-200 text-slate-600 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-300"
+                    )}
+                    title="Trượt sang phải"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {updatingDrugs.length > 0 ? (
+              <div
+                ref={updatingDrugsSliderRef}
+                className="grid grid-cols-2 gap-2.5 sm:flex sm:gap-5 sm:overflow-x-auto sm:pb-4 sm:px-0 sm:scroll-smooth sm:snap-x sm:snap-mandatory sm:[&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
+                {updatingDrugs.map((drug, idx) => (
+                  <div
+                    key={drug.id || `updating-drug-${idx}`}
+                    className={cn(
+                      "w-full sm:w-[320px] md:w-[340px] sm:shrink-0 sm:snap-center p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all flex flex-col justify-between group",
+                      isDarkMode
+                        ? "bg-slate-900 border-amber-950/80 hover:border-amber-500 shadow-2xl shadow-amber-950/10"
+                        : "bg-white border-amber-200/80 shadow-xl shadow-amber-100/30 hover:border-amber-500"
+                    )}
+                  >
+                    <div className="space-y-2.5 sm:space-y-4">
+                      {/* Drug Image */}
+                      <div className="relative h-24 sm:h-44 w-full overflow-hidden rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800/50">
+                        {drug.avatarUrl ? (
+                          <img
+                            src={drug.avatarUrl}
+                            alt={drug.name}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-yellow-500/10 dark:from-amber-500/20 dark:to-orange-500/20 text-amber-500">
+                            <Pill size={24} className="animate-pulse sm:hidden" />
+                            <Pill size={36} className="animate-pulse hidden sm:block" />
+                            <span className="mt-1 sm:mt-2 text-[8px] sm:text-[10px] font-black uppercase tracking-widest opacity-60">Sản phẩm Y tế</span>
+                          </div>
+                        )}
+                        
+                        {/* Floating badges */}
+                        <div className="absolute top-1.5 sm:top-3 left-1.5 sm:left-3 flex flex-wrap gap-1">
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded font-black text-[8px] sm:text-[9px] uppercase tracking-wider text-white shadow-sm bg-amber-500 animate-pulse">
+                            ĐANG CẬP NHẬT
+                          </span>
+                          {drug.isRx && (
+                            <span className="px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-black rounded bg-rose-500 text-white shadow-sm">
+                              Rx
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 sm:space-y-3">
+                        <div className="space-y-0.5 sm:space-y-1">
+                          <h4 className={cn(
+                            "text-xs sm:text-base font-extrabold leading-tight transition-colors group-hover:text-amber-500 line-clamp-1",
+                            isDarkMode ? "text-white" : "text-slate-900"
+                          )}>
+                            {drug.name}
+                          </h4>
+                          {drug.dosageForm && (
+                            <p className={cn("text-[9px] sm:text-xs font-black uppercase tracking-wide line-clamp-1", isDarkMode ? "text-slate-400 opacity-80" : "text-amber-700")}>
+                              {drug.dosageForm}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Active Ingredients */}
+                        {drug.activeIngredients && drug.activeIngredients.length > 0 && (
+                          <div className="space-y-1">
+                            <p className={cn("text-[8px] sm:text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
+                            <div className="flex flex-wrap gap-1 sm:gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[42px] sm:max-h-[50px] overflow-hidden">
+                              {drug.activeIngredients.map((ai, aiIdx) => (
+                                <span key={aiIdx} className={cn(
+                                  "text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border inline-block truncate max-w-full shadow-sm",
+                                  isDarkMode ? "bg-slate-950/40 border-slate-800 text-slate-300" : "bg-amber-50/80 border-amber-200 text-amber-950"
+                                )}>
+                                  {ai.name} {ai.amount}{ai.unit}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Manufacturer - Hidden on Mobile */}
+                        {drug.manufacturer && (
+                          <div className={cn(
+                            "hidden sm:flex flex-col gap-1.5 p-2.5 rounded-xl border mt-2 transition-all text-left",
+                            isDarkMode 
+                              ? "bg-slate-950/30 border-slate-800/80 hover:border-slate-700/50" 
+                              : "bg-slate-50/50 border-slate-200/50 hover:bg-slate-50 hover:border-slate-200"
+                          )}>
+                            <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                              <Factory size={11} className="text-amber-500 shrink-0" />
+                              <span>Nhà Sản Xuất</span>
+                            </div>
+                            <span className={cn(
+                              "font-extrabold text-[11px] sm:text-xs whitespace-normal break-words leading-relaxed",
+                              isDarkMode ? "text-slate-200" : "text-slate-800"
+                            )}>
+                              {drug.manufacturer}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 sm:pt-3 mt-2 sm:mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between gap-1">
+                      <span className="text-[8px] sm:text-[10px] font-mono opacity-50 truncate max-w-[65px] sm:max-w-[150px]">
+                        {drug.registrationNumber ? `SĐK: ${drug.registrationNumber}` : ''}
+                      </span>
+                      <button
+                        onClick={() => setQuickDrugModal({ drug, isOpen: true })}
+                        className={cn(
+                          "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all shadow-sm active:scale-95 border shrink-0",
+                          isDarkMode
+                            ? "bg-slate-800 border-slate-700 hover:bg-amber-500 hover:text-white"
+                            : "bg-amber-500/5 border-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white"
+                        )}
+                      >
+                        <Eye size={11} />
+                        Chi tiết
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={cn(
+                "p-10 rounded-3xl border border-dashed text-center transition-colors shadow-inner",
+                isDarkMode ? "border-slate-800 bg-slate-900/10" : "border-slate-200 bg-slate-50/30"
+              )}>
+                <RotateCcw size={32} className="mx-auto text-slate-400 mb-3 animate-pulse" />
+                <h4 className={cn("text-xs sm:text-sm font-extrabold mb-1 uppercase tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                  Không có thuốc nào đang trong tiến trình cập nhật
+                </h4>
+                <p className="text-[10px] font-bold text-slate-400 max-w-sm mx-auto uppercase tracking-wide leading-relaxed">
+                  Các thuốc được gắn nhãn "Đang cập nhật" trong giao diện Tra cứu thuốc sẽ tự động hiển thị tại đây
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Thuốc đã cập nhật Section */}
           <section className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className={cn(
                 "text-base lg:text-lg font-black flex items-center gap-2 transition-colors uppercase tracking-widest text-blue-500",
               )}>
                 <div className="w-1.5 h-6 bg-blue-500 rounded-full" />
-                Thuốc mới cập nhật
+                Thuốc đã cập nhật
                 <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black border border-blue-500/20">
                   {updatedDrugs.length}
                 </span>
               </h3>
 
               {updatedDrugs.length > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2">
                   <button
                     onClick={scrollUpdatedDrugsLeft}
                     className={cn(
@@ -1204,22 +1337,22 @@ const Dashboard: React.FC<DashboardProps> = ({
             {updatedDrugs.length > 0 ? (
               <div
                 ref={updatedDrugsSliderRef}
-                className="flex gap-5 overflow-x-auto pb-4 px-[calc(50vw-148px)] sm:px-0 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+                className="grid grid-cols-2 gap-2.5 sm:flex sm:gap-5 sm:overflow-x-auto sm:pb-4 sm:px-0 sm:scroll-smooth sm:snap-x sm:snap-mandatory sm:[&::-webkit-scrollbar]:hidden"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
                 {updatedDrugs.map((drug, idx) => (
                   <div
                     key={drug.id || idx}
                     className={cn(
-                      "w-[280px] sm:w-[320px] md:w-[340px] shrink-0 snap-center p-5 rounded-3xl border transition-all flex flex-col justify-between group",
+                      "w-full sm:w-[320px] md:w-[340px] sm:shrink-0 sm:snap-center p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all flex flex-col justify-between group",
                       isDarkMode
                         ? "bg-slate-900 border-blue-950/80 hover:border-blue-500 shadow-2xl shadow-blue-950/10"
                         : "bg-white border-blue-200/80 shadow-xl shadow-blue-100/30 hover:border-blue-500"
                     )}
                   >
-                    <div className="space-y-4">
+                    <div className="space-y-2.5 sm:space-y-4">
                       {/* Drug Image */}
-                      <div className="relative h-44 w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800/50">
+                      <div className="relative h-24 sm:h-44 w-full overflow-hidden rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800/50">
                         {drug.avatarUrl ? (
                           <img
                             src={drug.avatarUrl}
@@ -1229,37 +1362,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                           />
                         ) : (
                           <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 text-blue-500">
-                            <Pill size={36} className="animate-pulse" />
-                            <span className="mt-2 text-[10px] font-black uppercase tracking-widest opacity-60">Sản phẩm Y tế</span>
+                            <Pill size={24} className="animate-pulse sm:hidden" />
+                            <Pill size={36} className="animate-pulse hidden sm:block" />
+                            <span className="mt-1 sm:mt-2 text-[8px] sm:text-[10px] font-black uppercase tracking-widest opacity-60">Sản phẩm Y tế</span>
                           </div>
                         )}
                         
                         {/* Floating badges */}
-                        <div className="absolute top-3 left-3 flex flex-wrap gap-1">
-                          <span className={cn(
-                            "px-2 py-0.5 rounded-md font-black text-[9px] uppercase tracking-widest text-white shadow-sm",
-                            drug.isUpdated === 'updating' ? "bg-amber-500 animate-pulse" : "bg-blue-500"
-                          )}>
-                            {drug.isUpdated === 'updating' ? "ĐANG CẬP NHẬT" : "CẬP NHẬT"}
+                        <div className="absolute top-1.5 sm:top-3 left-1.5 sm:left-3 flex flex-wrap gap-1">
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded font-black text-[8px] sm:text-[9px] uppercase tracking-wider text-white shadow-sm bg-blue-500">
+                            ĐÃ CẬP NHẬT
                           </span>
                           {drug.isRx && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-rose-500 text-white shadow-sm">
+                            <span className="px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-black rounded bg-rose-500 text-white shadow-sm">
                               Rx
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="space-y-1">
+                      <div className="space-y-2 sm:space-y-3">
+                        <div className="space-y-0.5 sm:space-y-1">
                           <h4 className={cn(
-                            "text-sm sm:text-base font-extrabold leading-tight transition-colors group-hover:text-blue-500 line-clamp-1",
+                            "text-xs sm:text-base font-extrabold leading-tight transition-colors group-hover:text-blue-500 line-clamp-1",
                             isDarkMode ? "text-white" : "text-slate-900"
                           )}>
                             {drug.name}
                           </h4>
                           {drug.dosageForm && (
-                            <p className={cn("text-[10px] sm:text-xs font-black uppercase tracking-wide line-clamp-1", isDarkMode ? "text-slate-400 opacity-80" : "text-blue-700")}>
+                            <p className={cn("text-[9px] sm:text-xs font-black uppercase tracking-wide line-clamp-1", isDarkMode ? "text-slate-400 opacity-80" : "text-blue-700")}>
                               {drug.dosageForm}
                             </p>
                           )}
@@ -1268,11 +1399,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {/* Active Ingredients */}
                         {drug.activeIngredients && drug.activeIngredients.length > 0 && (
                           <div className="space-y-1">
-                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
-                            <div className="flex flex-wrap gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[50px] overflow-hidden">
+                            <p className={cn("text-[8px] sm:text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
+                            <div className="flex flex-wrap gap-1 sm:gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[42px] sm:max-h-[50px] overflow-hidden">
                               {drug.activeIngredients.map((ai, aiIdx) => (
                                 <span key={aiIdx} className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded-lg border inline-block whitespace-nowrap shadow-sm",
+                                  "text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border inline-block truncate max-w-full shadow-sm",
                                   isDarkMode ? "bg-slate-950/40 border-slate-800 text-slate-300" : "bg-blue-50/80 border-blue-200 text-blue-950"
                                 )}>
                                   {ai.name} {ai.amount}{ai.unit}
@@ -1282,9 +1413,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         )}
 
+                        {/* Manufacturer - Hidden on Mobile */}
                         {drug.manufacturer && (
                           <div className={cn(
-                            "flex flex-col gap-1.5 p-2.5 rounded-xl border mt-2 transition-all text-left",
+                            "hidden sm:flex flex-col gap-1.5 p-2.5 rounded-xl border mt-2 transition-all text-left",
                             isDarkMode 
                               ? "bg-slate-950/30 border-slate-800/80 hover:border-slate-700/50" 
                               : "bg-slate-50/50 border-slate-200/50 hover:bg-slate-50 hover:border-slate-200"
@@ -1304,20 +1436,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                     </div>
 
-                    <div className="pt-3 mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between">
-                      <span className="text-[10px] font-mono opacity-50 truncate max-w-[150px]">
+                    <div className="pt-2 sm:pt-3 mt-2 sm:mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between gap-1">
+                      <span className="text-[8px] sm:text-[10px] font-mono opacity-50 truncate max-w-[65px] sm:max-w-[150px]">
                         {drug.registrationNumber ? `SĐK: ${drug.registrationNumber}` : ''}
                       </span>
                       <button
                         onClick={() => setQuickDrugModal({ drug, isOpen: true })}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border shrink-0",
+                          "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all shadow-sm active:scale-95 border shrink-0",
                           isDarkMode
                             ? "bg-slate-800 border-slate-700 hover:bg-blue-500 hover:text-white"
                             : "bg-blue-500/5 border-blue-500/10 hover:bg-blue-500 text-blue-500 hover:text-white"
                         )}
                       >
-                        <Eye size={12} />
+                        <Eye size={11} />
                         Chi tiết
                       </button>
                     </div>
@@ -1331,10 +1463,10 @@ const Dashboard: React.FC<DashboardProps> = ({
               )}>
                 <RotateCcw size={32} className="mx-auto text-slate-400 mb-3 animate-pulse" />
                 <h4 className={cn("text-xs sm:text-sm font-extrabold mb-1 uppercase tracking-tight", isDarkMode ? "text-slate-300" : "text-slate-700")}>
-                  Không có thuốc mới cập nhật nào được đánh dấu
+                  Không có thuốc đã cập nhật nào
                 </h4>
                 <p className="text-[10px] font-bold text-slate-400 max-w-sm mx-auto uppercase tracking-wide leading-relaxed">
-                  Bạn có thể đánh dấu thuốc mới cập nhật trong giao diện "Tra cứu thuốc" &gt; chỉnh sửa thông tin thuốc của mình
+                  Bạn có thể đánh dấu thuốc đã cập nhật trong giao diện "Tra cứu thuốc" &gt; chỉnh sửa thông tin thuốc của mình
                 </p>
               </div>
             )}
@@ -1354,7 +1486,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </h3>
 
               {newDrugs.length > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2">
                   <button
                     onClick={scrollNewDrugsLeft}
                     className={cn(
@@ -1386,22 +1518,22 @@ const Dashboard: React.FC<DashboardProps> = ({
             {newDrugs.length > 0 ? (
               <div
                 ref={newDrugsSliderRef}
-                className="flex gap-5 overflow-x-auto pb-4 px-[calc(50vw-148px)] sm:px-0 scroll-smooth snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+                className="grid grid-cols-2 gap-2.5 sm:flex sm:gap-5 sm:overflow-x-auto sm:pb-4 sm:px-0 sm:scroll-smooth sm:snap-x sm:snap-mandatory sm:[&::-webkit-scrollbar]:hidden"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
                 {newDrugs.map((drug, idx) => (
                   <div
                     key={drug.id || idx}
                     className={cn(
-                      "w-[280px] sm:w-[320px] md:w-[340px] shrink-0 snap-center p-5 rounded-3xl border transition-all flex flex-col justify-between group",
+                      "w-full sm:w-[320px] md:w-[340px] sm:shrink-0 sm:snap-center p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl border transition-all flex flex-col justify-between group",
                       isDarkMode
                         ? "bg-slate-900 border-purple-950/80 hover:border-[#a855f7] shadow-2xl shadow-purple-950/10"
                         : "bg-white border-purple-200/80 shadow-xl shadow-purple-100/30 hover:border-[#a855f7]"
                     )}
                   >
-                    <div className="space-y-4">
+                    <div className="space-y-2.5 sm:space-y-4">
                       {/* Drug Image */}
-                      <div className="relative h-44 w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800/50">
+                      <div className="relative h-24 sm:h-44 w-full overflow-hidden rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800/50">
                         {drug.avatarUrl ? (
                           <img
                             src={drug.avatarUrl}
@@ -1411,34 +1543,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                           />
                         ) : (
                           <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 dark:from-indigo-500/20 dark:to-pink-500/20 text-[#a855f7]">
-                            <Pill size={36} className="animate-pulse" />
-                            <span className="mt-2 text-[10px] font-black uppercase tracking-widest opacity-60">Sản phẩm Y tế</span>
+                            <Pill size={24} className="animate-pulse sm:hidden" />
+                            <Pill size={36} className="animate-pulse hidden sm:block" />
+                            <span className="mt-1 sm:mt-2 text-[8px] sm:text-[10px] font-black uppercase tracking-widest opacity-60">Sản phẩm Y tế</span>
                           </div>
                         )}
                         
                         {/* Floating badges */}
-                        <div className="absolute top-3 left-3 flex flex-wrap gap-1">
-                          <span className="px-2 py-0.5 rounded-md font-black text-[9px] uppercase tracking-widest bg-amber-500 text-white shadow-sm">
+                        <div className="absolute top-1.5 sm:top-3 left-1.5 sm:left-3 flex flex-wrap gap-1">
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded font-black text-[8px] sm:text-[9px] uppercase tracking-wider bg-amber-500 text-white shadow-sm">
                             MỚI
                           </span>
                           {drug.isRx && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-rose-500 text-white shadow-sm">
+                            <span className="px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-black rounded bg-rose-500 text-white shadow-sm">
                               Rx
                             </span>
                           )}
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="space-y-1">
+                      <div className="space-y-2 sm:space-y-3">
+                        <div className="space-y-0.5 sm:space-y-1">
                           <h4 className={cn(
-                            "text-sm sm:text-base font-extrabold leading-tight transition-colors group-hover:text-[#a855f7] line-clamp-1",
+                            "text-xs sm:text-base font-extrabold leading-tight transition-colors group-hover:text-[#a855f7] line-clamp-1",
                             isDarkMode ? "text-white" : "text-slate-900"
                           )}>
                             {drug.name}
                           </h4>
                           {drug.dosageForm && (
-                            <p className={cn("text-[10px] sm:text-xs font-black uppercase tracking-wide line-clamp-1", isDarkMode ? "text-slate-400 opacity-80" : "text-purple-700")}>
+                            <p className={cn("text-[9px] sm:text-xs font-black uppercase tracking-wide line-clamp-1", isDarkMode ? "text-slate-400 opacity-80" : "text-purple-700")}>
                               {drug.dosageForm}
                             </p>
                           )}
@@ -1447,11 +1580,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                         {/* Active Ingredients */}
                         {drug.activeIngredients && drug.activeIngredients.length > 0 && (
                           <div className="space-y-1">
-                            <p className={cn("text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
-                            <div className="flex flex-wrap gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[50px] overflow-hidden">
+                            <p className={cn("text-[8px] sm:text-[9px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-400" : "text-slate-600")}>Hoạt chất</p>
+                            <div className="flex flex-wrap gap-1 sm:gap-1.5 font-semibold text-xs text-slate-600 dark:text-slate-300 max-h-[42px] sm:max-h-[50px] overflow-hidden">
                               {drug.activeIngredients.map((ai, aiIdx) => (
                                 <span key={aiIdx} className={cn(
-                                  "text-[10px] font-bold px-2 py-0.5 rounded-lg border inline-block whitespace-nowrap shadow-sm",
+                                  "text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border inline-block truncate max-w-full shadow-sm",
                                   isDarkMode ? "bg-slate-950/40 border-slate-800 text-slate-300" : "bg-purple-50/80 border-purple-200 text-purple-950"
                                 )}>
                                   {ai.name} {ai.amount}{ai.unit}
@@ -1461,9 +1594,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         )}
 
+                        {/* Manufacturer - Hidden on Mobile */}
                         {drug.manufacturer && (
                           <div className={cn(
-                            "flex flex-col gap-1.5 p-2.5 rounded-xl border mt-2 transition-all text-left",
+                            "hidden sm:flex flex-col gap-1.5 p-2.5 rounded-xl border mt-2 transition-all text-left",
                             isDarkMode 
                               ? "bg-slate-950/30 border-slate-800/80 hover:border-slate-700/50" 
                               : "bg-slate-50/50 border-slate-200/50 hover:bg-slate-50 hover:border-slate-200"
@@ -1483,20 +1617,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                       </div>
                     </div>
 
-                    <div className="pt-3 mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between">
-                      <span className="text-[10px] font-mono opacity-50 truncate max-w-[150px]">
+                    <div className="pt-2 sm:pt-3 mt-2 sm:mt-4 border-t border-slate-100 dark:border-slate-800/50 flex items-center justify-between gap-1">
+                      <span className="text-[8px] sm:text-[10px] font-mono opacity-50 truncate max-w-[65px] sm:max-w-[150px]">
                         {drug.registrationNumber ? `SĐK: ${drug.registrationNumber}` : ''}
                       </span>
                       <button
                         onClick={() => setQuickDrugModal({ drug, isOpen: true })}
                         className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border shrink-0",
+                          "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest transition-all shadow-sm active:scale-95 border shrink-0",
                           isDarkMode
                             ? "bg-slate-800 border-slate-700 hover:bg-[#a855f7] hover:text-white"
                             : "bg-[#a855f7]/5 border-[#a855f7]/10 hover:bg-[#a855f7] text-[#a855f7] hover:text-white"
                         )}
                       >
-                        <Eye size={12} />
+                        <Eye size={11} />
                         Chi tiết
                       </button>
                     </div>

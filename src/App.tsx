@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import ConfirmModal from './components/ConfirmModal';
 import Sidebar from './components/Sidebar';
+import MobileBottomNav from './components/MobileBottomNav';
 import Dashboard from './components/Dashboard';
 import DrugDirectory from './components/DrugDirectory';
 import InteractionChecker from './components/InteractionChecker';
@@ -23,7 +24,7 @@ import DrugDetailModal from './components/DrugDetailModal';
 import WelcomeSlider from './components/WelcomeSlider';
 import SlideShowcaseStudio from './components/SlideShowcaseStudio';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key, ArrowLeft, ArrowLeftCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from './lib/utils';
@@ -637,7 +638,9 @@ export default function App() {
     loginSubtitle: 'Ứng dụng hỗ trợ Khám Chữa Bệnh',
     appDescription: 'Hệ thống hỗ trợ tra cứu và gợi ý quyết định lâm sàng hiện đại dành cho nhân viên y tế tại KCB.',
     loginLogoUrl: '/icon-512.png',
-    defaultTheme: 'light'
+    defaultTheme: 'light',
+    workspaceSlideSpeed: 5,
+    workspaceSlideAutoPlay: true
   });
   const [regSettings, setRegSettings] = useState<RegistrationSettings>({
     allowNewRegistration: true,
@@ -758,10 +761,13 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isInAdminCP = isAdminMode || activeTab.startsWith('admin_');
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsSearchFocused(true);
-        searchInputRef.current?.focus();
+        if (isInAdminCP) {
+          e.preventDefault();
+          setIsSearchFocused(true);
+          searchInputRef.current?.focus();
+        }
       }
       if (e.key === 'Escape') {
         setIsSearchFocused(false);
@@ -772,7 +778,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isAdminMode, activeTab]);
 
   const [theme, setTheme] = useState(() => {
     const saved = safeLocalStorage.getItem('theme');
@@ -1303,7 +1309,7 @@ export default function App() {
     }
   };
 
-  const renderNotificationItem = (item: any, isDesktop: boolean = false, index?: number) => {
+  const renderNotificationItem = (item: any, isDesktop: boolean = false, index?: number, groupPrefix?: string) => {
     const isClinicalAlert = item.category === 'clinical_alert';
     const isDataUpdate = item.category === 'data_update';
     const isMedicalNews = item.category === 'medical_news_personal';
@@ -1354,7 +1360,7 @@ export default function App() {
 
     return (
       <div
-        key={`${item.id || 'notif'}-${index ?? 0}`}
+        key={`${isDesktop ? 'desk' : 'mob'}-${groupPrefix || 'grp'}-${item.isAnnouncement ? 'ann' : 'notif'}-${item.id || 'n'}-${index ?? 0}`}
         onClick={() => {
           if (!item.isRead) {
             toggleReadStatus(item);
@@ -2722,6 +2728,7 @@ export default function App() {
           onLogout={handleLogout}
           setExternalIcdSearchQuery={setExternalIcdSearchQuery}
           setExternalPatientSearchQuery={setExternalPatientSearchQuery}
+          systemSettings={systemSettings}
         />;
       case 'calendar':
         return <Calendar isDarkMode={isDarkMode} />;
@@ -2935,6 +2942,7 @@ export default function App() {
           announcements={announcements}
           onMarkAsRead={markAsRead}
           onLogout={handleLogout}
+          systemSettings={systemSettings}
         />;
     }
   };
@@ -2992,10 +3000,37 @@ export default function App() {
             onOpenUserGuide={() => setIsUserGuideOpen(true)}
           />
 
+          <MobileBottomNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            userRole={userProfile.role}
+            displayName={userProfile.displayName}
+            title={userProfile.title}
+            photoURL={userProfile.photoURL}
+            photoSyncToken={userProfile.photoSyncToken}
+            isDarkMode={isDarkMode}
+            allowedTabs={sidebarAllowedTabs}
+            isAdminMode={isAdminMode}
+            setIsAdminMode={setIsAdminMode}
+            appName={systemSettings.appName}
+            featureStates={featureStates}
+            featureSettings={featureSettings}
+            uid={userProfile?.uid || user?.uid || ''}
+            isApproved={userProfile.isApproved}
+            drugDirectoryViewMode={drugDirectoryViewMode}
+            setDrugDirectoryViewMode={setDrugDirectoryViewMode}
+            onOpenUserGuide={() => setIsUserGuideOpen(true)}
+            onOpenSettings={() => {
+              setIsProfileModalOpen(true);
+              setShowSupportContact(false);
+            }}
+            mobileBottomNavSettings={systemSettings.mobileBottomNav}
+          />
+
           <main 
             ref={(el) => { mainScrollRef.current = el; }} 
             className={cn(
-              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300 drug-list-container",
+              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300 drug-list-container pb-20 lg:pb-0",
               isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
             )}
             style={{ touchAction: 'pan-y' }}
@@ -3006,118 +3041,136 @@ export default function App() {
               isDarkMode ? "bg-slate-950/80 border-slate-800" : "bg-white/80 border-slate-100"
             )}>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsSidebarOpen(true)}
-                  className={cn("p-2 rounded-xl transition-colors", isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500")}
-                >
-                  <Menu size={20} />
-                </button>
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95"
-                >
-                  <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain" referrerPolicy="no-referrer" />
-                  <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                    {systemSettings.appName}
-                  </h1>
-                </button>
+                {(isAdminMode || activeTab.startsWith('admin_') || activeTab === 'manage_config' || activeTab === 'config') ? (
+                  <button
+                    id="mobile-exit-admincp-btn"
+                    onClick={() => {
+                      setIsAdminMode(false);
+                      setActiveTab('dashboard');
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-xl border font-black text-xs transition-all active:scale-95 cursor-pointer group shadow-sm",
+                      isDarkMode 
+                        ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30" 
+                        : "bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-200"
+                    )}
+                    title="Thoát AdminCP"
+                  >
+                    <div className="p-1 rounded-lg bg-rose-500 text-white shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <ArrowLeftCircle size={14} />
+                    </div>
+                    <span className="tracking-tight uppercase">Thoát AdminCP</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className="flex items-center gap-2.5 hover:opacity-80 transition-opacity active:scale-95 cursor-pointer"
+                  >
+                    <img src="/icon-512.png" alt="Logo" className="w-9 h-9 object-contain drop-shadow-sm" referrerPolicy="no-referrer" />
+                    <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                      {systemSettings.appName}
+                    </h1>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="relative" ref={mobileSearchMenuRef}>
-                  <button
-                    onClick={() => setIsSearchFocused(!isSearchFocused)}
-                    className={cn(
-                      "p-2 rounded-xl transition-all",
-                      isSearchFocused
-                        ? "bg-primary text-white shadow-lg shadow-primary/20"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                    )}
-                  >
-                    <Search size={18} />
-                  </button>
+                {(isAdminMode || activeTab.startsWith('admin_')) && (
+                  <div className="relative" ref={mobileSearchMenuRef}>
+                    <button
+                      onClick={() => setIsSearchFocused(!isSearchFocused)}
+                      className={cn(
+                        "p-2 rounded-xl transition-all",
+                        isSearchFocused
+                          ? "bg-primary text-white shadow-lg shadow-primary/20"
+                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
+                      )}
+                    >
+                      <Search size={18} />
+                    </button>
 
-                  <AnimatePresence>
-                    {isSearchFocused && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className={cn(
-                          "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
-                          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                        )}
-                      >
-                        <div className="relative mb-4">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                          <input
-                            autoFocus
-                            type="text"
-                            placeholder="Tìm kiếm tính năng..."
-                            className={cn(
-                              "w-full pl-10 pr-10 py-3 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
-                              isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                            )}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                          />
-                          {searchQuery && (
-                            <button
-                              onClick={() => setSearchQuery('')}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                            >
-                              <X size={16} />
-                            </button>
+                    <AnimatePresence>
+                      {isSearchFocused && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className={cn(
+                            "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
+                            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                           )}
-                        </div>
-
-                        <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1">
-                          {(() => {
-                            const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                            const filtered = ALL_TABS.filter(item => {
-                              const status = featureStates[item.id];
-                              const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged);
-                              return isVisible &&
-                                allowedTabs.includes(item.id) &&
-                                (item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
-                            });
-
-                            if (filtered.length === 0) {
-                              return <p className="text-center py-8 text-slate-500 text-sm font-bold">Không tìm thấy tính năng nào</p>;
-                            }
-
-                            return filtered.map(item => (
+                        >
+                          <div className="relative mb-4">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Tìm kiếm tính năng..."
+                              className={cn(
+                                "w-full pl-10 pr-10 py-3 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
+                                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                              )}
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            {searchQuery && (
                               <button
-                                key={item.id}
-                                onClick={() => {
-                                  setActiveTab(item.id);
-                                  setIsSearchFocused(false);
-                                  setSearchQuery('');
-                                }}
-                                className={cn(
-                                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
-                                  activeTab === item.id
-                                    ? "bg-primary text-white"
-                                    : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
-                                )}
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                               >
-                                <div className={cn(
-                                  "p-2 rounded-lg",
-                                  activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
-                                )}>
-                                  <item.icon size={16} className={activeTab === item.id ? "text-white" : "text-primary"} />
-                                </div>
-                                <span className="font-bold text-sm">
-                                  {featureSettings[item.id]?.customTitle || item.label}
-                                </span>
+                                <X size={16} />
                               </button>
-                            ));
-                          })()}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                            )}
+                          </div>
+
+                          <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1">
+                            {(() => {
+                              const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
+                              const filtered = ALL_TABS.filter(item => {
+                                const status = featureStates[item.id];
+                                const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged);
+                                return isVisible &&
+                                  allowedTabs.includes(item.id) &&
+                                  (item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+                              });
+
+                              if (filtered.length === 0) {
+                                return <p className="text-center py-8 text-slate-500 text-sm font-bold">Không tìm thấy tính năng nào</p>;
+                              }
+
+                              return filtered.map((item, idx) => (
+                                <button
+                                  key={`mob-search-${item.id}-${idx}`}
+                                  onClick={() => {
+                                    setActiveTab(item.id);
+                                    setIsSearchFocused(false);
+                                    setSearchQuery('');
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
+                                    activeTab === item.id
+                                      ? "bg-primary text-white"
+                                      : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
+                                  )}
+                                >
+                                  <div className={cn(
+                                    "p-2 rounded-lg",
+                                    activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
+                                  )}>
+                                    <item.icon size={16} className={activeTab === item.id ? "text-white" : "text-primary"} />
+                                  </div>
+                                  <span className="font-bold text-sm">
+                                    {featureSettings[item.id]?.customTitle || item.label}
+                                  </span>
+                                </button>
+                              ));
+                            })()}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Mobile Quick Access - HIDDEN */}
                 {false && (() => {
@@ -3129,9 +3182,9 @@ export default function App() {
                     const roleAllowed = (settings?.allowedRoles || []).length === 0 || (settings?.allowedRoles || []).includes(userProfile?.role);
                     const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
                     return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_');
-                  }).map(item => (
+                  }).map((item, mIdx) => (
                     <button
-                      key={`mob-quick-${item.id}`}
+                      key={`mob-quick-${item.id || 'it'}-${mIdx}`}
                       onClick={() => setActiveTab(item.id)}
                       className={cn(
                         "p-2 rounded-xl transition-all relative font-bold text-xs truncate max-w-[80px]",
@@ -3190,9 +3243,9 @@ export default function App() {
                                 const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned;
                                 const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
                                 return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
-                              }).map(item => (
+                              }).map((item, idx) => (
                                 <button
-                                  key={item.id}
+                                  key={`mob-util-${item.id}-${idx}`}
                                   onClick={() => {
                                     setActiveTab(item.id);
                                     setIsAppsMenuOpen(false);
@@ -3316,9 +3369,9 @@ export default function App() {
                               { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
                               { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
                               { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
-                            ].map(tab => (
+                            ].map((tab, idx) => (
                               <button
-                                key={tab.id}
+                                key={`mob-notif-tab-${tab.id}-${idx}`}
                                 onClick={() => {
                                   setNotificationTab(tab.id as any);
                                   setVisibleNotifCount(20);
@@ -3365,7 +3418,7 @@ export default function App() {
                                         <div className="flex-1 h-[1px] bg-slate-500/10" />
                                       </div>
                                       <div className="space-y-1.5">
-                                        {items.map((item, idx) => renderNotificationItem(item, false, idx))}
+                                        {items.map((item, idx) => renderNotificationItem(item, false, idx, groupName))}
                                       </div>
                                     </div>
                                   ))}
@@ -3421,86 +3474,89 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex-1 max-w-md mx-8 relative group" ref={desktopSearchMenuRef}>
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Tìm kiếm tính năng (Ctrl + K)..."
-                  className={cn(
-                    "w-full pl-10 pr-4 py-2 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
-                    isDarkMode ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-900"
-                  )}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => setIsSearchFocused(true)}
-                />
+              {/* Search Bar - Only in AdminCP */}
+              {(isAdminMode || activeTab.startsWith('admin_')) && (
+                <div className="flex-1 max-w-md mx-8 relative group" ref={desktopSearchMenuRef}>
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Tìm kiếm tính năng (Ctrl + K)..."
+                    className={cn(
+                      "w-full pl-10 pr-4 py-2 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
+                      isDarkMode ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-900"
+                    )}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setIsSearchFocused(true)}
+                  />
 
-                <AnimatePresence>
-                  {isSearchFocused && searchQuery && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className={cn(
-                        "absolute top-full left-0 right-0 mt-2 p-2 rounded-2xl border shadow-2xl z-50",
-                        isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                      )}
-                    >
-                      <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-1">
-                        {(() => {
-                          const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                          const filtered = ALL_TABS.filter(item => {
-                            const status = featureStates[item.id];
-                            const settings = featureSettings[item.id];
-                            const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
-                            const allowedRoles = settings?.allowedRoles || [];
-                            const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
-                            const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                            return isVisible &&
-                              allowedTabs.includes(item.id) &&
-                              !item.id.startsWith('manage_') &&
-                              (settings?.customTitle || item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
-                          }).sort((a, b) => {
-                            const orderA = featureSettings[a.id]?.order ?? 999;
-                            const orderB = featureSettings[b.id]?.order ?? 999;
-                            return orderA - orderB;
-                          });
+                  <AnimatePresence>
+                    {isSearchFocused && searchQuery && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className={cn(
+                          "absolute top-full left-0 right-0 mt-2 p-2 rounded-2xl border shadow-2xl z-50",
+                          isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                        )}
+                      >
+                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-1">
+                          {(() => {
+                            const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
+                            const filtered = ALL_TABS.filter(item => {
+                              const status = featureStates[item.id];
+                              const settings = featureSettings[item.id];
+                              const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
+                              const allowedRoles = settings?.allowedRoles || [];
+                              const roleAllowed = allowedRoles.length === 0 || allowedRoles.includes(userProfile?.role);
+                              const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
+                              return isVisible &&
+                                allowedTabs.includes(item.id) &&
+                                !item.id.startsWith('manage_') &&
+                                (settings?.customTitle || item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+                            }).sort((a, b) => {
+                              const orderA = featureSettings[a.id]?.order ?? 999;
+                              const orderB = featureSettings[b.id]?.order ?? 999;
+                              return orderA - orderB;
+                            });
 
-                          if (filtered.length === 0) {
-                            return <p className="text-center py-4 text-slate-500 text-xs font-bold">Không tìm thấy tính năng nào</p>;
-                          }
+                            if (filtered.length === 0) {
+                              return <p className="text-center py-4 text-slate-500 text-xs font-bold">Không tìm thấy tính năng nào</p>;
+                            }
 
-                          return filtered.map(item => (
-                            <button
-                              key={item.id}
-                              onClick={() => {
-                                setActiveTab(item.id);
-                                setSearchQuery('');
-                                setIsSearchFocused(false);
-                              }}
-                              className={cn(
-                                "w-full flex items-center gap-3 p-2 rounded-xl transition-all group",
-                                activeTab === item.id 
-                                  ? "bg-primary text-white" 
-                                  : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
-                              )}
-                            >
-                              <div className={cn(
-                                "p-1.5 rounded-lg",
-                                activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
-                                )}>
-                                <item.icon size={14} className={activeTab === item.id ? "text-white" : "text-primary"} />
-                              </div>
-                              <span className="font-bold text-xs">{item.label}</span>
-                            </button>
-                          ));
-                    })()}
-                    </div>
-                </motion.div>
+                            return filtered.map((item, idx) => (
+                              <button
+                                key={`desk-search-${item.id}-${idx}`}
+                                onClick={() => {
+                                  setActiveTab(item.id);
+                                  setSearchQuery('');
+                                  setIsSearchFocused(false);
+                                }}
+                                className={cn(
+                                  "w-full flex items-center gap-3 p-2 rounded-xl transition-all group",
+                                  activeTab === item.id 
+                                    ? "bg-primary text-white" 
+                                    : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
+                                )}
+                              >
+                                <div className={cn(
+                                  "p-1.5 rounded-lg",
+                                  activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
+                                  )}>
+                                  <item.icon size={14} className={activeTab === item.id ? "text-white" : "text-primary"} />
+                                </div>
+                                <span className="font-bold text-xs">{item.label}</span>
+                              </button>
+                            ));
+                      })()}
+                      </div>
+                  </motion.div>
+                )}
+                </AnimatePresence>
+              </div>
               )}
-              </AnimatePresence>
-            </div>
 
             <div className="flex items-center gap-3">
               {hasUtilities && (
@@ -3550,9 +3606,9 @@ export default function App() {
                               const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
                               const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
                               return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
-                            }).map(item => (
+                            }).map((item, idx) => (
                               <button 
-                                key={item.id}
+                                key={`desk-util-${item.id}-${idx}`}
                                 onClick={() => {
                                   setActiveTab(item.id);
                                   setIsAppsMenuOpen(false);
@@ -3664,9 +3720,9 @@ export default function App() {
                           { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
                           { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
                           { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
-                        ].map(tab => (
+                        ].map((tab, idx) => (
                           <button
-                            key={tab.id}
+                            key={`desk-notif-tab-${tab.id}-${idx}`}
                             onClick={() => {
                               setNotificationTab(tab.id as any);
                               setVisibleNotifCount(20);
@@ -3713,7 +3769,7 @@ export default function App() {
                                     <div className="flex-1 h-[1px] bg-slate-500/10" />
                                   </div>
                                   <div className="space-y-1.5">
-                                    {items.map((item, idx) => renderNotificationItem(item, true, idx))}
+                                    {items.map((item, idx) => renderNotificationItem(item, true, idx, groupName))}
                                   </div>
                                 </div>
                               ))}
@@ -3848,24 +3904,37 @@ export default function App() {
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: "spring", damping: 25, stiffness: 180 }}
           className={cn(
-            "relative w-[92%] sm:w-full sm:max-w-lg h-auto max-h-[90vh] rounded-[32px] shadow-2xl overflow-hidden border transition-colors flex flex-col pointer-events-auto",
-            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+            "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg rounded-none sm:rounded-[32px] shadow-2xl overflow-hidden border-0 sm:border transition-colors flex flex-col pointer-events-auto",
+            isDarkMode ? "bg-slate-900 sm:border-slate-800" : "bg-white sm:border-slate-100"
           )}
         >
           <div 
-            className="flex w-[200%] transition-transform duration-500 ease-in-out" 
+            className="flex w-[200%] h-full transition-transform duration-500 ease-in-out" 
             style={{ transform: showSupportContact ? 'translateX(-50%)' : 'translateX(0)' }}
           >
             {/* PANEL 1: SETTINGS */}
-            <div className="w-1/2 shrink-0 flex flex-col">
+            <div className="w-1/2 shrink-0 flex flex-col h-full">
               <div className={cn(
-                "p-4 sm:p-6 border-b flex items-center justify-between",
+                "p-4 sm:p-6 border-b flex items-center justify-between shrink-0",
                 isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-xl">
-                    <Settings size={20} className="text-primary" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileModalOpen(false);
+                      if (guestView === 'terms') setGuestView('none');
+                    }}
+                    title="Đóng / Trở về"
+                    className={cn(
+                      "p-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                      isDarkMode 
+                        ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
+                    )}
+                  >
+                    <ArrowLeft size={20} />
+                  </button>
                   <h3 className="text-lg font-black tracking-tight">Cài đặt</h3>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -3873,28 +3942,16 @@ export default function App() {
                     onClick={() => setShowSupportContact(true)}
                     title="Hỗ trợ liên hệ"
                     className={cn(
-                      "p-2 rounded-xl transition-colors",
+                      "p-2 rounded-xl transition-colors cursor-pointer",
                       isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
                     )}
                   >
                     <Phone size={18} />
                   </button>
-                  <button
-                    onClick={() => {
-                      setIsProfileModalOpen(false);
-                      if (guestView === 'terms') setGuestView('none');
-                    }}
-                    className={cn(
-                      "p-2 rounded-xl transition-colors",
-                      isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
-                    )}
-                  >
-                    <X size={20} />
-                  </button>
                 </div>
               </div>
 
-              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar max-h-[60vh]">
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[60vh] pb-8">
                 {/* Account Info */}
                 {(() => {
                   const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
@@ -4037,9 +4094,9 @@ export default function App() {
                                       <span className={strength.textColor}>{strength.label}</span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full">
-                                      {[1, 2, 3, 4].map((level) => (
+                                      {[1, 2, 3, 4].map((level, lIdx) => (
                                         <div
-                                          key={level}
+                                          key={`staff-pw-str-${level}-${lIdx}`}
                                           className={cn(
                                             "h-full rounded-full transition-all duration-300",
                                             level <= strength.score 
@@ -4278,9 +4335,9 @@ export default function App() {
                       {[
                         { id: 'light', label: 'Sáng', icon: Sun },
                         { id: 'dark', label: 'Tối', icon: Moon },
-                      ].map((t) => (
+                      ].map((t, tIdx) => (
                         <button
-                          key={t.id}
+                          key={`theme-opt-${t.id}-${tIdx}`}
                           onClick={() => handleThemeChange(t.id)}
                           className={cn(
                             "flex items-center gap-3 p-4 rounded-2xl border-2 transition-all",
@@ -4374,44 +4431,33 @@ export default function App() {
             </div>
 
             {/* PANEL 2: SUPPORT */}
-            <div className="w-1/2 shrink-0 flex flex-col">
+            <div className="w-1/2 shrink-0 flex flex-col h-full">
               <div className={cn(
-                "p-4 sm:p-6 border-b flex items-center justify-between",
+                "p-4 sm:p-6 border-b flex items-center justify-between shrink-0",
                 isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-xl">
-                    <Phone size={20} className="text-primary" />
-                  </div>
-                  <h3 className="text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
-                </div>
-                <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={() => setShowSupportContact(false)}
                     title="Quay lại Cài đặt"
                     className={cn(
-                      "p-2 rounded-xl transition-colors text-primary flex items-center justify-center",
-                      isDarkMode ? "bg-slate-800" : "bg-slate-200"
+                      "p-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                      isDarkMode 
+                        ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
                     )}
                   >
-                    <ChevronRight size={18} className="rotate-180" />
+                    <ArrowLeft size={20} />
                   </button>
-                  <button
-                    onClick={() => {
-                      setIsProfileModalOpen(false);
-                      if (guestView === 'terms') setGuestView('none');
-                    }}
-                    className={cn(
-                      "p-2 rounded-xl transition-colors",
-                      isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
-                    )}
-                  >
-                    <X size={20} />
-                  </button>
+                  <h3 className="text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {/* Empty right area without X button */}
                 </div>
               </div>
 
-              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar max-h-[60vh] flex-1">
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[60vh] pb-8">
                 <div className={cn(
                   "p-5 rounded-2xl border relative overflow-hidden transition-all duration-300",
                   isDarkMode
@@ -4686,7 +4732,7 @@ export default function App() {
           {/* Live Toast Popups Container */}
           <div className="fixed bottom-6 right-6 z-[99999] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
             <AnimatePresence>
-              {toastPopups.map((toast) => {
+              {toastPopups.map((toast, tIdx) => {
                 const isClinicalAlert = toast.category === 'clinical_alert';
                 const isDataUpdate = toast.category === 'data_update';
                 const isMedicalNews = toast.category === 'medical_news_personal';
@@ -4729,7 +4775,7 @@ export default function App() {
 
                 return (
                   <motion.div
-                    key={toast.id}
+                    key={`toast-${toast.id || 't'}-${tIdx}`}
                     layout
                     initial={{ opacity: 0, y: 50, scale: 0.9 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
