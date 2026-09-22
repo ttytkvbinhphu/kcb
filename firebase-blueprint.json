@@ -108,6 +108,7 @@
         "uid": { "type": "string", "description": "UID từ Firebase Auth" },
         "email": { "type": "string", "format": "email", "description": "Email người dùng" },
         "displayName": { "type": "string", "description": "Tên hiển thị" },
+        "gender": { "type": "string", "enum": ["Nam", "Nữ", "Khác"], "description": "Giới tính người dùng" },
         "title": { "type": "string", "description": "Chức danh (Bác sĩ, Dược sĩ...)" },
         "position": { "type": "string", "description": "Chức vụ (Giám đốc, Nhân viên...)" },
         "specialty": { "type": "string", "description": "Chuyên môn (Tiến sĩ, Thạc sĩ...)" },
@@ -123,6 +124,7 @@
         "hasSeenWelcome": { "type": "boolean" },
         "isHidden": { "type": "boolean" },
         "pinnedIcdCodes": { "type": "array", "items": { "type": "string" } },
+        "favoriteDrugIds": { "type": "array", "items": { "type": "string" }, "description": "Danh sách ID thuốc yêu thích của người dùng" },
         "workspaceIcdCodes": { "type": "array", "items": { "type": "string" } },
         "lastActive": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -135,6 +137,7 @@
       "type": "object",
       "properties": {
         "code": { "type": "string", "description": "Mã bệnh" },
+        "groupCode": { "type": "string", "description": "Mã ICD-10 nhóm (3 ký tự, VD: A00)" },
         "description": { "type": "string", "description": "Mô tả bệnh" },
         "commonDrugs": { "type": "array", "items": { "type": "string" }, "description": "Gợi ý thuốc thường dùng" },
         "isAppendixA2": { "type": "boolean", "description": "Nằm trong phụ lục A2" },

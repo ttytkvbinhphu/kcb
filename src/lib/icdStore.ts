@@ -3,8 +3,102 @@ import { db, collection, onSnapshot, getDocs, doc, getDoc, updateDoc, setDoc } f
 import { ICD10 } from '../types';
 import { sanitizeFirestoreData } from './utils';
 
+export interface IndexedICD10 {
+  raw: ICD10;
+  codeLower: string;
+  codeNoAccents: string;
+  searchContentLower: string;
+  searchContentNoAccents: string;
+  guideLower: string;
+  guideNoAccents: string;
+  hasGuide: boolean;
+  firstChar: string;
+  categories: string[];
+  statuses: string[];
+  cleanCode: string;
+}
+
+export const removeAccents = (str?: string) => {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase();
+};
+
 let cachedIcdList: ICD10[] = [];
+let cachedIndexedIcdList: IndexedICD10[] = [];
 let hasLoadedFromLocalStorage = false;
+
+export function buildIndexedIcdList(list: ICD10[]): IndexedICD10[] {
+  if (!list || list.length === 0) return [];
+  
+  // Pre-sort list once with fast ascii comparison
+  const sorted = [...list].sort((a, b) => {
+    const codeA = a.code || '';
+    const codeB = b.code || '';
+    return codeA < codeB ? -1 : (codeA > codeB ? 1 : 0);
+  });
+
+  return sorted.map((icd) => {
+    const code = icd.code || '';
+    const desc = icd.description || '';
+    const oldName = icd.oldName || '';
+    const notes = icd.notes || '';
+    const chapter = icd.chapterName || '';
+    const block = icd.blockName || '';
+    const guide = icd.guide || '';
+    const hasGuide = !!(guide && guide.trim() !== '');
+
+    const codeLower = code.toLowerCase();
+    const codeNoAccents = removeAccents(code);
+
+    const groupCode = icd.groupCode || '';
+    const fullSearch = `${desc} ${oldName} ${notes} ${chapter} ${block} ${groupCode}`;
+    const searchContentLower = fullSearch.toLowerCase();
+    const searchContentNoAccents = removeAccents(fullSearch);
+
+    const guideLower = guide.toLowerCase();
+    const guideNoAccents = hasGuide ? removeAccents(guide) : '';
+
+    const firstChar = code[0]?.toUpperCase() || '';
+
+    const categories: string[] = [];
+    if (icd.isAppendixA2) categories.push('appendix_a2');
+    if (icd.isAppendixA3) categories.push('appendix_a3');
+    if (icd.isRestricted) categories.push('restricted');
+    if (icd.isAppendixA4) categories.push('appendix_a4');
+    if (icd.isAppendixA5) categories.push('appendix_a5');
+    if (icd.isAppendixA6) categories.push('appendix_a6');
+    if (icd.isTT26) categories.push('tt26');
+    if (categories.length === 0) categories.push('normal');
+
+    const statuses: string[] = [];
+    if (icd.isExpired) {
+      statuses.push('expired');
+    } else {
+      statuses.push('valid');
+      if (icd.isNew) statuses.push('new');
+      if (oldName && oldName.trim() !== '') statuses.push('new_name');
+    }
+
+    return {
+      raw: icd,
+      codeLower,
+      codeNoAccents,
+      searchContentLower,
+      searchContentNoAccents,
+      guideLower,
+      guideNoAccents,
+      hasGuide,
+      firstChar,
+      categories,
+      statuses,
+      cleanCode: code.trim().toUpperCase(),
+    };
+  });
+}
 
 // Load from localStorage on module evaluation
 function loadFromLocalStorage(): ICD10[] {
@@ -13,6 +107,7 @@ function loadFromLocalStorage(): ICD10[] {
     const saved = localStorage.getItem('kcb_offline_icd10');
     if (saved) {
       cachedIcdList = JSON.parse(saved);
+      cachedIndexedIcdList = buildIndexedIcdList(cachedIcdList);
       console.log(`Loaded ${cachedIcdList.length} ICD-10 item(s) from local storage offline cache.`);
     }
   } catch (error) {
@@ -127,6 +222,7 @@ async function fetchFullIcdCollection(targetTimestamp: string) {
     });
 
     cachedIcdList = list;
+    cachedIndexedIcdList = buildIndexedIcdList(list);
 
     // Save copy to local disk for robust offline capability
     try {
@@ -158,6 +254,17 @@ async function fetchFullIcdCollection(targetTimestamp: string) {
 export function getOfflineICD10(): ICD10[] {
   loadFromLocalStorage();
   return cachedIcdList;
+}
+
+/**
+ * Returns pre-indexed and pre-sorted ICD-10 list directly from memory with 0ms compute overhead.
+ */
+export function getOfflineIndexedICD10(): IndexedICD10[] {
+  loadFromLocalStorage();
+  if (cachedIndexedIcdList.length === 0 && cachedIcdList.length > 0) {
+    cachedIndexedIcdList = buildIndexedIcdList(cachedIcdList);
+  }
+  return cachedIndexedIcdList;
 }
 
 /**

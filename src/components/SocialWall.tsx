@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap, Mail } from 'lucide-react';
+import { User, Shield, BadgeCheck, Save, ArrowLeft, Loader2, CheckCircle2, Heart, MessageSquare, Send, ImageIcon, Trash2, Share2, Clock, Pencil, X, Globe, Lock, Check, Phone, Search, Edit3, Award, Briefcase, ShieldCheck, GraduationCap, Mail, Settings } from 'lucide-react';
 import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
@@ -40,11 +39,13 @@ interface SocialWallProps {
   userProfile: UserProfile;
   setUserProfile: (profile: UserProfile) => void;
   isDarkMode: boolean;
+  isActive?: boolean;
   onBack?: () => void;
   initialTab?: 'feed' | 'profile';
   onSyncProfile?: () => Promise<void>;
   featureSettings?: any;
   subHeaderPortalId?: string;
+  onOpenSettings?: () => void;
 }
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
@@ -262,7 +263,7 @@ const HighlightText: React.FC<{ text: string; search: string; className?: string
   );
 };
 
-const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {}, subHeaderPortalId }) => {
+const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, isDarkMode, isActive = true, onBack, initialTab = 'feed', onSyncProfile, featureSettings = {}, subHeaderPortalId, onOpenSettings }) => {
   const [activeSubTab, setActiveSubTab] = useState<'feed' | 'profile'>(initialTab);
   const [posts, setPosts] = useState<Post[]>([]);
   const [newPostContent, setNewPostContent] = useState('');
@@ -316,9 +317,15 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Live lookup: prevents stale-reference ghost injections after tab change
-  const getPortalNode = () =>
-    subHeaderPortalId ? document.getElementById(subHeaderPortalId) : null;
+  // Lock horizontal tab swipe when viewing profile or social wall
+  useEffect(() => {
+    if (isActive) {
+      window.dispatchEvent(new CustomEvent('set-tab-swipe-lock', { detail: { locked: true } }));
+    }
+    return () => {
+      window.dispatchEvent(new CustomEvent('set-tab-swipe-lock', { detail: { locked: false } }));
+    };
+  }, [isActive]);
 
   
   const isBanned = (featureSettings.bannedUsers || []).includes(userProfile.uid);
@@ -563,12 +570,17 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         updatedAt: new Date().toISOString()
       };
 
+      if (editPhotoURL.trim()) {
+        updateData.photoURL = editPhotoURL.trim();
+        updateData.photoSyncToken = Date.now().toString();
+      } else if (userProfile.photoURL && !editPhotoURL.trim()) {
+        updateData.photoURL = '';
+        updateData.photoSyncToken = Date.now().toString();
+      }
+
       if (isQuickAccount) {
         if (editEmail.trim()) {
           updateData.email = editEmail.trim();
-        }
-        if (editPhotoURL.trim()) {
-          updateData.photoURL = editPhotoURL.trim();
         }
       }
 
@@ -799,29 +811,246 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
 
   return (
     <div className="w-full p-0 lg:p-4">
+      {/* Mobile Header */}
+      {activeSubTab === 'profile' ? (
+        <>
+          {/* Transparent gradient mobile header for Profile */}
+          <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 h-[54px] bg-gradient-to-b from-black/90 via-black/45 to-transparent text-white pointer-events-auto transition-colors">
+            <div className="flex items-center">
+              {onBack && (
+                <button 
+                  type="button"
+                  onClick={onBack}
+                  className="p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-md flex items-center justify-center"
+                  title="Quay về Workspace"
+                >
+                  <ArrowLeft size={22} className="stroke-[2.5]" />
+                </button>
+              )}
+            </div>
+
+            {/* Action buttons: Search + Edit (if owner) */}
+            <div className="flex items-center gap-2 shrink-0">
+              <AnimatePresence>
+                {isMobileSearchOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, width: 0 }}
+                    animate={{ opacity: 1, width: 'auto' }}
+                    exit={{ opacity: 0, width: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/70" size={13} />
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Tìm kiếm..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-8 pr-7 py-1.5 rounded-xl border border-white/20 bg-black/40 text-white placeholder-white/60 focus:ring-1 focus:ring-primary text-[11px] font-bold w-32 sm:w-44 outline-none backdrop-blur-md"
+                      />
+                      {searchTerm && (
+                        <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white cursor-pointer">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <button
+                type="button"
+                onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+                className="p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-md flex items-center justify-center"
+                title="Tìm kiếm"
+              >
+                <Search size={20} className={cn("stroke-[2.5] transition-transform duration-300", isMobileSearchOpen && "rotate-90 text-primary")} />
+              </button>
+
+              {selectedProfile.uid === userProfile.uid && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(true)}
+                  className="p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-md flex items-center justify-center"
+                  title="Chỉnh sửa thông tin cá nhân"
+                >
+                  <Pencil size={20} className="stroke-[2.5]" />
+                </button>
+              )}
+
+              <button
+                id="mobile-profile-settings-btn"
+                type="button"
+                onClick={() => {
+                  if (onOpenSettings) {
+                    onOpenSettings();
+                  } else {
+                    window.dispatchEvent(new CustomEvent('open-settings'));
+                  }
+                }}
+                className="p-1 text-white hover:text-white/80 active:scale-90 transition-transform cursor-pointer drop-shadow-md flex items-center justify-center"
+                title="Cài đặt"
+              >
+                <Settings size={20} className="stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Profile Cover Banner (Starts flush at top edge of screen) */}
+          <div className="lg:hidden relative w-full overflow-hidden mb-6 -mt-[54px]">
+            <div className="w-full h-44 sm:h-52 relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 shadow-md">
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/30 via-indigo-500/15 to-transparent" />
+              <div className="absolute inset-0 bg-black/25" />
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+            </div>
+
+            {/* Avatar & Basic Info Overlapping on Mobile */}
+            <div className="px-4 -mt-12 sm:-mt-14 relative z-10">
+              <div className="flex items-end justify-between gap-3">
+                <div className="relative">
+                  <div className={cn(
+                    "w-24 h-24 sm:w-28 sm:h-28 rounded-[28px] border-4 flex items-center justify-center overflow-hidden shadow-2xl transition-colors",
+                    isDarkMode ? "bg-slate-800 border-slate-950" : "bg-slate-100 border-white shadow-slate-300/50"
+                  )}>
+                    {selectedProfile.photoURL ? (
+                      <img 
+                        src={getBustedPhotoURL(selectedProfile.photoURL, selectedProfile.photoSyncToken)} 
+                        alt={selectedProfile.displayName} 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <User size={48} className={cn("transition-colors", isDarkMode ? "text-slate-700" : "text-slate-200")} />
+                    )}
+                  </div>
+                  {selectedProfile.role === 'admin' && (
+                    <div className="absolute -bottom-1.5 -right-1.5 p-1.5 bg-primary text-white rounded-xl shadow-lg border-2 border-white dark:border-slate-900">
+                      <Shield size={16} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Display Name & Info */}
+              <div className="mt-3">
+                <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                  {selectedProfile.displayName}
+                </h3>
+                <p className="text-xs font-bold text-primary uppercase tracking-wider mt-0.5">
+                  {selectedProfile.title || 'Thành viên'}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                    isDarkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-slate-100 border border-slate-200 text-slate-700"
+                  )}>
+                    <BadgeCheck size={12} className="text-emerald-500" />
+                    {selectedProfile.department || 'Chưa cập nhật'}
+                  </span>
+                  {selectedProfile.specialty && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                      isDarkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-slate-100 border border-slate-200 text-slate-700"
+                    )}>
+                      <GraduationCap size={12} className="text-indigo-400" />
+                      {selectedProfile.specialty}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className={cn(
+          "lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-2.5 border-b backdrop-blur-md min-h-[54px] mb-3 transition-colors",
+          isDarkMode ? "bg-slate-950/95 border-slate-800 text-white" : "bg-white/95 border-slate-100 text-slate-900 shadow-xs"
+        )}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {onBack && (
+              <button 
+                type="button"
+                onClick={onBack}
+                className={cn(
+                  "p-2 rounded-xl border transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center shadow-xs",
+                  isDarkMode 
+                    ? "bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800" 
+                    : "bg-slate-50 border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+                )}
+                title="Quay về Workspace"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h2 className="text-sm font-black tracking-tight truncate">Mạng xã hội</h2>
+              <p className="font-bold text-[10px] text-slate-400 truncate">Bản tin y tế nội bộ</p>
+            </div>
+          </div>
+
+          {/* Action buttons: Mobile Search */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <AnimatePresence>
+              {isMobileSearchOpen && (
+                <motion.div
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Tìm kiếm..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className={cn(
+                        "pl-8 pr-3 py-1.5 rounded-xl border-none focus:ring-1 focus:ring-primary text-[11px] font-bold w-36 sm:w-48 outline-none",
+                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
+                      )}
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer">
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <button
+              type="button"
+              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+              className={cn(
+                "p-2 rounded-xl transition-all shrink-0 cursor-pointer",
+                isMobileSearchOpen
+                  ? "bg-primary text-white shadow-lg shadow-primary/20"
+                  : (isDarkMode ? "bg-slate-900 border border-slate-800 text-slate-400 hover:text-white" : "bg-slate-50 border border-slate-200 text-slate-500 shadow-xs")
+              )}
+              title="Tìm kiếm"
+            >
+              <Search size={16} className={cn("transition-transform duration-300", isMobileSearchOpen && "rotate-90")} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Desktop Header */}
       <div className="hidden lg:flex items-center justify-between gap-8 mb-8">
         <div className="flex items-center gap-4">
-          {onBack && (
-            <button 
-              onClick={onBack}
-              className="p-2 rounded-xl transition-colors lg:hidden hover:bg-slate-100 text-slate-500"
-            >
-              <ArrowLeft size={20} />
-            </button>
-          )}
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-all bg-indigo-50 border border-indigo-100">
-              <MessageSquare size={24} style={{ color: '#000000' }} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-slate-900">
-                {activeSubTab === 'feed' ? 'Mạng xã hội' : (selectedProfile.uid === userProfile.uid ? 'Trang cá nhân' : 'Hồ sơ đồng nghiệp')}
-              </h2>
-              <p className="font-bold text-[10px] uppercase tracking-[0.2em] text-slate-400">
-                {activeSubTab === 'feed' ? 'Bản tin y tế nội bộ' : (selectedProfile.uid === userProfile.uid ? userProfile.displayName : selectedProfile.displayName)}
-              </p>
-            </div>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-all bg-indigo-50 border border-indigo-100">
+            <MessageSquare size={24} style={{ color: '#000000' }} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-slate-900">
+              {activeSubTab === 'feed' ? 'Mạng xã hội' : (selectedProfile.uid === userProfile.uid ? 'Trang cá nhân' : 'Hồ sơ đồng nghiệp')}
+            </h2>
+            <p className="font-bold text-[10px] uppercase tracking-[0.2em] text-slate-400">
+              {activeSubTab === 'feed' ? 'Bản tin y tế nội bộ' : (selectedProfile.uid === userProfile.uid ? userProfile.displayName : selectedProfile.displayName)}
+            </p>
           </div>
         </div>
 
@@ -853,57 +1082,6 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
           )}
         </div>
       </div>
-
-      {/* Mobile Search Portal → Sub Header - live lookup prevents stale node references */}
-      {(() => {
-        const portalNode = getPortalNode();
-        return portalNode ? createPortal(
-          <div className="flex items-center gap-2 w-full justify-end">
-            <AnimatePresence>
-              {isMobileSearchOpen && (
-                <motion.div
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder="Tìm kiếm..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className={cn(
-                        "pl-8 pr-3 py-1.5 rounded-xl border-none focus:ring-1 focus:ring-primary text-[11px] font-bold w-36 sm:w-48 outline-none",
-                        isDarkMode ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-900"
-                      )}
-                    />
-                    {searchTerm && (
-                      <button onClick={() => setSearchTerm('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <button
-              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-              className={cn(
-                "p-2 rounded-xl transition-all shrink-0",
-                isMobileSearchOpen
-                  ? "bg-primary text-white shadow-lg shadow-primary/20"
-                  : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-50 text-slate-500 border border-slate-100")
-              )}
-            >
-              <Search size={16} className={cn("transition-transform duration-300", isMobileSearchOpen && "rotate-90")} />
-            </button>
-          </div>,
-          portalNode
-        ) : null;
-      })()}
 
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -939,7 +1117,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                 exit={{ opacity: 0, y: -20 }}
                 className="grid grid-cols-1 lg:grid-cols-3 gap-8"
               >
-                <div className={cn("space-y-6", isMobileSearchOpen && "hidden lg:block")}>
+                <div className="space-y-6 hidden lg:block">
                   <div className={cn(
                     "p-8 rounded-[32px] border flex flex-col items-center text-center relative overflow-hidden",
                     isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
@@ -986,7 +1164,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                   <div className="lg:col-span-2 space-y-6">
                     {(selectedProfile.uid === userProfile.uid && isEditingProfile && !isMobileSearchOpen) ? (
                     <div className={cn(
-                      "p-8 rounded-[32px] border",
+                      "hidden lg:block p-5 sm:p-8 rounded-3xl lg:rounded-[32px] border mx-3.5 lg:mx-0",
                       isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
                     )}>
                       <div className="flex items-center justify-between mb-8">
@@ -995,51 +1173,50 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                           <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Cập nhật thông tin cá nhân của bạn</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {isQuickAccount ? (
+                          <button
+                            type="button"
+                            onClick={() => setShowAvatarInput(!showAvatarInput)}
+                            className={cn(
+                              "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                              showAvatarInput 
+                                ? "bg-primary text-white shadow-md shadow-primary/20" 
+                                : (isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100")
+                            )}
+                            title="Thay đổi ảnh đại diện qua link URL"
+                          >
+                            <Pencil size={14} />
+                            {showAvatarInput ? 'Đóng nhập URL' : 'Sửa Avatar qua URL'}
+                          </button>
+
+                          {!isQuickAccount && onSyncProfile && (
                             <button
                               type="button"
-                              onClick={() => setShowAvatarInput(!showAvatarInput)}
+                              onClick={async () => {
+                                setSaveLoading(true);
+                                await onSyncProfile();
+                                setSaveLoading(false);
+                              }}
+                              disabled={saveLoading}
                               className={cn(
-                                "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
-                                showAvatarInput 
-                                  ? "bg-primary text-white shadow-md shadow-primary/20" 
-                                  : (isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100")
+                                "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                                isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
                               )}
-                              title="Thay đổi ảnh đại diện qua URL"
+                              title="Cập nhật tên và ảnh từ tài khoản Google"
                             >
-                              <Pencil size={14} />
-                              Sửa Avatar
+                              <Globe size={14} />
+                              Làm mới từ Google
                             </button>
-                          ) : (
-                            onSyncProfile && (
-                              <button
-                                onClick={async () => {
-                                  setSaveLoading(true);
-                                  await onSyncProfile();
-                                  setSaveLoading(false);
-                                }}
-                                disabled={saveLoading}
-                                className={cn(
-                                  "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
-                                  isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
-                                )}
-                                title="Cập nhật tên và ảnh từ tài khoản Google"
-                              >
-                                <Globe size={14} />
-                                Làm mới từ Google
-                              </button>
-                            )
                           )}
                           <button 
                             onClick={() => setIsEditingProfile(false)}
-                            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
+                            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors cursor-pointer"
                           >
                             <X size={20} />
                           </button>
                         </div>
                       </div>
                       
-                      {isQuickAccount && showAvatarInput && (
+                      {showAvatarInput && (
                         <div className="mb-8 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 space-y-2 animate-in fade-in duration-200">
                           <label className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
                             <ImageIcon size={14} /> Link (URL) Ảnh đại diện mới
@@ -1351,7 +1528,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                     </div>
                   ) : (
                     <div className={cn(
-                      "p-8 rounded-[32px] border relative",
+                      "p-5 sm:p-8 rounded-3xl lg:rounded-[32px] border relative mx-3.5 lg:mx-0",
                       isMobileSearchOpen && "hidden lg:block",
                       isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100 shadow-sm"
                     )}>
@@ -1359,7 +1536,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                         <button 
                           onClick={() => setIsEditingProfile(true)}
                           className={cn(
-                            "absolute top-6 right-6 p-3 rounded-2xl transition-all shadow-sm flex items-center gap-2 text-xs font-black uppercase tracking-wider",
+                            "hidden lg:flex absolute top-6 right-6 p-3 rounded-2xl transition-all shadow-sm items-center gap-2 text-xs font-black uppercase tracking-wider",
                             isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-50 text-slate-600 hover:bg-slate-100 whitespace-nowrap"
                           )}
                         >
@@ -1368,7 +1545,7 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
                         </button>
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-1">
+                        <div className="space-y-1 hidden lg:block">
                           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 font-mono">Thông tin cơ bản</h4>
                           <div className="space-y-5">
                             <div>
@@ -1631,6 +1808,390 @@ const SocialWall: React.FC<SocialWallProps> = ({ userProfile, setUserProfile, is
         type="warning"
         isDarkMode={isDarkMode}
       />
+
+      {/* Mobile Slide-in Edit Profile Drawer (Right-to-Left) */}
+      <AnimatePresence>
+        {isEditingProfile && selectedProfile.uid === userProfile.uid && (
+          <div className="lg:hidden fixed inset-0 z-50 overflow-hidden flex justify-end">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsEditingProfile(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+            />
+            {/* Slide-over panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+              className={cn(
+                "relative w-full max-w-md h-full flex flex-col shadow-2xl z-10",
+                isDarkMode ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-900"
+              )}
+            >
+              {/* Drawer Header */}
+              <div className={cn(
+                "h-[54px] flex items-center px-4 border-b shrink-0 backdrop-blur-md sticky top-0 z-20 gap-2.5",
+                isDarkMode ? "bg-slate-900/95 border-slate-800 text-white" : "bg-white/95 border-slate-200 text-slate-900 shadow-xs"
+              )}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className={cn(
+                    "p-1.5 -ml-1 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center shrink-0",
+                    isDarkMode 
+                      ? "text-slate-300 hover:text-white hover:bg-slate-800/60" 
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                  )}
+                  title="Quay lại"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black tracking-tight truncate">Chỉnh sửa trang cá nhân</h3>
+                </div>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {/* Avatar edit / Sync from Google */}
+                <div className={cn(
+                  "p-4 rounded-2xl border",
+                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-xs"
+                )}>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-slate-800 flex items-center justify-center shrink-0 border border-slate-700 shadow-xs">
+                        {editPhotoURL.trim() ? (
+                          <img 
+                            src={editPhotoURL.trim()} 
+                            alt="Avatar" 
+                            className="w-full h-full object-cover" 
+                            onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                          />
+                        ) : (
+                          <User size={22} className="text-slate-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold truncate">Ảnh đại diện</p>
+                        <p className="text-[10px] text-slate-500 truncate">Nhập URL hoặc đồng bộ</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowAvatarInput(!showAvatarInput)}
+                        className={cn(
+                          "px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer",
+                          showAvatarInput 
+                            ? "bg-primary text-white shadow-xs" 
+                            : (isDarkMode ? "bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100")
+                        )}
+                      >
+                        <Pencil size={11} />
+                        {showAvatarInput ? 'Đóng' : 'Đổi ảnh'}
+                      </button>
+
+                      {!isQuickAccount && onSyncProfile && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSaveLoading(true);
+                            await onSyncProfile();
+                            setSaveLoading(false);
+                          }}
+                          disabled={saveLoading}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer",
+                            isDarkMode ? "bg-slate-800 text-slate-300 hover:text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          )}
+                          title="Làm mới avatar từ tài khoản Google"
+                        >
+                          {saveLoading ? <Loader2 size={11} className="animate-spin" /> : <Globe size={11} />}
+                          Google
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {showAvatarInput && (
+                    <div className="space-y-2 pt-2.5 border-t border-slate-800 animate-in fade-in duration-200">
+                      <label className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                        <ImageIcon size={12} /> Link (URL) ảnh đại diện trực tiếp
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="url"
+                          placeholder="https://... URL ảnh (JPEG, PNG, WebP)..."
+                          value={editPhotoURL}
+                          onChange={(e) => setEditPhotoURL(e.target.value)}
+                          className={cn(
+                            "flex-1 px-3 py-2 rounded-xl border text-xs font-bold outline-none focus:border-primary",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                          )}
+                          autoFocus
+                        />
+                        {editPhotoURL.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditPhotoURL('')}
+                            className="p-2 rounded-xl text-slate-400 hover:text-rose-500 text-[10px] font-bold"
+                            title="Xóa link ảnh"
+                          >
+                            Xóa
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="text-[9px] text-slate-500">
+                        Dán đường dẫn ảnh bất kỳ để thay đổi avatar cá nhân.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Form fields: Basic info */}
+                <div className={cn(
+                  "p-4 rounded-2xl border space-y-3.5",
+                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-xs"
+                )}>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+                    <User size={12} /> Thông tin cá nhân
+                  </h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Họ và tên</label>
+                      <input
+                        type="text"
+                        placeholder="Nhập họ và tên..."
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      />
+                    </div>
+                    {isQuickAccount && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Email đăng nhập</label>
+                        <input
+                          type="email"
+                          placeholder="email@..."
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          className={cn(
+                            "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all",
+                            isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                          )}
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Số Zalo liên hệ</label>
+                      <input
+                        type="tel"
+                        placeholder="09xxx..."
+                        value={editZalo}
+                        onChange={(e) => setEditZalo(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form fields: Professional info */}
+                <div className={cn(
+                  "p-4 rounded-2xl border space-y-3.5",
+                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-xs"
+                )}>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+                    <Briefcase size={12} /> Thông tin chuyên môn
+                  </h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Chức danh</label>
+                      <select
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all appearance-none",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      >
+                        <option value="">Chọn chức danh...</option>
+                        {availableTitles.map((t, idx) => (
+                          <option key={`m-t-${idx}`} value={t.name}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Khoa/Phòng</label>
+                      <select
+                        value={editDepartment}
+                        onChange={(e) => setEditDepartment(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all appearance-none",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      >
+                        <option value="">Chọn khoa/phòng...</option>
+                        {availableDepartments.sort((a, b) => a.name.localeCompare(b.name)).map((d, idx) => (
+                          <option key={`m-d-${idx}`} value={d.name}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Chức vụ</label>
+                      <select
+                        value={editPosition}
+                        onChange={(e) => setEditPosition(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all appearance-none",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      >
+                        <option value="">Chọn chức vụ...</option>
+                        {availablePositions.sort((a, b) => a.name.localeCompare(b.name)).map((p, idx) => (
+                          <option key={`m-p-${idx}`} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Chuyên khoa</label>
+                      <select
+                        value={editSpecialty}
+                        onChange={(e) => setEditSpecialty(e.target.value)}
+                        className={cn(
+                          "w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold outline-none focus:border-primary transition-all appearance-none",
+                          isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                        )}
+                      >
+                        <option value="">Chọn chuyên khoa...</option>
+                        {availableSpecialties.sort((a, b) => a.name.localeCompare(b.name)).map((s, idx) => (
+                          <option key={`m-s-${idx}`} value={s.name}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Privacy section */}
+                {(() => {
+                  const hasEmailInfo = !!(editEmail?.trim() && !editEmail.trim().endsWith('@bv.local'));
+                  const hasZaloInfo = !!(editZalo?.trim());
+                  return (
+                    <div className={cn(
+                      "p-4 rounded-2xl border space-y-3",
+                      isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200 shadow-xs"
+                    )}>
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 font-mono">
+                        <Lock size={12} /> Cài đặt riêng tư
+                      </h4>
+                      <div className="space-y-2.5">
+                        <label className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border transition-all",
+                          !hasEmailInfo ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                          !hideEmail && hasEmailInfo 
+                            ? "border-primary bg-primary/5" 
+                            : (isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-100 bg-slate-50")
+                        )}>
+                          <div className="flex items-center gap-2.5">
+                            <div className={cn("p-1.5 rounded-lg", !hideEmail && hasEmailInfo ? "bg-primary text-white" : "bg-slate-800 text-slate-400")}>
+                              {!hideEmail && hasEmailInfo ? <Globe size={12} /> : <Lock size={12} />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold">Email liên hệ</p>
+                              <p className="text-[9px] text-slate-500">{!hideEmail && hasEmailInfo ? 'Công khai' : 'Đang ẩn'}</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="checkbox"
+                            disabled={!hasEmailInfo}
+                            checked={!hideEmail && hasEmailInfo}
+                            onChange={(e) => {
+                              if (!hasEmailInfo) return;
+                              if (e.target.checked) setPrivacyConfirm({ open: true, type: 'email' });
+                              else setHideEmail(true);
+                            }}
+                            className="sr-only"
+                          />
+                          <div className={cn(
+                            "w-5 h-5 rounded-md border flex items-center justify-center",
+                            !hideEmail && hasEmailInfo ? "bg-primary border-primary" : "border-slate-400"
+                          )}>
+                            {!hideEmail && hasEmailInfo && <Check size={12} className="text-white" />}
+                          </div>
+                        </label>
+
+                        <label className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border transition-all",
+                          !hasZaloInfo ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+                          !hideZalo && hasZaloInfo 
+                            ? "border-primary bg-primary/5" 
+                            : (isDarkMode ? "border-slate-800 bg-slate-900/50" : "border-slate-100 bg-slate-50")
+                        )}>
+                          <div className="flex items-center gap-2.5">
+                            <div className={cn("p-1.5 rounded-lg", !hideZalo && hasZaloInfo ? "bg-primary text-white" : "bg-slate-800 text-slate-400")}>
+                              {!hideZalo && hasZaloInfo ? <Globe size={12} /> : <Lock size={12} />}
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold">Số Zalo</p>
+                              <p className="text-[9px] text-slate-500">{!hideZalo && hasZaloInfo ? 'Công khai' : 'Đang ẩn'}</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="checkbox"
+                            disabled={!hasZaloInfo}
+                            checked={!hideZalo && hasZaloInfo}
+                            onChange={(e) => {
+                              if (!hasZaloInfo) return;
+                              if (e.target.checked) setPrivacyConfirm({ open: true, type: 'zalo' });
+                              else setHideZalo(true);
+                            }}
+                            className="sr-only"
+                          />
+                          <div className={cn(
+                            "w-5 h-5 rounded-md border flex items-center justify-center",
+                            !hideZalo && hasZaloInfo ? "bg-primary border-primary" : "border-slate-400"
+                          )}>
+                            {!hideZalo && hasZaloInfo && <Check size={12} className="text-white" />}
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Drawer Footer */}
+              <div className={cn(
+                "p-4 border-t shrink-0 flex items-center justify-center backdrop-blur-md",
+                isDarkMode ? "bg-slate-900/95 border-slate-800" : "bg-white/95 border-slate-200 shadow-lg"
+              )}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleSaveProfile();
+                  }}
+                  disabled={saveLoading}
+                  className="w-full py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-primary text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/25 active:scale-95 disabled:opacity-50 cursor-pointer mx-auto"
+                >
+                  {saveLoading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  Lưu thay đổi
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Serif:ital,opsz,wght@0,8..144,100..900;1,8..144,100..900&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", sans-serif;
   --font-manrope: "Manrope", sans-serif;
@@ -19,6 +21,7 @@
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --primary-light: #eff6ff;
+  --mobile-bottom-nav-height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 html, body {
@@ -49,6 +52,10 @@ html, body {
 .compact-text {
   font-size: 0.875rem;
   line-height: 1.25rem;
+}
+
+.custom-scrollbar {
+  scrollbar-gutter: stable;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -161,13 +168,31 @@ html, body {
   @apply text-slate-200;
 }
 
+.no-scrollbar,
 .scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 
+.no-scrollbar::-webkit-scrollbar,
 .scrollbar-hide::-webkit-scrollbar {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Force hide any scrollbars inside desktop header tabs portal during drag or overflow */
+#desktop-header-tabs-portal,
+#desktop-header-tabs-portal * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+#desktop-header-tabs-portal::-webkit-scrollbar,
+#desktop-header-tabs-portal *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 /* Hide number input arrows */

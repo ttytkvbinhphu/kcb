@@ -30,7 +30,8 @@ import {
   Bookmark,
   Compass,
   Database,
-  Smartphone
+  Smartphone,
+  BookOpen
 } from 'lucide-react';
 import { MobileNavButtonConfig, MobileBottomNavSettings } from '../types';
 
@@ -120,12 +121,15 @@ export const AVAILABLE_NAV_ICONS: { key: string; label: string; icon: any }[] = 
   { key: 'Globe', label: 'Hệ thống chung', icon: Globe },
   { key: 'HelpCircle', label: 'Trợ giúp', icon: HelpCircle },
   { key: 'Bookmark', label: 'Đánh dấu', icon: Bookmark },
-  { key: 'Compass', label: 'Khám phá', icon: Compass }
+  { key: 'Compass', label: 'Khám phá', icon: Compass },
+  { key: 'BookOpen', label: 'Dược thư / Sách y', icon: BookOpen }
 ];
 
 export const AVAILABLE_TARGET_TABS = [
   { id: 'dashboard', label: 'Workspace (Trang chủ)', group: 'Trang chính' },
   { id: 'view_directory', label: 'Tra cứu Thuốc', group: 'Tra cứu chuyên khoa' },
+  { id: 'view_national_pharmacopoeia', label: 'Tra cứu Dược thư Quốc gia', group: 'Tra cứu chuyên khoa' },
+  { id: 'view_treatment_guideline', label: 'Hướng dẫn điều trị (Bộ Y tế)', group: 'Tra cứu chuyên khoa' },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', group: 'Tra cứu chuyên khoa' },
   { id: 'view_interaction', label: 'Tương tác thuốc', group: 'Tra cứu chuyên khoa' },
   { id: 'view_adr', label: 'Tra cứu ADR', group: 'Tra cứu chuyên khoa' },
@@ -141,6 +145,8 @@ export const AVAILABLE_TARGET_TABS = [
   { id: 'view_slideshow', label: 'Slide Showcase', group: 'Tiện ích lâm sàng' },
   
   { id: 'manage_directory', label: 'Quản lý Thuốc', group: 'Quản lý Dược' },
+  { id: 'manage_national_pharmacopoeia', label: 'Quản lý Dược thư', group: 'Quản lý Dược' },
+  { id: 'manage_treatment_guidelines', label: 'Quản lý Hướng dẫn điều trị (BYT)', group: 'Quản lý Dược' },
   { id: 'manage_icd10', label: 'Quản lý ICD-10', group: 'Quản lý Dược' },
   { id: 'manage_interaction', label: 'Quản lý Tương tác thuốc', group: 'Quản lý Dược' },
   { id: 'manage_adr', label: 'Quản lý Báo cáo ADR', group: 'Quản lý Dược' },

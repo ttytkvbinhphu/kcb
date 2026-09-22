@@ -36,6 +36,7 @@ import {
   RotateCcw,
   Layers,
   Settings,
+  Bell,
   HelpCircle,
   FolderTree,
   LayoutGrid,
@@ -44,8 +45,18 @@ import {
   Check,
   ChevronUp
 } from 'lucide-react';
+import { Compass, Database } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SystemSettings, MobileNavButtonConfig, MobileBottomNavSettings } from '../types';
+import { SidebarNavSettings } from './SidebarNavSettings';
+import { 
+  ALL_SIDEBAR_DEFINITIONS, 
+  DEFAULT_SIDEBAR_GENERAL_ORDER, 
+  DEFAULT_SIDEBAR_ADMIN_ORDER, 
+  DEFAULT_SIDEBAR_DATA_ORDER, 
+  getSidebarIconComponent,
+  getSidebarItemDefinition
+} from '../lib/sidebarNavDefaults';
 import { 
   DEFAULT_MOBILE_NAV_BUTTONS, 
   DEFAULT_MOBILE_BOTTOM_NAV_SETTINGS, 
@@ -86,11 +97,23 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
   isSaving, 
   saveSuccess 
 }) => {
-  const [previewTab, setPreviewTab] = useState<'workspace' | 'login' | 'mobile_nav'>('workspace');
+  const [editorSection, setEditorSection] = useState<'sidebar' | 'mobile' | 'workspace' | 'login'>('sidebar');
+  const [simulatedSidebarCollapsed, setSimulatedSidebarCollapsed] = useState<boolean>(false);
+  const [simulatedSidebarSection, setSimulatedSidebarSection] = useState<'general' | 'admin' | 'data'>('general');
+  const [simulatedSidebarActiveTab, setSimulatedSidebarActiveTab] = useState<string>('dashboard');
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [slideProgress, setSlideProgress] = useState(0);
   const [editingButtonId, setEditingButtonId] = useState<string | null>(null);
   const [simulatedActiveButtonId, setSimulatedActiveButtonId] = useState<string>('btn_workspace');
+
+  // Preview tab directly matches the current editor section
+  const previewTab = editorSection === 'sidebar' 
+    ? 'sidebar' 
+    : editorSection === 'mobile' 
+      ? 'mobile_nav' 
+      : editorSection === 'workspace' 
+        ? 'workspace' 
+        : 'login';
 
   const currentSlideSpeed = editSettings.workspaceSlideSpeed ?? 5;
   const isAutoPlay = editSettings.workspaceSlideAutoPlay !== false;
@@ -204,12 +227,71 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
     return () => clearInterval(timer);
   }, [currentSlideSpeed, isAutoPlay]);
 
+  const handleSaveWithBroadcast = () => {
+    if (editSettings.sidebarNavOrder) {
+      window.dispatchEvent(new CustomEvent('sidebar-order-updated', {
+        detail: {
+          general: editSettings.sidebarNavOrder.general,
+          admin: editSettings.sidebarNavOrder.admin,
+          data: editSettings.sidebarNavOrder.data
+        }
+      }));
+    }
+    onSave();
+  };
+
   return (
     <div id="theme-settings-container" className="grid grid-cols-1 xl:grid-cols-12 gap-8">
       {/* Editor Panel */}
-      <div className="xl:col-span-7 space-y-8">
-        
+      <div className="xl:col-span-7 space-y-6">
+        {/* Navigation Tabs for Interface Management */}
+        <div className={cn(
+          "p-1.5 rounded-2xl border flex items-center gap-1.5 overflow-x-auto shadow-sm",
+          isDarkMode ? "bg-slate-900/90 border-slate-800" : "bg-white border-slate-200"
+        )}>
+          {[
+            { id: 'sidebar' as const, label: 'Left Sidebar (PC)', icon: Layout, desc: 'Thứ tự mục nav PC' },
+            { id: 'mobile' as const, label: 'Mobile Bottom Nav', icon: Smartphone, desc: 'Thanh điều hướng di động' },
+            { id: 'workspace' as const, label: 'Slide Workspace', icon: Monitor, desc: 'Tốc độ chuyển slide' },
+            { id: 'login' as const, label: 'Giao diện Đăng nhập', icon: LogIn, desc: 'Logo, hình nền & thẻ' },
+          ].map(tabItem => {
+            const isSelected = editorSection === tabItem.id;
+            const Icon = tabItem.icon;
+            return (
+              <button
+                key={`editor-sec-${tabItem.id}`}
+                id={`btn-editor-sec-${tabItem.id}`}
+                type="button"
+                onClick={() => {
+                  setEditorSection(tabItem.id);
+                }}
+                className={cn(
+                  "px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer shrink-0",
+                  isSelected
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                    : isDarkMode
+                      ? "text-slate-400 hover:text-white hover:bg-slate-800"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                )}
+              >
+                <Icon size={16} />
+                <span>{tabItem.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sidebar Nav Ordering Section */}
+        {editorSection === 'sidebar' && (
+          <SidebarNavSettings
+            isDarkMode={isDarkMode}
+            editSettings={editSettings}
+            setEditSettings={setEditSettings}
+          />
+        )}
+
         {/* 1. Mobile Bottom Navigation Customization Section */}
+        {editorSection === 'mobile' && (
         <div className={cn(
           "p-6 sm:p-8 rounded-[32px] border transition-all space-y-6 shadow-sm",
           isDarkMode ? "bg-slate-900/70 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/40"
@@ -643,8 +725,10 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* 2. Workspace Slide Speed Section */}
+        {editorSection === 'workspace' && (
         <div className={cn(
           "p-6 sm:p-8 rounded-[32px] border transition-all space-y-6 shadow-sm",
           isDarkMode ? "bg-slate-900/70 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/40"
@@ -805,8 +889,10 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* 3. Login Screen Customization Section */}
+        {editorSection === 'login' && (
         <div className={cn(
           "p-6 sm:p-8 rounded-[32px] border transition-all space-y-6 shadow-sm",
           isDarkMode ? "bg-slate-900/70 border-slate-800" : "bg-white border-slate-100 shadow-xl shadow-slate-200/40"
@@ -954,6 +1040,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* Save Bar */}
         <div className={cn(
@@ -978,7 +1065,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
 
           <button
             id="btn-save-theme-settings"
-            onClick={onSave}
+            onClick={handleSaveWithBroadcast}
             disabled={isSaving}
             className={cn(
               "px-8 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg cursor-pointer",
@@ -995,57 +1082,42 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
 
       {/* Live Preview Panel */}
       <div className="xl:col-span-5 space-y-4">
-        {/* Preview Selector Tabs */}
+        {/* Preview Header */}
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 ml-1">
-            Bản xem trước trực tiếp
-          </h3>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 ml-1">
+              Bản xem trước trực tiếp
+            </h3>
+          </div>
           <div className={cn(
-            "p-1 rounded-2xl flex items-center gap-1 border flex-wrap sm:flex-nowrap",
-            isDarkMode ? "bg-slate-800/80 border-slate-700" : "bg-slate-100 border-slate-200"
+            "px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 shadow-sm",
+            isDarkMode ? "bg-slate-900/80 border-slate-800 text-slate-300" : "bg-white border-slate-200 text-slate-700"
           )}>
-            <button
-              id="preview-tab-mobile-nav"
-              type="button"
-              onClick={() => setPreviewTab('mobile_nav')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
-                previewTab === 'mobile_nav'
-                  ? (isDarkMode ? "bg-slate-900 text-white shadow-sm" : "bg-white text-blue-600 shadow-sm")
-                  : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800")
-              )}
-            >
-              <Smartphone size={14} />
-              Mobile Nav
-            </button>
-            <button
-              id="preview-tab-workspace"
-              type="button"
-              onClick={() => setPreviewTab('workspace')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
-                previewTab === 'workspace'
-                  ? (isDarkMode ? "bg-slate-900 text-white shadow-sm" : "bg-white text-blue-600 shadow-sm")
-                  : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800")
-              )}
-            >
-              <Monitor size={14} />
-              Slide Workspace
-            </button>
-            <button
-              id="preview-tab-login"
-              type="button"
-              onClick={() => setPreviewTab('login')}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer",
-                previewTab === 'login'
-                  ? (isDarkMode ? "bg-slate-900 text-white shadow-sm" : "bg-white text-blue-600 shadow-sm")
-                  : (isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800")
-              )}
-            >
-              <LogIn size={14} />
-              Đăng nhập
-            </button>
+            {editorSection === 'sidebar' && (
+              <>
+                <Layout size={14} className="text-blue-500" />
+                <span>Left Sidebar (PC)</span>
+              </>
+            )}
+            {editorSection === 'mobile' && (
+              <>
+                <Smartphone size={14} className="text-blue-500" />
+                <span>Mobile Bottom Nav</span>
+              </>
+            )}
+            {editorSection === 'workspace' && (
+              <>
+                <Monitor size={14} className="text-blue-500" />
+                <span>Slide Workspace</span>
+              </>
+            )}
+            {editorSection === 'login' && (
+              <>
+                <LogIn size={14} className="text-blue-500" />
+                <span>Giao diện Đăng nhập</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -1054,7 +1126,291 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           "relative w-full rounded-[36px] overflow-hidden border-4 sm:border-8 border-slate-900/5 shadow-2xl transition-all p-4",
           isDarkMode ? "bg-slate-950 border-slate-800/50" : "bg-slate-100 border-slate-200"
         )}>
-          {previewTab === 'mobile_nav' ? (
+          {previewTab === 'sidebar' ? (
+            /* Left Sidebar Interactive Live Simulator */
+            <div className="space-y-3 py-1">
+              {/* Preview Controls Bar */}
+              <div className={cn(
+                "p-3 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 text-xs",
+                isDarkMode ? "bg-slate-900/80 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+              )}>
+                {/* Left: Section switcher */}
+                <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
+                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1 shrink-0">Phân hệ:</span>
+                  {[
+                    { id: 'general' as const, label: 'Thành viên', icon: Compass },
+                    { id: 'admin' as const, label: 'AdminCP', icon: ShieldCheck },
+                    { id: 'data' as const, label: 'Dữ liệu', icon: Database },
+                  ].map(sec => {
+                    const isSecActive = simulatedSidebarSection === sec.id;
+                    const SecIcon = sec.icon;
+                    return (
+                      <button
+                        key={`sim-sec-${sec.id}`}
+                        type="button"
+                        onClick={() => {
+                          setSimulatedSidebarSection(sec.id);
+                          const order = sec.id === 'admin' 
+                            ? (editSettings.sidebarNavOrder?.admin || DEFAULT_SIDEBAR_ADMIN_ORDER)
+                            : sec.id === 'data'
+                              ? (editSettings.sidebarNavOrder?.data || DEFAULT_SIDEBAR_DATA_ORDER)
+                              : (editSettings.sidebarNavOrder?.general || DEFAULT_SIDEBAR_GENERAL_ORDER);
+                          if (order && order.length > 0) {
+                            setSimulatedSidebarActiveTab(order[0]);
+                          }
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shrink-0",
+                          isSecActive
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : isDarkMode ? "bg-slate-800 text-slate-300 hover:text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        )}
+                      >
+                        <SecIcon size={12} />
+                        <span>{sec.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Right: Expand / Collapse toggle */}
+                <button
+                  type="button"
+                  onClick={() => setSimulatedSidebarCollapsed(!simulatedSidebarCollapsed)}
+                  className={cn(
+                    "px-3 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 self-end sm:self-center",
+                    simulatedSidebarCollapsed
+                      ? (isDarkMode ? "bg-blue-900/40 text-blue-300 border-blue-500/40" : "bg-blue-50 text-blue-700 border-blue-200")
+                      : (isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200")
+                  )}
+                  title="Chuyển đổi trạng thái thu gọn / mở rộng"
+                >
+                  <Layout size={13} />
+                  <span>{simulatedSidebarCollapsed ? 'Thu gọn (72px)' : 'Mở rộng (220px)'}</span>
+                </button>
+              </div>
+
+              {/* Simulated PC Layout Container */}
+              <div className={cn(
+                "rounded-2xl border overflow-hidden flex min-h-[460px] max-h-[560px] transition-all shadow-inner",
+                isDarkMode ? "bg-slate-950 border-slate-800" : "bg-slate-50 border-slate-200"
+              )}>
+                {/* Left Sidebar simulator */}
+                <div className={cn(
+                  "border-r flex flex-col justify-between transition-all shrink-0 select-none py-3",
+                  simulatedSidebarCollapsed ? "w-[72px] items-center px-1" : "w-[210px] sm:w-[230px] px-3",
+                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
+                )}>
+                  {/* Top Profile / Brand */}
+                  <div className="w-full mb-3">
+                    {simulatedSidebarCollapsed ? (
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="relative w-12 h-12 rounded-full ring-2 ring-blue-500 p-0.5 bg-white dark:bg-slate-800 shadow-md">
+                          <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-sm">
+                            BS
+                          </div>
+                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full"></span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={cn(
+                        "p-2.5 rounded-2xl border flex items-center gap-2.5",
+                        isDarkMode ? "bg-slate-800/60 border-slate-700/80" : "bg-slate-50 border-slate-200"
+                      )}>
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-xs shrink-0 shadow-sm">
+                          BS
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("text-xs font-black truncate", isDarkMode ? "text-white" : "text-slate-900")}>
+                            Bác sĩ Điều trị
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium truncate">
+                            {simulatedSidebarSection === 'admin' ? 'Quản trị viên' : 'Khoa Nội Tổng hợp'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nav list with designed custom order */}
+                  <div className={cn(
+                    "flex-1 overflow-y-auto space-y-1 w-full pr-0.5",
+                    simulatedSidebarCollapsed ? "space-y-2 flex flex-col items-center" : ""
+                  )}>
+                    {(() => {
+                      const orderList = simulatedSidebarSection === 'admin'
+                        ? (editSettings.sidebarNavOrder?.admin || DEFAULT_SIDEBAR_ADMIN_ORDER)
+                        : simulatedSidebarSection === 'data'
+                          ? (editSettings.sidebarNavOrder?.data || DEFAULT_SIDEBAR_DATA_ORDER)
+                          : (editSettings.sidebarNavOrder?.general || DEFAULT_SIDEBAR_GENERAL_ORDER);
+
+                      return orderList.map((itemId, idx) => {
+                        const def = getSidebarItemDefinition(itemId);
+                        const IconComponent = getSidebarIconComponent(def.iconName);
+                        const isActive = simulatedSidebarActiveTab === itemId;
+
+                        if (simulatedSidebarCollapsed) {
+                          return (
+                            <button
+                              key={`sim-collapsed-${itemId}`}
+                              type="button"
+                              onClick={() => setSimulatedSidebarActiveTab(itemId)}
+                              title={`#${idx + 1}: ${def.defaultLabel}`}
+                              className={cn(
+                                "w-full min-h-[54px] py-1 px-1 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer relative text-center",
+                                isActive
+                                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/30 font-bold"
+                                  : isDarkMode
+                                    ? "text-slate-400 hover:text-white hover:bg-slate-800"
+                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                              )}
+                            >
+                              <div className="relative mb-0.5 shrink-0 flex items-center justify-center">
+                                <IconComponent size={17} />
+                                {idx < 3 && (
+                                  <span className={cn(
+                                    "absolute -top-1 -right-1.5 w-3 h-3 rounded-full text-[7.5px] font-black flex items-center justify-center shadow-xs",
+                                    isActive ? "bg-amber-400 text-slate-950" : "bg-slate-600 text-white"
+                                  )}>
+                                    {idx + 1}
+                                  </span>
+                                )}
+                              </div>
+                              <span className={cn(
+                                "text-[9px] leading-[11px] font-semibold text-center line-clamp-2 break-words max-w-[62px] tracking-tight",
+                                isActive ? "text-white font-bold" : isDarkMode ? "text-slate-300" : "text-slate-600"
+                              )}>
+                                {def.defaultLabel}
+                              </span>
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <button
+                            key={`sim-expanded-${itemId}`}
+                            type="button"
+                            onClick={() => setSimulatedSidebarActiveTab(itemId)}
+                            className={cn(
+                              "w-full px-2.5 py-2 rounded-xl text-left text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer group",
+                              isActive
+                                ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                                : isDarkMode
+                                  ? "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                                  : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                            )}
+                          >
+                            <span className={cn(
+                              "text-[9px] font-black w-4 text-center shrink-0 opacity-60",
+                              isActive ? "text-white" : "text-slate-400"
+                            )}>
+                              #{idx + 1}
+                            </span>
+                            <IconComponent size={16} className={cn("shrink-0", isActive ? "text-white" : "text-blue-500")} />
+                            <span className="truncate flex-1 font-medium">{def.defaultLabel}</span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* Bottom Footer in Simulator */}
+                  <div className="w-full pt-2.5 mt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+                    {simulatedSidebarCollapsed ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer relative" title="Có gì mới v1.0.0">
+                          <Sparkles size={17} />
+                          <span className="absolute -bottom-1 font-mono text-[8px] font-black px-1 rounded-sm bg-blue-600 text-white tracking-tighter">
+                            v1.0
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={cn(
+                        "p-2 rounded-xl flex items-center justify-between text-[11px]",
+                        isDarkMode ? "bg-slate-800/40 text-slate-400" : "bg-slate-100 text-slate-600"
+                      )}>
+                        <span className="flex items-center gap-1 font-medium">
+                          <Sparkles size={12} className="text-amber-500" />
+                          Phiên bản
+                        </span>
+                        <span className="font-mono font-black text-blue-600 dark:text-blue-400">
+                          v1.0.0
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right content view simulator */}
+                <div className="flex-1 p-5 flex flex-col justify-between overflow-y-auto">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                          Mô phỏng Giao diện PC
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {simulatedSidebarCollapsed ? 'Chế độ thu gọn (68px)' : 'Chế độ mở rộng'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                        <CheckCircle2 size={12} />
+                        Thứ tự tùy chỉnh
+                      </span>
+                    </div>
+
+                    {/* Active simulated tab header */}
+                    <div className={cn(
+                      "p-4 rounded-2xl border transition-all space-y-1.5",
+                      isDarkMode ? "bg-slate-900/60 border-slate-800" : "bg-white border-slate-200 shadow-sm"
+                    )}>
+                      {(() => {
+                        const activeDef = getSidebarItemDefinition(simulatedSidebarActiveTab);
+                        const ActiveIcon = getSidebarIconComponent(activeDef.iconName);
+                        return (
+                          <>
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 shrink-0">
+                                <ActiveIcon size={20} />
+                              </div>
+                              <div>
+                                <h4 className={cn("text-sm font-black", isDarkMode ? "text-white" : "text-slate-900")}>
+                                  {activeDef.defaultLabel}
+                                </h4>
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                  Phân loại: {activeDef.category}
+                                </p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-slate-500 font-medium pt-1">
+                              {activeDef.description}
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Quick helper tip */}
+                    <div className={cn(
+                      "p-3 rounded-xl border text-[11px] font-medium flex items-center gap-2",
+                      isDarkMode ? "bg-slate-900/40 border-slate-800 text-slate-400" : "bg-white border-slate-200 text-slate-600"
+                    )}>
+                      <Sliders size={14} className="text-blue-500 shrink-0" />
+                      <span>Nhấp vào bất kỳ nút nào trên thanh Left Sidebar bên trái để kiểm tra thứ tự thực tế.</span>
+                    </div>
+                  </div>
+
+                  <div className={cn(
+                    "p-3 rounded-xl border text-center text-[11px] font-medium mt-4",
+                    isDarkMode ? "bg-blue-900/10 border-blue-800/30 text-blue-300" : "bg-blue-50 border-blue-200/60 text-blue-700"
+                  )}>
+                    Thứ tự trên thanh Left Sidebar sẽ được áp dụng ngay lập tức khi bạn nhấn <strong>"Lưu cấu hình"</strong>.
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : previewTab === 'mobile_nav' ? (
             /* Mobile Bottom Nav Interactive Live Simulator */
             <div className="space-y-3 py-1">
               {/* Simulated Phone Top Bar */}
@@ -1154,7 +1510,7 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                         type="button"
                         onClick={() => setSimulatedActiveButtonId(btn.id)}
                         className={cn(
-                          "flex-1 flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all relative cursor-pointer",
+                          "flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative cursor-pointer",
                           isSimActive 
                             ? cn("font-black scale-105", highlightObj.textClass)
                             : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
@@ -1169,13 +1525,63 @@ const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                           <IconComp size={18} strokeWidth={isSimActive ? 2.5 : 2} />
                         </div>
                         {isLabelVisible && (
-                          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap truncate max-w-[56px]">
+                          <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap truncate max-w-full px-0.5">
                             {btn.label}
                           </span>
                         )}
                       </button>
                     );
                   })}
+
+                  {/* Simulated Notifications & Settings Buttons */}
+                  <button
+                    type="button"
+                    onClick={() => setSimulatedActiveButtonId('sim_notif')}
+                    className={cn(
+                      "flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative cursor-pointer",
+                      simulatedActiveButtonId === 'sim_notif'
+                        ? "text-blue-500 font-black"
+                        : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
+                    )}
+                    title="Thông báo"
+                  >
+                    <div className={cn(
+                      "p-1.5 rounded-xl transition-all relative",
+                      isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
+                    )}>
+                      <Bell size={18} strokeWidth={2} />
+                      <span className="absolute 0 top-0.5 right-0.5 w-2 h-2 bg-rose-500 rounded-full ring-1 ring-white dark:ring-slate-900" />
+                    </div>
+                    {(navSettings.showLabels || 'always') === 'always' && (
+                      <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap truncate max-w-full px-0.5">
+                        Thông báo
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSimulatedActiveButtonId('sim_settings')}
+                    className={cn(
+                      "flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative cursor-pointer",
+                      simulatedActiveButtonId === 'sim_settings'
+                        ? "text-blue-500 font-black"
+                        : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
+                    )}
+                    title="Cài đặt"
+                  >
+                    <div className={cn(
+                      "p-1.5 rounded-xl transition-all",
+                      isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100"
+                    )}>
+                      <Settings size={18} strokeWidth={2} />
+                    </div>
+                    {(navSettings.showLabels || 'always') === 'always' && (
+                      <span className="text-[9px] tracking-tight mt-0.5 whitespace-nowrap truncate max-w-full px-0.5">
+                        Cài đặt
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
 

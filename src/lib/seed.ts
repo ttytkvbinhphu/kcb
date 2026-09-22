@@ -187,9 +187,9 @@ export const seedInitialData = async (userId?: string) => {
     
     // Ensure specialized operator roles have permissions even if collection is not empty
     const requiredRolePerms = [
-      { roleId: 'admin', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_users', 'manage_staff', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'manage_config', 'view_doc_lookup', 'manage_doc_lookup'] },
-      { roleId: 'operator_doctor', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
-      { roleId: 'operator_pharmacist', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_directory', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'admin', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_users', 'manage_staff', 'manage_directory', 'manage_national_pharmacopoeia', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'manage_config', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'operator_doctor', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_national_pharmacopoeia', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
+      { roleId: 'operator_pharmacist', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'manage_directory', 'manage_national_pharmacopoeia', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_patients', 'view_doc_lookup', 'manage_doc_lookup'] },
       { roleId: 'member', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_patients', 'view_doc_lookup'] },
       { roleId: 'unapproved', allowedTabs: [] }
     ];
@@ -221,15 +221,15 @@ export const seedInitialData = async (userId?: string) => {
     const titlePermsSnap = await getDocs(query(titlePermsRef, limit(1)));
     if (titlePermsSnap.empty) {
       const defaultTitlePerms = [
-        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
-        { titleId: 'Dược sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
-        { titleId: 'Điều dưỡng', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_icd10', 'view_interaction', 'view_patients', 'view_doc_lookup'] }
+        { titleId: 'Bác sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_prescription', 'view_directory', 'view_national_pharmacopoeia', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
+        { titleId: 'Dược sĩ', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_national_pharmacopoeia', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_doc_lookup'] },
+        { titleId: 'Điều dưỡng', allowedTabs: ['dashboard', 'view_calendar', 'view_notes', 'view_directory', 'view_national_pharmacopoeia', 'view_icd10', 'view_interaction', 'view_patients', 'view_doc_lookup'] }
       ];
       for (const perm of defaultTitlePerms) {
         await setDoc(doc(db, 'title_permissions', perm.titleId), perm);
       }
     } else {
-      // Migration: Ensure view_patients and view_doc_lookup are added to existing title permissions
+      // Migration: Ensure view_patients, view_doc_lookup, and view_national_pharmacopoeia are added to existing title permissions
       const defaultTitleIds = ['Bác sĩ', 'Dược sĩ', 'Điều dưỡng'];
       for (const titleId of defaultTitleIds) {
         const permDoc = doc(db, 'title_permissions', titleId);
@@ -246,6 +246,10 @@ export const seedInitialData = async (userId?: string) => {
           }
           if (!newTabs.includes('view_doc_lookup')) {
             newTabs.push('view_doc_lookup');
+            updated = true;
+          }
+          if (!newTabs.includes('view_national_pharmacopoeia')) {
+            newTabs.push('view_national_pharmacopoeia');
             updated = true;
           }
           
@@ -400,6 +404,33 @@ export const seedInitialData = async (userId?: string) => {
           category: d.category,
           text: d.text,
           createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    // Seed treatment_groups (Bộ Y tế)
+    const { DEFAULT_TREATMENT_GROUPS, INITIAL_TREATMENT_GUIDELINES } = await import('./treatmentSeedData');
+    const grpsRef = collection(db, 'treatment_groups');
+    const grpsSnap = await getDocs(query(grpsRef, limit(1)));
+    if (grpsSnap.empty) {
+      for (const g of DEFAULT_TREATMENT_GROUPS) {
+        await setDoc(doc(db, 'treatment_groups', g.id), {
+          ...g,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    // Seed treatment_guidelines (Bộ Y tế)
+    const guidesRef = collection(db, 'treatment_guidelines');
+    const guidesSnap = await getDocs(query(guidesRef, limit(1)));
+    if (guidesSnap.empty) {
+      for (const item of INITIAL_TREATMENT_GUIDELINES) {
+        await setDoc(doc(db, 'treatment_guidelines', item.id), {
+          ...item,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });

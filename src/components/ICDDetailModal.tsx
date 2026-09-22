@@ -8,6 +8,7 @@ interface ICDDetailModalProps {
   onClose: () => void;
   icd: {
     code: string;
+    groupCode?: string;
     description: string;
     isAppendixA2?: boolean;
     isAppendixA3?: boolean;
@@ -54,59 +55,104 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("set-tab-swipe-lock", { detail: { locked: true } }));
+          window.dispatchEvent(new CustomEvent("lock-app-swipe", { detail: { locked: true } }));
+        }
+      } catch {}
     } else {
       document.body.style.overflow = 'auto';
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("set-tab-swipe-lock", { detail: { locked: false } }));
+          window.dispatchEvent(new CustomEvent("lock-app-swipe", { detail: { locked: false } }));
+        }
+      } catch {}
     }
     return () => {
       document.body.style.overflow = 'auto';
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("set-tab-swipe-lock", { detail: { locked: false } }));
+          window.dispatchEvent(new CustomEvent("lock-app-swipe", { detail: { locked: false } }));
+        }
+      } catch {}
     };
   }, [isOpen]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!icd) return null;
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-no-swipe="true"
+          data-prevent-swipe="true"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="fixed inset-0 z-[180] flex items-center justify-center p-0 sm:p-6 lg:p-8"
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm hidden sm:block"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            data-no-swipe="true"
+            data-prevent-swipe="true"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.98, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            exit={{ opacity: 0, scale: 0.98, y: 15 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "relative w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border transition-colors flex flex-col max-h-[90vh]",
-              isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+              "relative w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-2xl rounded-none sm:rounded-[32px] shadow-2xl overflow-hidden border-0 sm:border transition-colors flex flex-col z-10",
+              isDarkMode ? "bg-slate-900 sm:border-slate-800" : "bg-white sm:border-slate-100"
             )}
           >
             {/* Header */}
             <div className={cn(
-              "p-6 flex items-center justify-between border-b shrink-0",
-              isDarkMode ? "border-slate-800" : "border-slate-100"
+              "px-4 py-3 sm:p-6 flex items-center justify-between border-b shrink-0 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-6",
+              isDarkMode ? "border-slate-800 bg-slate-900/95 backdrop-blur-md" : "border-slate-100 bg-white/95 backdrop-blur-md"
             )}>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                 <div className={cn(
-                  "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg",
+                  "w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-sm sm:shadow-lg shrink-0",
                   isDarkMode ? "bg-emerald-900/30 text-emerald-400 shadow-none" : "bg-emerald-50 text-emerald-600 shadow-emerald-100"
                 )}>
-                  <ClipboardList size={24} />
+                  <ClipboardList className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <div>
-                  <h3 className={cn("text-xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                <div className="min-w-0 flex-1">
+                  <h3 className={cn("text-base sm:text-xl font-black tracking-tight truncate", isDarkMode ? "text-white" : "text-slate-900")}>
                     Chi tiết mã ICD-10
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mt-0.5">
                     <button
                       type="button"
                       onClick={() => handleCopyCode(icd.code)}
                       title="Nhấn để sao chép mã ICD-10"
                       className={cn(
-                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border flex items-center gap-1 cursor-pointer transition-all hover:scale-105 active:scale-95",
+                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border flex items-center gap-1 cursor-pointer transition-all hover:scale-105 active:scale-95 shrink-0",
                         isDarkMode ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/30 hover:bg-emerald-900/50" : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80"
                       )}
                     >
@@ -117,33 +163,41 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                         <Copy size={10} className="opacity-60" />
                       )}
                     </button>
+                    {(icd.groupCode || (icd.code.includes('.') ? icd.code.split('.')[0] : '')) && (
+                      <span className={cn(
+                        "text-[10px] font-mono font-bold tracking-tight px-2 py-0.5 rounded-md border shadow-xs shrink-0",
+                        isDarkMode ? "bg-slate-800 text-slate-300 border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200"
+                      )}>
+                        Nhóm: {icd.groupCode || icd.code.split('.')[0]}
+                      </span>
+                    )}
                     {icd.isAppendixA2 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-indigo-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-indigo-600 text-white shadow-sm shrink-0">
                         Không là bệnh chính
                       </span>
                     )}
                     {icd.isAppendixA3 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-amber-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-amber-600 text-white shadow-sm shrink-0">
                         Không khuyến khích là bệnh chính
                       </span>
                     )}
                     {icd.isRestricted && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-rose-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-rose-600 text-white shadow-sm shrink-0">
                         Không dùng
                       </span>
                     )}
                     {icd.isAppendixA4 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-blue-600 text-white shadow-sm shrink-0">
                         Chỉ dùng mã hóa nguyên nhân tử vong
                       </span>
                     )}
                     {icd.isAppendixA5 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-pink-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-pink-600 text-white shadow-sm shrink-0">
                         Mã bệnh ở nữ giới
                       </span>
                     )}
                     {icd.isAppendixA6 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-cyan-600 text-white shadow-sm">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-cyan-600 text-white shadow-sm shrink-0">
                         Mã bệnh ở nam giới
                       </span>
                     )}
@@ -151,19 +205,22 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Đóng"
+                title="Đóng (Esc)"
                 className={cn(
-                  "p-2 rounded-xl transition-all",
+                  "p-2 sm:p-2 rounded-xl transition-all shrink-0 cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center hover:scale-105 active:scale-95",
                   isDarkMode ? "text-slate-400 hover:bg-slate-800 hover:text-white" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 )}
               >
-                <X size={20} />
+                <X size={22} className="sm:w-5 sm:h-5" />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-              <div className="space-y-8">
+            <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar flex-1 overscroll-contain pb-[max(2rem,env(safe-area-inset-bottom))] sm:pb-8">
+              <div className="space-y-6 sm:space-y-8">
                 {/* Description */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -422,22 +479,6 @@ const ICDDetailModal: React.FC<ICDDetailModalProps> = ({
                   )}
                 </div>
               </div>
-            </div>
-
-            {/* Footer */}
-            <div className={cn(
-              "p-6 border-t shrink-0 flex justify-end gap-3 transition-colors",
-              isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50/50 border-slate-100"
-            )}>
-              <button
-                onClick={onClose}
-                className={cn(
-                  "px-8 py-3 rounded-xl font-bold transition-all",
-                  isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                )}
-              >
-                Đóng
-              </button>
             </div>
           </motion.div>
         </div>

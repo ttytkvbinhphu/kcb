@@ -32,7 +32,11 @@ import {
   ShieldCheck,
   ChevronRight,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Bell,
+  BookOpen,
+  Stethoscope,
+  User
 } from 'lucide-react';
 import { cn, getBustedPhotoURL, sanitizeFirestoreData } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -66,6 +70,9 @@ export interface MobileBottomNavProps {
   setDrugDirectoryViewMode?: (mode: 'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies') => void;
   onOpenUserGuide?: () => void;
   onOpenSettings?: () => void;
+  onOpenProfile?: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
   mobileBottomNavSettings?: MobileBottomNavSettings;
 }
 
@@ -98,6 +105,9 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setDrugDirectoryViewMode,
   onOpenUserGuide,
   onOpenSettings,
+  onOpenProfile,
+  onOpenNotifications,
+  unreadNotificationsCount = 0,
   mobileBottomNavSettings
 }) => {
   const [isMenuSheetOpen, setIsMenuSheetOpen] = useState(false);
@@ -140,6 +150,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, section: 'member', group: 'general' },
     { id: 'view_doc_lookup', label: featureSettings['view_doc_lookup']?.customTitle || 'Tra cứu văn bản', icon: FileSearch, section: 'member', group: 'general' },
     { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
+    { id: 'view_national_pharmacopoeia', label: featureSettings['view_national_pharmacopoeia']?.customTitle || 'Dược thư Quốc gia', icon: BookOpen, section: 'member', group: 'general' },
+    { id: 'view_treatment_guideline', label: featureSettings['view_treatment_guideline']?.customTitle || 'Hướng dẫn điều trị', icon: Stethoscope, section: 'member', group: 'general' },
     { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
     { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
     { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Tra cứu ADR', icon: AlertTriangle, section: 'member', group: 'general' },
@@ -160,6 +172,8 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     
     { id: 'manage_users', label: 'Quản lý người dùng', icon: Users, section: 'admin', group: 'admin' },
     { id: 'manage_directory', label: featureSettings['manage_directory']?.customTitle || 'Quản lý thuốc', icon: Pill, section: 'member', group: 'pharmacy' },
+    { id: 'manage_national_pharmacopoeia', label: featureSettings['manage_national_pharmacopoeia']?.customTitle || 'Quản lý Dược thư', icon: BookOpen, section: 'member', group: 'pharmacy' },
+    { id: 'manage_treatment_guidelines', label: featureSettings['manage_treatment_guidelines']?.customTitle || 'Hướng dẫn điều trị (BYT)', icon: Stethoscope, section: 'member', group: 'pharmacy' },
     { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'member', group: 'pharmacy' },
     { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'pharmacy' },
     { id: 'manage_adr', label: featureSettings['manage_adr']?.customTitle || 'Quản lý ADR', icon: AlertTriangle, section: 'member', group: 'pharmacy' },
@@ -191,7 +205,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const adminItems = visibleItems.filter(item => item.section === 'admin');
 
   // Lookup sub-group items
-  const lookupTabs = ['view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_doc_lookup', 'view_patients'];
+  const lookupTabs = ['view_directory', 'view_national_pharmacopoeia', 'view_treatment_guideline', 'view_icd10', 'view_interaction', 'view_adr', 'view_doc_lookup', 'view_patients'];
   const availableLookupItems = generalItems.filter(item => lookupTabs.includes(item.id));
   const isLookupActive = lookupTabs.includes(activeTab);
 
@@ -234,8 +248,19 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const navStyle = navConfig.navStyle || 'default';
   const showLabels = navConfig.showLabels || 'always';
 
-  // Determine which single button in visibleNavButtons is active
+  // Determine active profile or settings state
+  const isProfileActive = activeTab === 'view_profile' || activeTab === 'profile';
+  const isSettingsActive = activeTab === 'settings' || activeTab === 'app_settings';
+
   const activeNavButtonId = useMemo(() => {
+    if (isProfileActive) {
+      return 'btn_profile';
+    }
+
+    if (isSettingsActive) {
+      return 'btn_settings';
+    }
+
     // 1. If a sheet drawer is currently open, highlight ONLY the button that opened it
     if (isToolsSheetOpen) {
       const btn = visibleNavButtons.find(b => b.actionType === 'sheet_tools');
@@ -267,14 +292,122 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     }
 
     return null;
-  }, [activeTab, isToolsSheetOpen, isLookupSheetOpen, isMenuSheetOpen, visibleNavButtons, pharmacyItems, isAdminMode]);
+  }, [activeTab, isProfileActive, isSettingsActive, isToolsSheetOpen, isLookupSheetOpen, isMenuSheetOpen, visibleNavButtons, pharmacyItems, isAdminMode]);
+
+  // Touch gesture handling for MobileBottomNav
+  const navTouchStartXRef = React.useRef<number | null>(null);
+  const navTouchStartYRef = React.useRef<number | null>(null);
+
+  const handleNavTouchStart = (e: React.TouchEvent) => {
+    navTouchStartXRef.current = e.touches[0].clientX;
+    navTouchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleNavTouchEnd = (e: React.TouchEvent) => {
+    if (navTouchStartXRef.current === null || navTouchStartYRef.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - navTouchStartXRef.current;
+    const deltaY = e.changedTouches[0].clientY - navTouchStartYRef.current;
+    navTouchStartXRef.current = null;
+    navTouchStartYRef.current = null;
+
+    // Check if horizontal swipe
+    if (Math.abs(deltaX) > 35 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      const lastCustomNav = visibleNavButtons[visibleNavButtons.length - 1];
+      const isAtLastCustomNav = lastCustomNav && (activeNavButtonId === lastCustomNav.id || activeTab === lastCustomNav.targetTab);
+
+      if (deltaX < -35) {
+        // Swipe left (advance forward in sequence)
+        if (isAtLastCustomNav) {
+          if (onOpenProfile) {
+            onOpenProfile();
+          } else {
+            handleSelectTab('view_profile');
+            window.dispatchEvent(new CustomEvent('reset-profile-view'));
+          }
+        } else if (!isProfileActive) {
+          const currentIdx = visibleNavButtons.findIndex(b => b.id === activeNavButtonId);
+          if (currentIdx !== -1 && currentIdx < visibleNavButtons.length - 1) {
+            const nextBtn = visibleNavButtons[currentIdx + 1];
+            if (nextBtn) {
+              if (nextBtn.actionType === 'sheet_lookup') setIsLookupSheetOpen(true);
+              else if (nextBtn.actionType === 'sheet_tools') setIsToolsSheetOpen(true);
+              else if (nextBtn.actionType === 'sheet_menu') setIsMenuSheetOpen(true);
+              else if (nextBtn.targetTab) handleSelectTab(nextBtn.targetTab);
+            }
+          }
+        }
+      } else if (deltaX > 35) {
+        // Swipe right (go back in sequence)
+        if (isProfileActive) {
+          if (lastCustomNav?.targetTab) {
+            handleSelectTab(lastCustomNav.targetTab);
+          } else {
+            handleSelectTab('dashboard');
+          }
+        } else {
+          const currentIdx = visibleNavButtons.findIndex(b => b.id === activeNavButtonId);
+          if (currentIdx > 0) {
+            const prevBtn = visibleNavButtons[currentIdx - 1];
+            if (prevBtn) {
+              if (prevBtn.actionType === 'sheet_lookup') setIsLookupSheetOpen(true);
+              else if (prevBtn.actionType === 'sheet_tools') setIsToolsSheetOpen(true);
+              else if (prevBtn.actionType === 'sheet_menu') setIsMenuSheetOpen(true);
+              else if (prevBtn.targetTab) handleSelectTab(prevBtn.targetTab);
+            }
+          }
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isNavEnabled) {
+      document.documentElement.style.setProperty('--mobile-bottom-nav-height', '0px');
+      return;
+    }
+
+    const updateNavHeight = () => {
+      const navEl = document.getElementById('bottommobilenav') || document.querySelector("nav[aria-label='Mobile Navigation']");
+      if (navEl) {
+        const rect = navEl.getBoundingClientRect();
+        const dist = Math.max(0, window.innerHeight - rect.top);
+        if (dist > 0) {
+          document.documentElement.style.setProperty('--mobile-bottom-nav-height', `${Math.round(dist)}px`);
+          return;
+        }
+      }
+      document.documentElement.style.setProperty('--mobile-bottom-nav-height', '58px');
+    };
+
+    updateNavHeight();
+    const timer = setTimeout(updateNavHeight, 150);
+    window.addEventListener('resize', updateNavHeight);
+    window.addEventListener('orientationchange', updateNavHeight);
+
+    let ro: ResizeObserver | null = null;
+    const navEl = document.getElementById('bottommobilenav') || document.querySelector("nav[aria-label='Mobile Navigation']");
+    if (navEl && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateNavHeight);
+      ro.observe(navEl);
+    }
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateNavHeight);
+      window.removeEventListener('orientationchange', updateNavHeight);
+      if (ro) ro.disconnect();
+    };
+  }, [isNavEnabled, navStyle, showLabels, visibleNavButtons.length]);
 
   return (
     <>
       {/* Mobile Bottom Navigation Bar */}
       {isNavEnabled && (
         <nav
+          id="bottommobilenav"
           aria-label="Mobile Navigation"
+          onTouchStart={handleNavTouchStart}
+          onTouchEnd={handleNavTouchEnd}
           className={cn(
             "lg:hidden fixed z-40 transition-all duration-300",
             navStyle === 'floating'
@@ -345,7 +478,7 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   type="button"
                   onClick={handleBtnClick}
                   className={cn(
-                    "flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative group cursor-pointer",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative group cursor-pointer",
                     isBtnActive
                       ? cn("font-black scale-105", highlightObj.textClass)
                       : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
@@ -360,13 +493,77 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                     <IconComp size={18} strokeWidth={isBtnActive ? 2.5 : 2} />
                   </div>
                   {isLabelVisible && (
-                    <span className="text-[9.5px] leading-tight tracking-tight mt-0.5 whitespace-nowrap truncate max-w-[58px]">
+                    <span className="text-[9.5px] leading-tight tracking-tight mt-0.5 whitespace-nowrap truncate max-w-full px-0.5">
                       {btn.label}
                     </span>
                   )}
                 </button>
               );
             })}
+
+            {/* Nút Avatar Cá nhân thay thế nút Cài đặt */}
+            {(() => {
+              const highlightObj = NAV_HIGHLIGHT_COLORS[0]; // Primary color
+              const isLabelVisible = showLabels === 'always' || (showLabels === 'active_only' && isProfileActive);
+
+              const handleAvatarClick = () => {
+                setIsLookupSheetOpen(false);
+                setIsToolsSheetOpen(false);
+                setIsMenuSheetOpen(false);
+                if (onOpenProfile) {
+                  onOpenProfile();
+                } else {
+                  handleSelectTab('view_profile');
+                  window.dispatchEvent(new CustomEvent('reset-profile-view'));
+                }
+              };
+
+              return (
+                <button
+                  id="mobile-bottom-nav-avatar-btn"
+                  type="button"
+                  onClick={handleAvatarClick}
+                  className={cn(
+                    "flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all relative group cursor-pointer",
+                    isProfileActive
+                      ? cn("font-black scale-105", highlightObj.textClass)
+                      : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
+                  )}
+                  title={displayName ? `Trang cá nhân: ${displayName}` : "Cá nhân"}
+                >
+                  <div className={cn(
+                    "p-0.5 rounded-full transition-all relative flex items-center justify-center",
+                    isProfileActive
+                      ? cn("ring-2 ring-primary ring-offset-1 shadow-sm", isDarkMode ? "ring-offset-slate-950" : "ring-offset-white")
+                      : (isDarkMode ? "ring-1 ring-slate-700/80 group-hover:ring-slate-500" : "ring-1 ring-slate-300 group-hover:ring-slate-400")
+                  )}>
+                    {photoURL ? (
+                      <img
+                        src={getBustedPhotoURL(photoURL, photoSyncToken)}
+                        alt={displayName || 'Avatar'}
+                        className="w-[20px] h-[20px] rounded-full object-cover shrink-0"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className={cn(
+                        "w-[20px] h-[20px] rounded-full flex items-center justify-center font-black text-[10px] shrink-0",
+                        isProfileActive
+                          ? "bg-primary text-white"
+                          : (isDarkMode ? "bg-slate-800 text-slate-300" : "bg-slate-200 text-slate-700")
+                      )}>
+                        {displayName ? displayName.charAt(0).toUpperCase() : <User size={12} />}
+                      </div>
+                    )}
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full border border-white dark:border-slate-950 absolute -bottom-0.5 -right-0.5" />
+                  </div>
+                  {isLabelVisible && (
+                    <span className="text-[9.5px] leading-tight tracking-tight mt-0.5 whitespace-nowrap truncate max-w-full px-0.5">
+                      Cá nhân
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
           </div>
         </nav>
       )}

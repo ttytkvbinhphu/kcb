@@ -48,6 +48,7 @@ export interface Drug {
   registrationNumber?: string;
   price?: number | string;
   lotNumber?: string;
+  unit?: string;
   lots?: { lotNumber: string; expiryDate: string; quantity?: number | string; reportDate?: string; price?: number | string }[];
   stockQuantity?: number | string;
   lastReportDate?: string;
@@ -281,6 +282,7 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string;
+  gender?: 'Nam' | 'Nữ' | 'Khác' | string;
   staffAccount?: string;
   username?: string;
   photoURL?: string;
@@ -298,6 +300,7 @@ export interface UserProfile {
   hasSeenWelcome?: boolean;
   hasSeenQuickAccountWarning?: boolean;
   isHidden?: boolean;
+  favoriteDrugIds?: string[];
   pinnedIcdCodes?: string[];
   workspaceIcdCodes?: string[];
   pinnedPatientIds?: string[];
@@ -305,6 +308,7 @@ export interface UserProfile {
   createdAt?: string;
   updatedAt?: string;
   powerPoints?: number;
+  readAnnouncementIds?: string[];
   lastVisit?: any;
   visitCount?: any;
 }
@@ -312,6 +316,7 @@ export interface UserProfile {
 export interface ICD10 {
   id?: string;
   code: string;
+  groupCode?: string; // Mã ICD-10 nhóm (Category 3 ký tự, VD: A00 là nhóm của A00.0)
   description: string;
   notes?: string;
   guide?: string;
@@ -707,6 +712,7 @@ export interface Announcement {
   showInWorkspace?: boolean;
   showInHeader?: boolean;
   readBy?: string[];
+  dismissedBy?: string[];
 }
 
 export interface AuthLog {
@@ -761,6 +767,12 @@ export interface MobileBottomNavSettings {
   buttons?: MobileNavButtonConfig[];
 }
 
+export interface SidebarNavOrderSettings {
+  general?: string[];
+  admin?: string[];
+  data?: string[];
+}
+
 export interface SystemSettings {
   appName: string;
   loginTitle: string;
@@ -778,6 +790,7 @@ export interface SystemSettings {
   workspaceSlideSpeed?: number;
   workspaceSlideAutoPlay?: boolean;
   mobileBottomNav?: MobileBottomNavSettings;
+  sidebarNavOrder?: SidebarNavOrderSettings;
 }
 
 export interface VersionLog {
@@ -860,4 +873,113 @@ export interface SlideDeckSection {
   icon?: string;
   description?: string;
   order: number;
+}
+
+// Treatment Groups & Clinical Guidelines (Bộ Y tế)
+export interface TreatmentGroup {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  icon: string; // Lucide icon name, e.g., 'Heart', 'Stethoscope', 'Activity', 'Wind', 'Brain', 'Baby', 'ShieldAlert', etc.
+  color: string; // Material Design hex, e.g. '#2196F3', '#E91E63', '#4CAF50'
+  bgColor?: string; // Light tint e.g. '#E3F2FD'
+  order: number;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ClinicalStep {
+  id: string;
+  title: string;
+  stepNumber: number;
+  order?: number;
+  type: 'assessment' | 'diagnostic' | 'decision' | 'treatment' | 'monitoring' | 'emergency' | 'referral';
+  description: string;
+  condition?: string;
+  nextCondition?: string;
+  duration?: string;
+  badge?: string;
+  badgeColor?: string;
+  keyActions: string[];
+  notes?: string;
+}
+
+export interface DrugRegimenItem {
+  drugName: string;
+  activeIngredient?: string;
+  dosage: string;
+  route: string; // 'Uống', 'Tiêm tĩnh mạch', 'Truyền tĩnh mạch', 'Tiêm bắp', 'Khí dung/Hít', 'Tại chỗ'
+  frequency: string;
+  duration?: string;
+  priority: 'first_line' | 'second_line' | 'alternative' | 'combination';
+  contraindications?: string[];
+  clinicalNotes?: string;
+}
+
+export interface TreatmentGuideline {
+  id: string;
+  title: string;
+  diseaseName: string;
+  icd10Codes?: string[];
+  groupId: string;
+  source: {
+    organization: string; // "Bộ Y tế"
+    documentNumber: string; // e.g. "Quyết định số 5968/QĐ-BYT"
+    issueYear: number | string;
+    signedDate?: string;
+    officialUrl?: string;
+  };
+  decisionNumber?: string;
+  effectiveYear?: number | string;
+  sourceUrl?: string;
+  summary: string;
+  severity?: string;
+  severityLevels?: {
+    level: string;
+    criteria: string;
+    color: string;
+    recommendedAction: string;
+  }[];
+  diagnosticCriteria: {
+    clinical: string[];
+    paraclinical: string[];
+    differentialDiagnosis?: string[];
+  };
+  flowchartSteps: ClinicalStep[];
+  regimens: {
+    categoryName: string;
+    targetPatient?: string;
+    drugs: DrugRegimenItem[];
+    notes?: string;
+  }[];
+  drugRegimens?: {
+    categoryName: string;
+    targetPatient?: string;
+    drugs: DrugRegimenItem[];
+    notes?: string;
+  }[];
+  treatmentGoals?: {
+    metric: string;
+    targetValue: string;
+    timeline?: string;
+    notes?: string;
+  }[];
+  goals?: any;
+  redFlags: string[];
+  riskStratification?: {
+    level: string;
+    criteria: string;
+    color: string;
+    action?: string;
+  }[];
+  lifestyleAdvice?: string[];
+  keywords?: string[];
+  isDraft?: boolean;
+  isHidden?: boolean;
+  order?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
 }

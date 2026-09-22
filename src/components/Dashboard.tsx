@@ -1,11 +1,11 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight, ChevronLeft, X, Sparkles, FileSearch, Factory } from 'lucide-react';
+import { Pill, ShieldAlert, FileText, Users, TrendingUp, Calendar, ArrowUpRight, ClipboardList, AlertTriangle, Settings, GripVertical, Layout, RotateCcw, MessageSquare, AlertCircle, ShieldCheck, Zap, Bell, Globe, Eye, EyeOff, Search, PinOff, Calculator, ListTodo, ChevronRight, ChevronLeft, X, Sparkles, FileSearch, Factory, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc, setDoc } from '../firebase';
+import { db, auth, collection, getDocs, handleFirestoreError, OperationType, onSnapshot, query, where, updateDoc, doc, setDoc, arrayUnion } from '../firebase';
 import { UserProfile, Notification, ICD10, Drug, Patient, SystemSettings } from '../types';
 import { subscribeICD10 } from '../lib/icdStore';
 import DrugDetailModal from './DrugDetailModal';
@@ -132,6 +132,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     isOpen: false,
   });
 
+  const activeUid = userProfile?.uid || uid || auth?.currentUser?.uid;
+
   const [dismissedAnnouncements, setDismissedAnnouncements] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('dismissed_announcements') || '[]');
@@ -140,14 +142,50 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   });
 
-  const handleDismissAnnouncement = (id: string) => {
+  const handleDismissAnnouncement = async (id: string) => {
     const updated = [...dismissedAnnouncements, id];
     setDismissedAnnouncements(updated);
-    localStorage.setItem('dismissed_announcements', JSON.stringify(updated));
+    try {
+      localStorage.setItem('dismissed_announcements', JSON.stringify(updated));
+    } catch (e) {}
+
+    // Trigger parent callback
+    onMarkAsRead?.(id);
+
+    if (activeUid) {
+      try {
+        const annRef = doc(db, 'announcements', id);
+        const userRef = doc(db, 'users', activeUid);
+        await Promise.all([
+          updateDoc(annRef, { 
+            readBy: arrayUnion(activeUid),
+            dismissedBy: arrayUnion(activeUid)
+          }).catch(() => {}),
+          updateDoc(userRef, { 
+            readAnnouncementIds: arrayUnion(id) 
+          }).catch(() => {})
+        ]);
+      } catch (e) {
+        console.error("Error persisting dismissed announcement to Firestore:", e);
+      }
+    }
+  };
+
+  const isAnnouncementReadOrDismissed = (a: any) => {
+    if (a.showInWorkspace === false) return true;
+    if (dismissedAnnouncements.includes(a.id)) return true;
+    if (activeUid) {
+      const isReadInCloud = Array.isArray(a.readBy) ? a.readBy.includes(activeUid) : (typeof a.readBy === 'object' && a.readBy !== null ? Boolean(a.readBy[activeUid]) : false);
+      if (isReadInCloud) return true;
+      const isDismissedInCloud = Array.isArray(a.dismissedBy) ? a.dismissedBy.includes(activeUid) : (typeof a.dismissedBy === 'object' && a.dismissedBy !== null ? Boolean(a.dismissedBy[activeUid]) : false);
+      if (isDismissedInCloud) return true;
+      if (userProfile?.readAnnouncementIds && Array.isArray(userProfile.readAnnouncementIds) && userProfile.readAnnouncementIds.includes(a.id)) return true;
+    }
+    return false;
   };
 
   const visibleAnnouncements = (announcements || [])
-    .filter(a => a.showInWorkspace !== false && !dismissedAnnouncements.includes(a.id))
+    .filter(a => !isAnnouncementReadOrDismissed(a))
     .map(a => ({
       id: a.id,
       title: a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống'),
@@ -183,6 +221,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const allActions = [
     { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, desc: 'Tra cứu thông tin thuốc và tương tác', color: 'bg-indigo-500', group: 'clinical' },
+    { id: 'view_national_pharmacopoeia', label: featureSettings['view_national_pharmacopoeia']?.customTitle || 'Dược thư Quốc gia', icon: BookOpen, desc: 'Tra cứu Dược thư Quốc gia Việt Nam', color: 'bg-teal-600', group: 'clinical' },
     { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, desc: 'Kiểm tra tương tác thuốc chuyên sâu', color: 'bg-orange-500', group: 'clinical' },
     { id: 'view_prescription', label: featureSettings['view_prescription']?.customTitle || 'Kê toa mới', icon: FileText, desc: 'Tạo đơn thuốc cho bệnh nhân', color: 'bg-primary', group: 'clinical' },
     { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, desc: 'Tra cứu mã bệnh quốc tế', color: 'bg-cyan-600', group: 'clinical' },
@@ -386,12 +425,12 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     const effectiveUid = userProfile?.uid || uid || '';
-    if (!isApproved || !effectiveUid || !userProfile?.workspaceIcdCodes || userProfile.workspaceIcdCodes.length === 0) {
+    const targetCodes = userProfile?.pinnedIcdCodes || [];
+
+    if (!isApproved || !effectiveUid || targetCodes.length === 0) {
       setWorkspaceIcds([]);
       return;
     }
-
-    const targetCodes = userProfile.workspaceIcdCodes;
 
     // Check in-memory/cache first if available
     if (allIcdList && allIcdList.length > 0) {
@@ -406,19 +445,31 @@ const Dashboard: React.FC<DashboardProps> = ({
     // Fetch live details from Firestore
     const q = query(
       collection(db, 'icd10'),
-      where('code', 'in', targetCodes.slice(0, 10))
+      where('code', 'in', targetCodes.slice(0, 30))
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         const list = snapshot.docs.map(doc => doc.data() as ICD10);
-        setWorkspaceIcds(list);
+        const map = new Map<string, ICD10>();
+        list.forEach(item => map.set(item.code, item));
+        if (allIcdList && allIcdList.length > 0) {
+          allIcdList.forEach(item => {
+            if (targetCodes.includes(item.code) && !map.has(item.code)) {
+              map.set(item.code, item);
+            }
+          });
+        }
+        const ordered = targetCodes
+          .map(code => map.get(code))
+          .filter((item): item is ICD10 => item !== undefined);
+        setWorkspaceIcds(ordered);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'icd10_workspace');
     });
     return () => unsubscribe();
-  }, [isApproved, uid, userProfile?.uid, userProfile?.workspaceIcdCodes, allIcdList]);
+  }, [isApproved, uid, userProfile?.uid, userProfile?.pinnedIcdCodes, allIcdList]);
 
   useEffect(() => {
     const effectiveUid = userProfile?.uid || uid || '';
@@ -563,9 +614,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     const targetUid = userProfile?.uid || uid;
     if (!targetUid || !userProfile) return;
     const newWorkspaceIcdCodes = (userProfile.workspaceIcdCodes || []).filter(c => c !== codeToRemove);
+    const newPinnedIcdCodes = (userProfile.pinnedIcdCodes || []).filter(c => c !== codeToRemove);
     try {
       await setDoc(doc(db, 'users', targetUid), {
         workspaceIcdCodes: newWorkspaceIcdCodes,
+        pinnedIcdCodes: newPinnedIcdCodes,
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -574,6 +627,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           const currentStaff = JSON.parse(localStorage.getItem('staff_login_session') || '{}');
           if (currentStaff.uid === targetUid) {
             currentStaff.workspaceIcdCodes = newWorkspaceIcdCodes;
+            currentStaff.pinnedIcdCodes = newPinnedIcdCodes;
             localStorage.setItem('staff_login_session', JSON.stringify(currentStaff));
           }
         } catch (e) {
@@ -1660,7 +1714,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 "text-base lg:text-lg font-black flex items-center gap-2 transition-colors mb-4 uppercase tracking-widest text-[#0ea5e9]",
               )}>
                 <div className="w-1.5 h-6 bg-[#0ea5e9] rounded-full" />
-                ICD-10 Nhanh
+                ICD-10 Yêu thích
                 <span className="ml-auto px-2 py-0.5 rounded bg-[#0ea5e9]/10 text-[#0ea5e9] text-[10px] font-black border border-[#0ea5e9]/20">
                   {workspaceIcds.length}
                 </span>

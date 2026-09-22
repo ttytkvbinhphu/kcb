@@ -10,10 +10,11 @@ import { cn, sanitizeFirestoreData } from '../lib/utils';
 
 interface NotesProps {
   isDarkMode?: boolean;
+  isActive?: boolean;
   subHeaderPortalId?: string;
 }
 
-const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
+const Notes: React.FC<NotesProps> = ({ isDarkMode, isActive = true, subHeaderPortalId }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -187,6 +188,7 @@ const Notes: React.FC<NotesProps> = ({ isDarkMode, subHeaderPortalId }) => {
     )}>
       {/* Mobile Portal for Search - live lookup prevents stale node references */}
       {(() => {
+        if (isActive === false) return null;
         const portalNode = getPortalNode();
         return portalNode ? createPortal(
           <div className="flex-1 flex items-center max-w-[200px] sm:max-w-none">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle, ChevronUp, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { Settings, Plus, Trash2, Save, X, Loader2, Briefcase, GraduationCap, Award, ShieldCheck, Lock, CheckCircle2, LayoutGrid, ChevronRight, Info, Globe, Moon, Sun, Cpu, Database, Users, Activity, Eye, EyeOff, Wrench, FileText, Calendar, MessageSquare, MessageSquarePlus, Pill, ClipboardList, ShieldAlert, AlertTriangle, History, Search, ArrowLeft, LogIn, LogOut, Calculator, Building2, ListTodo, Edit3, UserCheck, Image as ImageIcon, Layout, MousePointer2, AlignLeft, AlignCenter, AlignRight, Columns, Maximize, LayoutTemplate, Type, Square, Sparkles, FileSearch, HelpCircle, ChevronUp, ChevronDown, ArrowUpDown, BookOpen, Stethoscope } from 'lucide-react';
 import { db, collection, onSnapshot, setDoc, doc, deleteDoc, handleFirestoreError, OperationType, query, where, getDocs, orderBy, limit } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatDateSafe, sanitizeFirestoreData } from '../lib/utils';
@@ -10,6 +10,7 @@ import ConfirmModal from './ConfirmModal';
 import StaffManagement from './StaffManagement';
 import VersionManagement from './VersionManagement';
 import SlideShowcaseStudio from './SlideShowcaseStudio';
+import DrugFeedbackManagement from './DrugFeedbackManagement';
 
 interface ConfigItem {
   id: string;
@@ -40,6 +41,7 @@ interface SystemConfigProps {
 const ROLE_TABS = [
   { id: 'manage_users', label: 'Quản lý người dùng' },
   { id: 'manage_directory', label: 'Quản lý thuốc' },
+  { id: 'manage_national_pharmacopoeia', label: 'Quản lý Dược thư' },
   { id: 'manage_icd10', label: 'Quản lý ICD-10' },
   { id: 'manage_interaction', label: 'Quản lý tương tác thuốc' },
   { id: 'manage_adr', label: 'Quản lý ADR' },
@@ -50,6 +52,9 @@ const ROLE_TABS = [
 const TITLE_TABS = [
   { id: 'dashboard', label: 'Workspace' },
   { id: 'view_directory', label: 'Tra cứu thuốc' },
+  { id: 'manage_national_pharmacopoeia', label: 'Quản lý Dược thư' },
+  { id: 'view_national_pharmacopoeia', label: 'Dược thư Quốc gia' },
+  { id: 'view_treatment_guideline', label: 'Hướng dẫn điều trị' },
   { id: 'view_icd10', label: 'Tra cứu ICD-10' },
   { id: 'view_interaction', label: 'Tra cứu tương tác thuốc' },
   { id: 'view_adr', label: 'Tra cứu ADR' },
@@ -66,6 +71,8 @@ const ALL_FEATURES = [
   { id: 'view_notes', label: 'Ghi chú', icon: MessageSquare, desc: 'Ghi chú lâm sàng cá nhân' },
   { id: 'view_doc_lookup', label: 'Tra cứu văn bản', icon: FileSearch, desc: 'Tóm tắt & phân tích tài liệu bằng AI' },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill, desc: 'Tra cứu & Quản lý danh mục thuốc' },
+  { id: 'view_national_pharmacopoeia', label: 'Dược thư Quốc gia', icon: BookOpen, desc: 'Tra cứu Dược thư Quốc gia Việt Nam (Chuyên khảo, liều dùng, tương tác)' },
+  { id: 'view_treatment_guideline', label: 'Hướng dẫn điều trị', icon: Stethoscope, desc: 'Phác đồ chẩn đoán và điều trị của Bộ Y tế' },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList, desc: 'Mã bệnh quốc tế' },
   { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert, desc: 'Kiểm tra tương tác thuốc' },
   { id: 'view_adr', label: 'Tra cứu ADR', icon: AlertTriangle, desc: 'Phản ứng có hại của thuốc' },
@@ -76,6 +83,13 @@ const ALL_FEATURES = [
   { id: 'view_todo', label: 'Việc cần làm', icon: ListTodo, desc: 'Danh sách công việc cá nhân' },
   { id: 'view_slideshow', label: 'Slide Showcase', icon: LayoutTemplate, desc: 'Trình thiết kế & Showcase Slide phong cách Edge' },
 ];
+
+const isAnnouncementReadByUser = (readBy: any, uid: string): boolean => {
+  if (!readBy || !uid) return false;
+  if (Array.isArray(readBy)) return readBy.includes(uid);
+  if (typeof readBy === 'object') return Boolean((readBy as Record<string, any>)[uid]);
+  return false;
+};
 
 const AutoExpandingTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = (props) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -866,6 +880,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     { id: 'home', label: 'Công cụ', icon: LayoutGrid, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'slideshow', label: 'Quản lý Slide Showcase', icon: LayoutTemplate, color: 'text-purple-500', bg: 'bg-purple-500/10' },
     { id: 'notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    { id: 'feedbacks', label: 'Góp ý/Báo cáo', icon: MessageSquarePlus, color: 'text-amber-500', bg: 'bg-amber-500/10' },
     { id: 'hr', label: 'Quản lý Nhân sự', icon: Users, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { id: 'features', label: 'Quản lý tính năng', icon: Wrench, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     { id: 'theme', label: 'Quản lý Giao diện', icon: Sun, color: 'text-pink-500', bg: 'bg-pink-500/10' },
@@ -888,6 +903,11 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
       desc: 'Trung tâm điều khiển & Thông báo',
       longDesc: 'Giám sát toàn diện trạng thái vận hành, quản trị hệ thống tính năng cốt lõi và kênh truyền thông nội bộ chuyên nghiệp.',
       gradient: 'from-indigo-600 to-blue-500'
+    },
+    feedbacks: {
+      desc: 'Quản lý Góp ý & Báo cáo thuốc',
+      longDesc: 'Theo dõi phản hồi chuyên môn, kiểm duyệt đính chính thông tin thuốc và thiết lập điều kiện Điểm quyền lực tối thiểu.',
+      gradient: 'from-amber-600 to-orange-500'
     },
     slideshow: {
       desc: 'Trình thiết kế & Quản lý Slide Showcase v151',
@@ -937,9 +957,76 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   };
 
   const [selectedFeatureForDetail, setSelectedFeatureForDetail] = useState<string | null>(null);
+  const [detailDraftSettings, setDetailDraftSettings] = useState<any>(null);
+  const [initialDetailSettings, setInitialDetailSettings] = useState<any>(null);
+  const [isDiscardFeatureConfirmOpen, setIsDiscardFeatureConfirmOpen] = useState(false);
+  const [isSaveFeatureConfirmOpen, setIsSaveFeatureConfirmOpen] = useState(false);
+  const [featureSaveSuccessMessage, setFeatureSaveSuccessMessage] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [featureCategoryFilter, setFeatureCategoryFilter] = useState<'all' | 'features_main' | 'utilities'>('all');
+
+  const handleOpenFeatureDetail = (featureId: string) => {
+    const current = featureSettings[featureId] || {};
+    setInitialDetailSettings(JSON.parse(JSON.stringify(current)));
+    setDetailDraftSettings(JSON.parse(JSON.stringify(current)));
+    setSelectedFeatureForDetail(featureId);
+  };
+
+  const hasFeatureDraftChanges = () => {
+    if (!initialDetailSettings && !detailDraftSettings) return false;
+    const initial = initialDetailSettings || {};
+    const current = detailDraftSettings || {};
+    return JSON.stringify(initial) !== JSON.stringify(current);
+  };
+
+  const handleBackFromDetail = () => {
+    if (hasFeatureDraftChanges()) {
+      setIsDiscardFeatureConfirmOpen(true);
+    } else {
+      setSelectedFeatureForDetail(null);
+      setDetailDraftSettings(null);
+      setInitialDetailSettings(null);
+    }
+  };
+
+  const handleConfirmDiscardDetail = () => {
+    setDetailDraftSettings(null);
+    setInitialDetailSettings(null);
+    setSelectedFeatureForDetail(null);
+    setIsDiscardFeatureConfirmOpen(false);
+  };
+
+  const handleCompleteFeatureChanges = () => {
+    setIsSaveFeatureConfirmOpen(true);
+  };
+
+  const handleConfirmSaveDetail = async () => {
+    if (!selectedFeatureForDetail) return;
+    setIsSavingFeature(true);
+    try {
+      const featureId = selectedFeatureForDetail;
+      const toSave = detailDraftSettings || {};
+      await setDoc(doc(db, 'system_config', 'feature_settings'), {
+        ...featureSettings,
+        [featureId]: toSave
+      });
+      const featureObj = ALL_FEATURES.find(f => f.id === featureId);
+      const featureName = toSave.customTitle || featureObj?.label || 'tính năng';
+      setFeatureSaveSuccessMessage(`Đã cập nhật và lưu cấu hình cho "${featureName}" thành công!`);
+      setTimeout(() => {
+        setFeatureSaveSuccessMessage(null);
+      }, 4000);
+      setSelectedFeatureForDetail(null);
+      setDetailDraftSettings(null);
+      setInitialDetailSettings(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'system_config/feature_settings');
+    } finally {
+      setIsSavingFeature(false);
+      setIsSaveFeatureConfirmOpen(false);
+    }
+  };
 
   useEffect(() => {
     if (activeCategory === 'hr' || activeCategory === 'features' || activeCategory === 'notifications' || (activeCategory === 'home' && (homeSubTab === 'features_main' || homeSubTab === 'utilities' || homeSubTab === 'notifications'))) {
@@ -1009,8 +1096,14 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
   const renderFeatureDetailContent = () => {
     const feature = ALL_FEATURES.find(f => f.id === selectedFeatureForDetail);
     if (!feature) return null;
-    const settings = featureSettings[feature.id] || {};
+    const settings = detailDraftSettings ?? (featureSettings[feature.id] || {});
     const bannedUsers = settings.bannedUsers || [];
+
+    const updateFeatureSettings = (_featureId: string, newSettings: any) => {
+      setDetailDraftSettings(newSettings);
+    };
+
+    const isModified = hasFeatureDraftChanges();
 
     return (
       <motion.div
@@ -1028,40 +1121,41 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         )}>
           <div className="flex items-center gap-4">
             <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg",
+              "w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0",
               isDarkMode ? "bg-slate-800" : "bg-primary shadow-primary/20"
             )}>
               <feature.icon size={24} />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <button
-                  onClick={() => setSelectedFeatureForDetail(null)}
-                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors mr-1"
-                >
-                  <ArrowLeft size={16} />
-                </button>
                 <h3 className={cn("text-xl sm:text-2xl font-black tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
                   {settings.customTitle || feature.label}
                 </h3>
+                {isModified && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                    Đã chỉnh sửa
+                  </span>
+                )}
               </div>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest ml-9">{feature.desc}</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{feature.desc}</p>
             </div>
           </div>
           <div className="flex items-center gap-3 self-end sm:self-center">
             <button
-              onClick={() => setSelectedFeatureForDetail(null)}
+              onClick={handleBackFromDetail}
               className={cn(
-                "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
-                isDarkMode ? "bg-slate-800 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900"
+                "px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer",
+                isDarkMode ? "bg-slate-800 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900 border border-slate-200/60"
               )}
             >
               Quay lại
             </button>
             <button
-              onClick={() => setSelectedFeatureForDetail(null)}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all"
+              onClick={handleCompleteFeatureChanges}
+              disabled={isSavingFeature}
+              className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
+              {isSavingFeature ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               Hoàn tất thay đổi
             </button>
           </div>
@@ -1069,33 +1163,19 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
         <div className="p-6 sm:p-8 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Thứ tự hiển thị</label>
-              <input
-                type="number"
-                value={settings.order || 0}
-                onChange={(e) => {
-                  const newSettings = { ...settings, order: parseInt(e.target.value) || 0 };
-                  updateFeatureSettings(feature.id, newSettings);
-                }}
-                className={cn(
-                  "w-full px-5 py-4 rounded-2xl border-none focus:ring-2 focus:ring-primary transition-all font-black text-lg",
-                  isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                )}
-              />
-              <p className="mt-2 text-[10px] font-medium text-slate-500">Thứ tự nhỏ hơn sẽ hiển thị trước.</p>
-            </div>
-
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vị trí hiển thị</label>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { id: 'sidebar', label: 'Thanh menu bên', checkedWhenVisible: true },
                   { id: 'home_grid', label: 'Lưới trang chủ', checkedWhenVisible: true },
                   { id: 'utilities_box', label: 'Tiện ích', checkedWhenVisible: false }
                 ].map((loc, lIdx) => (
-                  <label key={`sys-loc-${loc.id}-${lIdx}`} className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative flex items-center">
+                  <label key={`sys-loc-${loc.id}-${lIdx}`} className={cn(
+                    "flex items-center gap-3 p-3.5 rounded-2xl border cursor-pointer group transition-all",
+                    isDarkMode ? "bg-slate-800/40 border-slate-700/60 hover:bg-slate-800/70" : "bg-slate-50 border-slate-200/80 hover:bg-slate-100/70"
+                  )}>
+                    <div className="relative flex items-center shrink-0">
                       <input
                         type="checkbox"
                         checked={loc.checkedWhenVisible
@@ -1113,14 +1193,13 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       />
                       <div className={cn(
                         "w-10 h-6 rounded-full transition-all peer-checked:bg-emerald-500",
-                        isDarkMode ? "bg-slate-800" : "bg-slate-200"
+                        isDarkMode ? "bg-slate-700" : "bg-slate-300"
                       )}></div>
                       <div className={cn(
-                        "absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4",
-                        isDarkMode ? "shadow-none" : "shadow-sm"
+                        "absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-4 shadow-sm"
                       )}></div>
                     </div>
-                    <span className={cn("text-xs font-bold transition-colors", isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-600 group-hover:text-slate-900")}>
+                    <span className={cn("text-xs font-bold transition-colors select-none", isDarkMode ? "text-slate-300 group-hover:text-white" : "text-slate-700 group-hover:text-slate-900")}>
                       {loc.label}
                     </span>
                   </label>
@@ -2141,6 +2220,229 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               </div>
             )}
+            {feature.id === 'view_national_pharmacopoeia' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Cấu hình Điểm quyền lực Dược thư Quốc gia</label>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* monographMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-teal-50/50 border-teal-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-teal-400" : "text-teal-700")}>
+                      <span className="w-2 h-2 rounded-full bg-teal-500 inline-block"></span>
+                      Xem toàn văn chuyên khảo Dược thư
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.monographMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, monographMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-teal-400" : "bg-white border-teal-200 text-teal-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem chi tiết chuyên khảo. Đặt 0 cho phép tất cả vai trò.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* dosageMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-indigo-50/50 border-indigo-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-indigo-400" : "text-indigo-700")}>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
+                      Liều lượng & Cách dùng chi tiết
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.dosageMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, dosageMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-indigo-400" : "bg-white border-indigo-200 text-indigo-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để mở khóa phác đồ liều người lớn, trẻ em, suy thận/gan.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* pharmacologyMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Dược lực & Dược động học
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.pharmacologyMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, pharmacologyMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-blue-400" : "bg-white border-blue-200 text-blue-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem cơ chế tác dụng, hấp thu, phân bố, thải trừ.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* interactionsMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-amber-50/50 border-amber-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-amber-400" : "text-amber-700")}>
+                      <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                      Tương tác thuốc chuyên sâu
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.interactionsMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, interactionsMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-amber-400" : "bg-white border-amber-200 text-amber-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem phân tích tương tác và biện pháp xử trí.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* exportMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-purple-50/50 border-purple-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-purple-400" : "text-purple-700")}>
+                      <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                      In & Xuất tài liệu chuyên khảo
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.exportMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, exportMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-purple-400" : "bg-white border-purple-200 text-purple-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để sử dụng tính năng in hoặc sao chép toàn văn.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {feature.id === 'view_treatment_guideline' && (
+              <div className="md:col-span-2 space-y-6 pt-6 border-t border-slate-100/10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                      Quản trị Nhóm & Phác đồ điều trị Bộ Y tế
+                    </label>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Tự quản lý các nhóm điều trị, tạo mới, đổi tên, phân màu Material Design và biểu tượng trực quan
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* guidelineViewMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-blue-50/50 border-blue-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-blue-400" : "text-blue-700")}>
+                      <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+                      Xem hướng dẫn & phác đồ điều trị
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.guidelineViewMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, guidelineViewMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-blue-400" : "bg-white border-blue-200 text-blue-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để xem sơ đồ điều trị và tra cứu phác đồ Bộ Y tế.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* guidelineExportMinPower */}
+                  <div className={cn("p-5 rounded-2xl border", isDarkMode ? "bg-slate-800/30 border-slate-700" : "bg-emerald-50/50 border-emerald-100")}>
+                    <p className={cn("text-xs font-black mb-3 flex items-center gap-2", isDarkMode ? "text-emerald-400" : "text-emerald-700")}>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                      In & Sao chép tóm tắt phác đồ
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        value={settings.guidelineExportMinPower ?? 0}
+                        onChange={(e) => updateFeatureSettings(feature.id, { ...settings, guidelineExportMinPower: parseInt(e.target.value) || 0 })}
+                        className={cn(
+                          "w-20 px-3 py-2 rounded-xl border-2 font-black text-sm text-center focus:ring-0 focus:border-amber-500 outline-none transition-all",
+                          isDarkMode ? "bg-slate-900 border-slate-700 text-emerald-400" : "bg-white border-emerald-200 text-emerald-700"
+                        )}
+                      />
+                      <span className={cn("text-[9px] font-bold leading-tight", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                        ⚡ Điểm quyền lực tối thiểu để in hoặc trích xuất tóm tắt phác đồ điều trị.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TreatmentGroupManagement has moved to Left Sidebar: Quản lý dữ liệu */}
+                <div className={cn(
+                  "p-5 sm:p-6 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all shadow-sm",
+                  isDarkMode ? "bg-emerald-950/20 border-emerald-800/40" : "bg-emerald-50/70 border-emerald-200"
+                )}>
+                  <div className="flex items-start sm:items-center gap-3.5">
+                    <div className="p-3 rounded-2xl bg-emerald-500 text-white shadow-md shadow-emerald-500/20 shrink-0">
+                      <Stethoscope size={22} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className={cn("text-sm font-black tracking-tight", isDarkMode ? "text-emerald-300" : "text-emerald-900")}>
+                          Dung hợp Quản lý Nhóm &amp; Hướng dẫn điều trị (Bộ Y tế)
+                        </h4>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                          isDarkMode ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                        )}>
+                          Đã tích hợp
+                        </span>
+                      </div>
+                      <p className={cn("text-xs mt-1 leading-relaxed", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                        Cấu hình và danh sách nhóm điều trị đã được dung hợp đồng bộ vào mục <strong className="text-emerald-600 dark:text-emerald-400 font-bold">Quản lý dữ liệu &gt; Hướng dẫn điều trị (BYT)</strong> trên thanh điều hướng bên trái (Left Sidebar) để quản lý tập trung và phân loại phác đồ một cách dễ dàng.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('navigate-tab', { detail: 'manage_treatment_guidelines' }));
+                    }}
+                    className="shrink-0 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto"
+                  >
+                    <span>Mở Hướng dẫn &amp; Nhóm điều trị</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -2307,7 +2609,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
     return (
       <div
         key={`feat-${groupKey || 'g'}-${feature.id || 'f'}-${index ?? 0}`}
-        onClick={() => setSelectedFeatureForDetail(feature.id)}
+        onClick={() => handleOpenFeatureDetail(feature.id)}
         className={cn(
           "p-5 sm:p-7 rounded-[2rem] border-2 transition-all relative group cursor-pointer overflow-hidden",
           isDarkMode 
@@ -2645,29 +2947,53 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
 
           {activeCategory === 'home' && (
             <div className="space-y-6">
-              <div className={cn(
-                "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
-                isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
-              )}>
-                {[
-                  { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
-                  { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid }
-                ].map((tab, tabIdx) => (
-                  <button
-                    key={`home-subtab-${tab.id}-${tabIdx}`}
-                    onClick={() => setHomeSubTab(tab.id as any)}
-                    className={cn(
-                      "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
-                      homeSubTab === tab.id
-                        ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
-                        : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
-                    )}
+              {!selectedFeatureForDetail && (
+                <div className={cn(
+                  "flex flex-wrap items-center gap-1.5 p-1.5 rounded-3xl w-fit border backdrop-blur-md",
+                  isDarkMode ? "bg-slate-800/50 border-slate-700" : "bg-slate-100/80 border-slate-200"
+                )}>
+                  {[
+                    { id: 'features_main', label: 'Tính năng chính', icon: Wrench },
+                    { id: 'utilities', label: 'Tiện ích mở rộng', icon: LayoutGrid }
+                  ].map((tab, tabIdx) => (
+                    <button
+                      key={`home-subtab-${tab.id}-${tabIdx}`}
+                      onClick={() => setHomeSubTab(tab.id as any)}
+                      className={cn(
+                        "px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2",
+                        homeSubTab === tab.id
+                          ? (isDarkMode ? "bg-white text-slate-900 shadow-xl" : "bg-white text-primary shadow-xl shadow-slate-200")
+                          : (isDarkMode ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")
+                      )}
+                    >
+                      <tab.icon size={14} />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <AnimatePresence>
+                {featureSaveSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-between gap-3 shadow-sm mb-6"
                   >
-                    <tab.icon size={14} />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                      <span>{featureSaveSuccessMessage}</span>
+                    </div>
+                    <button
+                      onClick={() => setFeatureSaveSuccessMessage(null)}
+                      className="p-1 rounded-lg hover:bg-emerald-500/20 text-emerald-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <AnimatePresence mode="wait">
                 {selectedFeatureForDetail ? (
@@ -2689,8 +3015,8 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       {featureStateGroups.map((group, grpIdx) => {
                         const featuresInGroup = sortedFeatures.filter(feature => {
                           const isInCorrectTab = homeSubTab === 'features_main'
-                            ? ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
-                            : ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo'].includes(feature.id);
+                            ? ['dashboard', 'view_directory', 'view_national_pharmacopoeia', 'view_treatment_guideline', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id)
+                            : ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo', 'view_slideshow'].includes(feature.id);
 
                           return (featureStates[feature.id] || 'open') === group.id && isInCorrectTab;
                         });
@@ -3132,17 +3458,17 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               
                               <div className="mt-4 flex flex-wrap gap-1.5 items-center">
                                 {/* Target Roles & Titles */}
-                                {ann.targetRoles && ann.targetRoles.map((r: string, rIdx: number) => (
+                                {Array.isArray(ann.targetRoles) && ann.targetRoles.map((r: string, rIdx: number) => (
                                   <span key={`${r}-${rIdx}`} className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase tracking-widest border border-indigo-500/10">
                                     {roles.find(role => role.id === r)?.name || r}
                                   </span>
                                 ))}
-                                {ann.targetTitles && ann.targetTitles.map((t: string, tIdx: number) => (
+                                {Array.isArray(ann.targetTitles) && ann.targetTitles.map((t: string, tIdx: number) => (
                                   <span key={`${t}-${tIdx}`} className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-widest border border-blue-500/10">
                                     {t}
                                   </span>
                                 ))}
-                                {!ann.targetRoles && !ann.targetTitles && (
+                                {(!Array.isArray(ann.targetRoles) || ann.targetRoles.length === 0) && (!Array.isArray(ann.targetTitles) || ann.targetTitles.length === 0) && (
                                   <span className="px-2 py-0.5 rounded bg-slate-500/10 text-slate-500 text-[8px] font-black uppercase tracking-widest border border-slate-500/10">
                                     Tất cả người dùng
                                   </span>
@@ -3167,14 +3493,15 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                               {(() => {
                                 const recipients = allUsers.filter(u => {
                                   if (u.isApproved === false || u.role === 'unapproved') return false;
-                                  const hasTargets = (ann.targetRoles && ann.targetRoles.length > 0) || (ann.targetTitles && ann.targetTitles.length > 0);
-                                  if (!hasTargets) return true;
-                                  const roleMatched = ann.targetRoles?.includes(u.role);
-                                  const titleMatched = ann.targetTitles?.includes(u.title || '');
+                                  const hasTargetRoles = Array.isArray(ann.targetRoles) && ann.targetRoles.length > 0;
+                                  const hasTargetTitles = Array.isArray(ann.targetTitles) && ann.targetTitles.length > 0;
+                                  if (!hasTargetRoles && !hasTargetTitles) return true;
+                                  const roleMatched = hasTargetRoles && ann.targetRoles.includes(u.role);
+                                  const titleMatched = hasTargetTitles && ann.targetTitles.includes(u.title || '');
                                   return roleMatched || titleMatched;
                                 });
 
-                                const readCount = recipients.filter(u => ann.readBy?.includes(u.uid)).length;
+                                const readCount = recipients.filter(u => isAnnouncementReadByUser(ann.readBy, u.uid)).length;
                                 const maxVisible = 8;
                                 const visibleRecipients = recipients.slice(0, maxVisible);
                                 const extraCount = recipients.length - maxVisible;
@@ -3227,7 +3554,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                                     {recipients.length > 0 ? (
                                       <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
                                         {visibleRecipients.map((u, uIdx) => {
-                                          const isRead = ann.readBy?.includes(u.uid);
+                                          const isRead = isAnnouncementReadByUser(ann.readBy, u.uid);
                                           const initials = (u.displayName || u.email || 'U')
                                             .split(' ')
                                             .map(n => n[0])
@@ -3528,6 +3855,14 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           )}
         </div>
       )}
+
+          {activeCategory === 'feedbacks' && (
+            <DrugFeedbackManagement
+              isDarkMode={!!isDarkMode}
+              userRole={userRole}
+              uid={uid}
+            />
+          )}
 
           {activeCategory === 'general' && (
             <div className="space-y-8">
@@ -4057,7 +4392,30 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
           )}
           
           {activeCategory === 'features' && (
-            <AnimatePresence mode="wait">
+            <>
+              <AnimatePresence>
+                {featureSaveSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-between gap-3 shadow-sm mb-6"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                      <span>{featureSaveSuccessMessage}</span>
+                    </div>
+                    <button
+                      onClick={() => setFeatureSaveSuccessMessage(null)}
+                      className="p-1 rounded-lg hover:bg-emerald-500/20 text-emerald-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence mode="wait">
               {selectedFeatureForDetail ? (
                 <div key="detail">
                   {renderFeatureDetailContent()}
@@ -4106,10 +4464,10 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                           if (!statusMatch) return false;
 
                           if (featureCategoryFilter === 'features_main') {
-                            return ['dashboard', 'view_directory', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id);
+                            return ['dashboard', 'view_directory', 'view_national_pharmacopoeia', 'view_treatment_guideline', 'view_icd10', 'view_interaction', 'view_adr', 'view_patients', 'view_prescription', 'view_doc_lookup'].includes(feature.id);
                           }
                           if (featureCategoryFilter === 'utilities') {
-                            return ['view_calendar', 'view_notes', 'view_social'].includes(feature.id);
+                            return ['view_calendar', 'view_notes', 'view_social', 'view_calculator', 'view_todo', 'view_slideshow'].includes(feature.id);
                           }
                           return true;
                         });
@@ -4144,6 +4502,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 </div>
               )}
             </AnimatePresence>
+          </>
           )}
           
           {activeCategory === 'registration' && (
@@ -5121,6 +5480,30 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
         isDarkMode={isDarkMode}
       />
 
+      <ConfirmModal
+        isOpen={isDiscardFeatureConfirmOpen}
+        onClose={() => setIsDiscardFeatureConfirmOpen(false)}
+        onConfirm={handleConfirmDiscardDetail}
+        title="Cảnh báo thay đổi chưa lưu"
+        message={`Bạn đang có các thay đổi cấu hình chưa được lưu cho "${detailDraftSettings?.customTitle || ALL_FEATURES.find(f => f.id === selectedFeatureForDetail)?.label || 'tính năng này'}". Nếu quay lại ngay, toàn bộ thay đổi vừa chỉnh sửa sẽ bị hủy và trở về cấu hình ban đầu. Bạn có chắc chắn muốn quay lại không?`}
+        confirmText="Hủy thay đổi & Quay lại"
+        cancelText="Ở lại chỉnh sửa"
+        type="warning"
+        isDarkMode={isDarkMode}
+      />
+
+      <ConfirmModal
+        isOpen={isSaveFeatureConfirmOpen}
+        onClose={() => setIsSaveFeatureConfirmOpen(false)}
+        onConfirm={handleConfirmSaveDetail}
+        title="Xác nhận hoàn tất thay đổi"
+        message={`Bạn có chắc chắn muốn lưu và áp dụng toàn bộ thay đổi cấu hình cho "${detailDraftSettings?.customTitle || ALL_FEATURES.find(f => f.id === selectedFeatureForDetail)?.label || 'tính năng này'}" vào hệ thống không? Cấu hình mới sẽ có hiệu lực ngay lập tức.`}
+        confirmText="Hoàn tất & Lưu"
+        cancelText="Kiểm tra lại"
+        type="info"
+        isDarkMode={isDarkMode}
+      />
+
       {/* Edit Announcement Modal */}
       <AnimatePresence>
         {editingAnnouncement && (
@@ -5464,15 +5847,16 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                 {(() => {
                   const recipients = allUsers.filter(u => {
                     if (u.isApproved === false || u.role === 'unapproved') return false;
-                    const hasTargets = (selectedAnnForRecipients.targetRoles && selectedAnnForRecipients.targetRoles.length > 0) || (selectedAnnForRecipients.targetTitles && selectedAnnForRecipients.targetTitles.length > 0);
-                    if (!hasTargets) return true;
-                    const roleMatched = selectedAnnForRecipients.targetRoles?.includes(u.role);
-                    const titleMatched = selectedAnnForRecipients.targetTitles?.includes(u.title || '');
+                    const hasTargetRoles = Array.isArray(selectedAnnForRecipients.targetRoles) && selectedAnnForRecipients.targetRoles.length > 0;
+                    const hasTargetTitles = Array.isArray(selectedAnnForRecipients.targetTitles) && selectedAnnForRecipients.targetTitles.length > 0;
+                    if (!hasTargetRoles && !hasTargetTitles) return true;
+                    const roleMatched = hasTargetRoles && selectedAnnForRecipients.targetRoles.includes(u.role);
+                    const titleMatched = hasTargetTitles && selectedAnnForRecipients.targetTitles.includes(u.title || '');
                     return roleMatched || titleMatched;
                   });
 
-                  const readList = recipients.filter(u => selectedAnnForRecipients.readBy?.includes(u.uid));
-                  const unreadList = recipients.filter(u => !selectedAnnForRecipients.readBy?.includes(u.uid));
+                  const readList = recipients.filter(u => isAnnouncementReadByUser(selectedAnnForRecipients.readBy, u.uid));
+                  const unreadList = recipients.filter(u => !isAnnouncementReadByUser(selectedAnnForRecipients.readBy, u.uid));
 
                   let filtered = recipients;
                   if (recipientFilter === 'read') filtered = readList;
@@ -5555,7 +5939,7 @@ const SystemConfig: React.FC<SystemConfigProps> = ({ isDarkMode, systemSettings,
                       {filtered.length > 0 ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                           {filtered.map((u, uIdx) => {
-                            const isRead = selectedAnnForRecipients.readBy?.includes(u.uid);
+                            const isRead = isAnnouncementReadByUser(selectedAnnForRecipients.readBy, u.uid);
                             const initials = (u.displayName || u.email || 'U')
                               .split(' ')
                               .map(n => n[0])

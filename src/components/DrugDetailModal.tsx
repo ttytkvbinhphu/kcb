@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Edit,
@@ -45,11 +45,14 @@ import {
 } from "lucide-react";
 import { Drug, ICD10, Ingredient } from "../types";
 import { subscribeICD10 } from "../lib/icdStore";
+import { useFavoriteDrugs } from "../lib/favoritesStore";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { DrugFeedbackModal } from "./DrugFeedbackModal";
 import {
   db,
+  doc,
+  auth,
   collection,
   onSnapshot,
   handleFirestoreError,
@@ -127,6 +130,7 @@ interface DrugDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   isDarkMode: boolean;
+  embedded?: boolean;
   userPowerPoints?: number;
   canSeeIcdSuggestions?: boolean;
   canSeeCommonIndications?: boolean;
@@ -138,6 +142,9 @@ interface DrugDetailModalProps {
   canSeeIntakeTime?: boolean;
   canSeeAgeContraindications?: boolean;
   canSeeInteractionSuggestions?: boolean;
+  canSubmitFeedback?: boolean;
+  feedbackMinPower?: number;
+  userRole?: string;
   onEdit?: (drug: Drug) => void;
   drugGroups?: import('../types').DrugGroup[];
 }
@@ -147,6 +154,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   isOpen,
   onClose,
   isDarkMode,
+  embedded = false,
   userPowerPoints = 0,
   canSeeIcdSuggestions = true,
   canSeeCommonIndications = true,
@@ -158,15 +166,105 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
   canSeeIntakeTime = true,
   canSeeAgeContraindications: propCanSeeAgeContraindications,
   canSeeInteractionSuggestions = true,
+  canSubmitFeedback: propCanSubmitFeedback,
+  feedbackMinPower: propFeedbackMinPower,
+  userRole,
   onEdit,
   drugGroups = [],
 }) => {
+  const [liveFeedbackMinPower, setLiveFeedbackMinPower] = useState<number | null>(null);
+  const [syncedUserRole, setSyncedUserRole] = useState<string | undefined>(userRole);
+  const [syncedUserPower, setSyncedUserPower] = useState<number>(userPowerPoints);
+  const { isFavorite, toggleFavorite } = useFavoriteDrugs();
+
+  // Keep internal state updated when props change
+  useEffect(() => {
+    if (userRole) setSyncedUserRole(userRole);
+  }, [userRole]);
+
+  useEffect(() => {
+    if (userPowerPoints !== undefined && userPowerPoints > 0) {
+      setSyncedUserPower(prev => Math.max(prev, userPowerPoints));
+    }
+  }, [userPowerPoints]);
+
+  // Subscribe to live feature_settings, config_roles and current user profile for real-time permissions
+  useEffect(() => {
+    const unsubFeature = onSnapshot(
+      doc(db, "system_config", "feature_settings"),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const minP = data?.drugFeedbackMinPower ?? data?.view_directory?.feedbackMinPower ?? data?.directory?.feedbackMinPower ?? 0;
+          setLiveFeedbackMinPower(Number(minP) || 0);
+        }
+      },
+      (err) => {
+        console.warn("Could not load feedback settings:", err);
+      }
+    );
+
+    let rolesMap: Record<string, number> = {};
+    const unsubRoles = onSnapshot(
+      collection(db, "config_roles"),
+      (snapshot) => {
+        rolesMap = {};
+        snapshot.docs.forEach(d => {
+          rolesMap[d.id] = (d.data() as any)?.powerPoints ?? 0;
+        });
+      },
+      (err) => console.warn("Could not load roles for power points:", err)
+    );
+
+    let unsubUser = () => {};
+    const activeUid = auth?.currentUser?.uid;
+    if (activeUid) {
+      unsubUser = onSnapshot(
+        doc(db, "users", activeUid),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const uData = docSnap.data();
+            const role = uData?.role || "staff";
+            setSyncedUserRole(role);
+            const rolePts = rolesMap[role] ?? 0;
+            const userPts = uData?.powerPoints !== undefined && uData?.powerPoints !== null ? Number(uData.powerPoints) || 0 : rolePts;
+            setSyncedUserPower(Math.max(userPts, rolePts, userPowerPoints || 0));
+          }
+        },
+        (err) => console.warn("Could not load user profile:", err)
+      );
+    }
+
+    return () => {
+      unsubFeature();
+      unsubRoles();
+      unsubUser();
+    };
+  }, [userPowerPoints]);
+
+  const effectiveFeedbackMinPower =
+    propFeedbackMinPower !== undefined ? propFeedbackMinPower : (liveFeedbackMinPower ?? 0);
+
+  const effectiveUserRole = syncedUserRole || userRole;
+  const effectiveUserPower = Math.max(syncedUserPower || 0, userPowerPoints || 0);
+
+  const isPrivilegedUser =
+    effectiveUserRole === "admin" ||
+    effectiveUserRole === "operator" ||
+    effectiveUserRole === "operator_doctor" ||
+    effectiveUserRole === "operator_pharmacist";
+
+  const canSeeFeedbackButton =
+    propCanSubmitFeedback !== undefined
+      ? propCanSubmitFeedback
+      : isPrivilegedUser || effectiveUserPower >= effectiveFeedbackMinPower;
+
   const canSeeAgeContraindications =
     propCanSeeAgeContraindications !== undefined
       ? propCanSeeAgeContraindications
-      : userPowerPoints >= 5;
+      : effectiveUserPower >= 5;
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !embedded) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "auto";
@@ -174,7 +272,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     return () => {
       document.body.style.overflow = "auto";
     };
-  }, [isOpen]);
+  }, [isOpen, embedded]);
 
   const [activeDetailTab, setActiveDetailTab] = useState<
     | "indications"
@@ -455,6 +553,51 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
     };
   }, [isOpen]);
 
+  // Lock app-level horizontal swipe navigation when DrugDetailModal is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.dispatchEvent(new CustomEvent("set-tab-swipe-lock", { detail: { locked: true } }));
+    window.dispatchEvent(new CustomEvent("lock-app-swipe", { detail: { locked: true } }));
+
+    return () => {
+      window.dispatchEvent(new CustomEvent("set-tab-swipe-lock", { detail: { locked: false } }));
+      window.dispatchEvent(new CustomEvent("lock-app-swipe", { detail: { locked: false } }));
+    };
+  }, [isOpen]);
+
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  // Prevent horizontal swipe gestures on header from triggering app-level navigation
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = headerRef.current;
+    if (!el) return;
+
+    const stopTouch = (e: TouchEvent | PointerEvent) => {
+      e.stopPropagation();
+      if ((e as any).stopImmediatePropagation) {
+        (e as any).stopImmediatePropagation();
+      }
+    };
+
+    el.addEventListener("touchstart", stopTouch, { passive: true, capture: true });
+    el.addEventListener("touchmove", stopTouch, { passive: true, capture: true });
+    el.addEventListener("touchend", stopTouch, { passive: true, capture: true });
+    el.addEventListener("pointerdown", stopTouch, { capture: true });
+    el.addEventListener("pointermove", stopTouch, { capture: true });
+    el.addEventListener("pointerup", stopTouch, { capture: true });
+
+    return () => {
+      el.removeEventListener("touchstart", stopTouch, { capture: true } as any);
+      el.removeEventListener("touchmove", stopTouch, { capture: true } as any);
+      el.removeEventListener("touchend", stopTouch, { capture: true } as any);
+      el.removeEventListener("pointerdown", stopTouch, { capture: true });
+      el.removeEventListener("pointermove", stopTouch, { capture: true });
+      el.removeEventListener("pointerup", stopTouch, { capture: true });
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
@@ -489,7 +632,7 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
   // Handle mobile back button
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || embedded) return;
 
     const modalHash = "#drug-detail";
 
@@ -520,10 +663,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
   // Separate cleanup effect for the hash when closing
   useEffect(() => {
-    if (!isOpen && window.location.hash === "#drug-detail") {
+    if (!isOpen && !embedded && window.location.hash === "#drug-detail") {
       window.history.back();
     }
-  }, [isOpen]);
+  }, [isOpen, embedded]);
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -707,23 +850,29 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
       <AnimatePresence>
         {isOpen && (
           <div
-            key="drug-detail-modal-root-wrapper"
+            key={embedded ? "drug-detail-embedded-root" : "drug-detail-modal-root-wrapper"}
             className={cn(
-              "fixed inset-0 z-[190] flex items-center justify-center transition-all duration-300",
-              isFullScreen ? "p-0" : "p-0 lg:p-8 xl:p-12"
+              embedded
+                ? "relative w-full min-h-screen transition-all duration-300"
+                : "fixed inset-0 z-[190] flex items-center justify-center transition-all duration-300",
+              !embedded && (isFullScreen ? "p-0" : "p-0 lg:p-8 xl:p-12")
             )}
           >
-            <motion.div
-              key="drug-detail-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onClose}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            />
+            {!embedded && (
+              <motion.div
+                key="drug-detail-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={onClose}
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              />
+            )}
 
             <motion.div
               key="drug-detail-dialog"
+              id="drug-detail-dialog"
+              data-no-swipe="true"
               initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: 10 }}
@@ -731,11 +880,15 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                 duration: 0.3,
                 ease: [0.4, 0, 0.2, 1],
               }}
+              onTouchStart={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
             className={cn(
-              "relative w-full h-full flex flex-row transition-all duration-300 overflow-hidden shadow-2xl",
-              isFullScreen
-                ? "lg:w-full lg:max-w-none lg:h-full lg:rounded-none border-none"
-                : "lg:w-[92vw] lg:max-w-7xl lg:h-[88vh] lg:rounded-2xl border-t lg:border border-white/10",
+              "relative w-full flex flex-row transition-all duration-300",
+              embedded
+                ? "min-h-screen rounded-none border-none shadow-none"
+                : isFullScreen
+                  ? "h-full overflow-hidden lg:w-full lg:max-w-none lg:h-full lg:rounded-none border-none shadow-2xl"
+                  : "h-full overflow-hidden lg:w-[92vw] lg:max-w-7xl lg:h-[88vh] lg:rounded-2xl border-t lg:border border-white/10 shadow-2xl",
               isDarkMode
                 ? "bg-slate-900 text-white"
                 : "bg-white text-slate-900",
@@ -750,7 +903,8 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                 ease: "easeOut",
               }}
               className={cn(
-                "h-full flex flex-col overflow-hidden shrink-0 transition-all duration-300",
+                "flex flex-col shrink-0 transition-all duration-300",
+                embedded ? "min-h-screen w-full" : "h-full overflow-hidden w-full",
                 showPdfPreview
                   ? "w-full -translate-x-full lg:translate-x-0 lg:w-1/2 border-r border-slate-200 dark:border-slate-800 shadow-xl z-10"
                   : "w-full"
@@ -758,8 +912,18 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
             >
               {/* Header / Banner Area */}
               <div
+                ref={headerRef}
+                id="drug-detail-header"
+                data-no-swipe="true"
+                data-prevent-swipe="true"
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerMove={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
                 className={cn(
-                  "shrink-0 relative transition-all duration-300",
+                  "shrink-0 relative transition-all duration-300 select-none touch-none",
                   showPdfPreview ? "p-3 sm:p-4" : "p-3 sm:p-5 lg:px-7 lg:py-3.5",
                   isDarkMode
                     ? "bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 text-white"
@@ -781,24 +945,45 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                         : "right-1.5 sm:right-4 lg:right-5"
                     )}
                   >
-                    {/* Hàng nút trên: Toàn màn hình (PC) & Đóng (Esc) */}
+                    {/* Hàng nút trên: Yêu thích, Toàn màn hình (PC) & Đóng (Esc) */}
                     <div className="flex items-center gap-1 sm:gap-1.5">
-                      {/* Nút Toàn màn hình (Fullscreen) dành cho PC */}
-                      <button
-                        type="button"
-                        onClick={toggleFullScreen}
-                        className={cn(
-                          "hidden lg:flex w-8 h-8 rounded-xl transition-all duration-200 items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
-                          isFullScreen
-                            ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-400/50 border-blue-500"
-                            : isDarkMode
-                            ? "bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white border-slate-700/60"
-                            : "bg-white/90 text-slate-600 hover:bg-white hover:text-slate-900 border-slate-200"
-                        )}
-                        title={isFullScreen ? "Thu nhỏ cửa sổ" : "Toàn màn hình"}
-                      >
-                        {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                      </button>
+                      {/* Nút Đánh dấu Yêu thích */}
+                      {drug?.id && (
+                        <button
+                          type="button"
+                          onClick={() => toggleFavorite(drug.id)}
+                          className={cn(
+                            "w-7 h-7 sm:w-8 sm:h-8 p-1 sm:p-1.5 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
+                            isFavorite(drug.id)
+                              ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 border-amber-500/40 ring-1 ring-amber-400/40"
+                              : isDarkMode
+                              ? "bg-slate-800/80 text-slate-400 hover:text-amber-400 hover:bg-slate-700 border-slate-700/60"
+                              : "bg-white/90 text-slate-500 hover:text-amber-500 hover:bg-white border-slate-200"
+                          )}
+                          title={isFavorite(drug.id) ? "Bỏ yêu thích thuốc này" : "Đánh dấu thuốc yêu thích"}
+                        >
+                          <Star className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform", isFavorite(drug.id) ? "fill-amber-400 text-amber-500 scale-110" : "")} />
+                        </button>
+                      )}
+
+                      {/* Nút Toàn màn hình (Fullscreen) dành cho PC (ẩn khi xem trực tiếp trong Tra cứu thuốc, chỉ giữ lại ở phiên bản khách hoặc modal popup) */}
+                      {(!embedded || !userRole) && (
+                        <button
+                          type="button"
+                          onClick={toggleFullScreen}
+                          className={cn(
+                            "hidden lg:flex w-8 h-8 rounded-xl transition-all duration-200 items-center justify-center cursor-pointer shadow-sm active:scale-95 border",
+                            isFullScreen
+                              ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-400/50 border-blue-500"
+                              : isDarkMode
+                              ? "bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white border-slate-700/60"
+                              : "bg-white/90 text-slate-600 hover:bg-white hover:text-slate-900 border-slate-200"
+                          )}
+                          title={isFullScreen ? "Thu nhỏ cửa sổ" : "Toàn màn hình"}
+                        >
+                          {isFullScreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </button>
+                      )}
 
                       {/* Nút Đóng modal toàn bộ */}
                       <button
@@ -817,21 +1002,23 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
                     {/* Hàng nút dưới: Nút Góp ý & Nút Xem tờ HDSD (PDF) */}
                     <div className="flex items-center gap-1 sm:gap-1.5">
-                      {/* Nút Góp ý chi tiết thuốc */}
-                      <button
-                        type="button"
-                        onClick={() => setShowFeedbackModal(true)}
-                        className={cn(
-                          "w-7 h-7 sm:w-auto sm:h-auto px-0 sm:px-2.5 py-0 sm:py-1 rounded-lg sm:rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
-                          isDarkMode
-                            ? "bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 border-blue-500/30"
-                            : "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200"
-                        )}
-                        title="Góp ý / Đính chính thông tin thuốc"
-                      >
-                        <MessageSquarePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
-                        <span className="hidden sm:inline text-[11px] font-bold">Góp ý</span>
-                      </button>
+                      {/* Nút Góp ý chi tiết thuốc (Ẩn nếu điểm quyền lực thấp hơn thiết lập) */}
+                      {canSeeFeedbackButton && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFeedbackModal(true)}
+                          className={cn(
+                            "w-7 h-7 sm:w-auto sm:h-auto px-0 sm:px-2.5 py-0 sm:py-1 rounded-lg sm:rounded-xl text-xs font-bold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 border",
+                            isDarkMode
+                              ? "bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 border-blue-500/30"
+                              : "bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-200"
+                          )}
+                          title="Góp ý / Đính chính thông tin thuốc"
+                        >
+                          <MessageSquarePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
+                          <span className="hidden sm:inline text-[11px] font-bold">Góp ý</span>
+                        </button>
+                      )}
 
                       {drug.pdfUrl && !showPdfPreview && (
                         <button
@@ -980,6 +1167,12 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
               {/* Navigation Tabs */}
               <div
+                id="drug-detail-nav-tabs"
+                data-no-swipe="true"
+                data-prevent-swipe="true"
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
                 className={cn(
                   "px-0 lg:px-7 pt-2 sm:pt-0.5 border-b backdrop-blur-md transition-colors shrink-0",
                   isDarkMode
@@ -1025,7 +1218,10 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
 
               <div
                 className={cn(
-                  "flex-1 overflow-y-auto overflow-x-hidden relative custom-scrollbar",
+                  "flex-1 relative",
+                  embedded
+                    ? "overflow-visible"
+                    : "overflow-y-auto overflow-x-hidden custom-scrollbar",
                   isDarkMode
                     ? "bg-slate-900 font-bold"
                     : "bg-slate-50/30 font-bold",
@@ -6649,7 +6845,8 @@ const DrugDetailModal: React.FC<DrugDetailModalProps> = ({
                   exit={{ x: "100%", opacity: 0 }}
                   transition={{ type: "spring", damping: 28, stiffness: 280 }}
                   className={cn(
-                    "h-full flex flex-col overflow-hidden z-20 shrink-0 border-l shadow-2xl",
+                    "flex flex-col overflow-hidden z-20 shrink-0 border-l shadow-2xl",
+                    embedded ? "h-[calc(100vh-54px)] sticky top-[54px]" : "h-full",
                     "w-full absolute inset-0 lg:relative lg:inset-auto lg:w-1/2",
                     isDarkMode
                       ? "bg-slate-900 text-white border-slate-800"

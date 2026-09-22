@@ -269,7 +269,8 @@ const UpdateNotification: React.FC<UpdateNotificationProps> = ({ isDarkMode, uid
 
         const v = list[0];
         const lastSeen = localStorage.getItem('lastSeenVersion');
-        if (lastSeen !== v.versionName && !hasChecked) {
+        const isReadInCloud = uid && Array.isArray(v.readBy) && v.readBy.includes(uid);
+        if (lastSeen !== v.versionName && !isReadInCloud && !hasChecked) {
           setIsOpen(true);
           setHasChecked(true);
         }

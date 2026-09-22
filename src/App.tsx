@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import ConfirmModal from './components/ConfirmModal';
 import Sidebar from './components/Sidebar';
 import MobileBottomNav from './components/MobileBottomNav';
@@ -23,14 +23,19 @@ import UpdateNotification from './components/UpdateNotification';
 import DrugDetailModal from './components/DrugDetailModal';
 import WelcomeSlider from './components/WelcomeSlider';
 import SlideShowcaseStudio from './components/SlideShowcaseStudio';
+import { NationalPharmacopoeia } from './components/NationalPharmacopoeia';
+import { TreatmentGuideline } from './components/TreatmentGuideline';
+import { TreatmentGroupManagement } from './components/TreatmentGroupManagement';
 
-import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key, ArrowLeft, ArrowLeftCircle } from 'lucide-react';
+import { Pill, LogIn, ShieldCheck, FileText, ClipboardList, Users, User, X, LogOut, Settings, Sparkles, AlertTriangle, MessageSquare, MessageSquarePlus, Search, Zap, Menu, Loader2, LayoutDashboard, History, ShieldAlert, Briefcase, Calendar as CalendarIcon, Bell, Check, Trash2, CheckCheck, Info, AlertOctagon, LayoutGrid, Sun, Moon, Activity, Globe, Award, GraduationCap, Lock, Eye, EyeOff, Wrench, Palette, ChevronRight, Calculator, ListTodo, UserCheck, Phone, FileSearch, HelpCircle, Mail, Pencil, Key, ArrowLeft, ArrowLeftCircle, BookOpen, Database, RefreshCw, ExternalLink, Stethoscope } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn, getBustedPhotoURL, formatDateSafe, sanitizeFirestoreData } from './lib/utils';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser, db, collection, getDocs, setDoc, updateDoc, doc, getDoc, onSnapshot, query, where, orderBy, deleteDoc, limit, handleFirestoreError, OperationType, signInAnonymously, serverTimestamp, increment, arrayUnion, arrayRemove } from './firebase';
 import { UserProfile, Notification, SystemSettings, Announcement, RegistrationSettings, Staff, QuickAccountWarningConfig } from './types';
 import { seedInitialData } from './lib/seed';
+import { DEFAULT_MOBILE_BOTTOM_NAV_SETTINGS, DEFAULT_MOBILE_NAV_BUTTONS } from './lib/mobileNavDefaults';
+import { setCurrentUserUidForFavorites } from './lib/favoritesStore';
 
 // Session visit log tracker
 let isVisitLoggedThisSession = false;
@@ -129,6 +134,8 @@ const ALL_TABS = [
   { id: 'view_todo', label: 'Việc cần làm', icon: ListTodo },
   { id: 'view_doc_lookup', label: 'Tra cứu văn bản', icon: FileSearch },
   { id: 'view_directory', label: 'Tra cứu thuốc', icon: Pill },
+  { id: 'view_national_pharmacopoeia', label: 'Dược thư Quốc gia', icon: BookOpen },
+  { id: 'view_treatment_guideline', label: 'Hướng dẫn điều trị', icon: Stethoscope },
   { id: 'view_icd10', label: 'Tra cứu ICD-10', icon: ClipboardList },
   { id: 'view_interaction', label: 'Tương tác thuốc', icon: ShieldAlert },
   { id: 'view_adr', label: 'Tra cứu ADR', icon: AlertTriangle },
@@ -140,14 +147,18 @@ const ALL_TABS = [
   { id: 'manage_users', label: 'Quản lý người dùng', icon: Users },
   { id: 'manage_staff', label: 'Quản lý nhân sự', icon: Briefcase },
   { id: 'manage_directory', label: 'Quản lý thuốc', icon: Pill },
+  { id: 'manage_national_pharmacopoeia', label: 'Quản lý Dược thư', icon: BookOpen },
+  { id: 'manage_treatment_guidelines', label: 'Hướng dẫn điều trị (BYT)', icon: Stethoscope },
   { id: 'manage_icd10', label: 'Quản lý ICD-10', icon: ClipboardList },
   { id: 'manage_interaction', label: 'Quản lý tương tác thuốc', icon: ShieldAlert },
   { id: 'manage_adr', label: 'Quản lý ADR', icon: AlertTriangle },
   { id: 'manage_doc_lookup', label: 'Quản lý văn bản', icon: FileText },
   { id: 'manage_config', label: 'Cấu hình hệ thống', icon: Settings },
+  { id: 'settings', label: 'Cài đặt', icon: Settings },
   // AdminCP Specific Tabs
   { id: 'admin_home', label: 'Công cụ', icon: LayoutDashboard },
   { id: 'admin_notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare },
+  { id: 'admin_feedbacks', label: 'Góp ý/Báo cáo', icon: MessageSquarePlus },
   { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck },
   { id: 'admin_general', label: 'Cài đặt chung', icon: Globe },
   { id: 'admin_theme', label: 'Cài đặt Giao diện', icon: Palette },
@@ -159,11 +170,61 @@ const ALL_TABS = [
   { id: 'admin_permissions', label: 'Phân quyền hệ thống', icon: ShieldCheck },
 ];
 
+const LOOKUP_TABS = ['view_directory', 'view_national_pharmacopoeia', 'view_treatment_guideline', 'view_icd10', 'view_interaction', 'view_adr', 'view_doc_lookup', 'view_patients'];
+const TOOLS_TABS = ['view_calendar', 'view_notes', 'view_todo', 'view_prescription', 'view_calculator', 'view_social', 'view_slideshow'];
+const PHARMACY_TABS = ['manage_directory', 'manage_national_pharmacopoeia', 'manage_treatment_guidelines', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_doc_lookup'];
+
+const SLIDE_VARIANTS = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? "100%" : direction < 0 ? "-100%" : 0,
+    opacity: 1,
+  }),
+  center: {
+    zIndex: 1,
+    x: 0,
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    zIndex: 0,
+    x: direction < 0 ? "100%" : direction > 0 ? "-100%" : 0,
+    opacity: 1,
+  }),
+};
+
+const DESKTOP_VARIANTS = {
+  enter: { opacity: 1, y: 0 },
+  center: { opacity: 1, y: 0 },
+  exit: { opacity: 1, y: 0, pointerEvents: 'none' as const },
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
     const saved = safeLocalStorage.getItem('activeTab');
     return saved || 'dashboard';
   });
+  const [tabDirection, setTabDirection] = useState(0);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
+  const [isSwipeLocked, setIsSwipeLocked] = useState(false);
+
+  useEffect(() => {
+    const handleLock = (e: any) => {
+      setIsSwipeLocked(!!e.detail?.locked);
+    };
+    window.addEventListener('set-tab-swipe-lock', handleLock as any);
+    window.addEventListener('lock-app-swipe', handleLock as any);
+    return () => {
+      window.removeEventListener('set-tab-swipe-lock', handleLock as any);
+      window.removeEventListener('lock-app-swipe', handleLock as any);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const [drugDirectoryViewMode, setDrugDirectoryViewMode] = useState<'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies'>(() => {
     const saved = safeLocalStorage.getItem('drugDirectoryViewMode');
@@ -206,6 +267,12 @@ export default function App() {
   const [permsLoading, setPermsLoading] = useState(true);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [googleLoginError, setGoogleLoginError] = useState<{
+    code?: string;
+    message?: string;
+    isNetworkError?: boolean;
+    isPopupBlocked?: boolean;
+  } | null>(null);
   const [staffAccountLoginInput, setStaffAccountLoginInput] = useState('');
   const [staffLoginLoading, setStaffLoginLoading] = useState(false);
   const [staffLoginError, setStaffLoginError] = useState<string | null>(null);
@@ -218,6 +285,7 @@ export default function App() {
   const [staffAccountChangeSuccess, setStaffAccountChangeSuccess] = useState<string | null>(null);
   const [isSubmittingStaffAccount, setIsSubmittingStaffAccount] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [lastMainTab, setLastMainTab] = useState('dashboard');
   const [showSupportContact, setShowSupportContact] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -247,6 +315,15 @@ export default function App() {
     content: 'Bạn đang sử dụng **Tài khoản nhanh** (tài khoản dùng chung/tạm thời trên hệ thống).\n\n⚠️ **Vui lòng lưu ý:**\n1. **Không lưu trữ dữ liệu cá nhân nhạy cảm:** Mọi thông tin trên tài khoản này có thể được chia sẻ hoặc quản lý bởi hệ thống.\n2. **Khuyên dùng tài khoản cá nhân:** Đăng ký hoặc sử dụng tài khoản chính thức để bảo vệ quyền lợi và dữ liệu công việc của bạn.\n3. **Cập nhật thông tin:** Bạn có thể đổi tên hiển thị, mật khẩu hoặc cập nhật tài khoản bất kỳ lúc nào trong Trang cá nhân.'
   });
   const [showQuickAccountWarnModal, setShowQuickAccountWarnModal] = useState(false);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    const handleQuota = () => {
+      setQuotaExceeded(true);
+    };
+    window.addEventListener('firestore-quota-exceeded', handleQuota);
+    return () => window.removeEventListener('firestore-quota-exceeded', handleQuota);
+  }, []);
 
   const addToastPopup = (id: string, title: string, message: string, category: string, item: any) => {
     const newToast = { id, title, message, category, item, timestamp: Date.now() };
@@ -263,6 +340,50 @@ export default function App() {
   const [notificationTab, setNotificationTab] = useState<'all' | 'clinical_alert' | 'data_update' | 'medical_news_personal' | 'system'>('all');
   const [notifSearchQuery, setNotifSearchQuery] = useState('');
   const [visibleNotifCount, setVisibleNotifCount] = useState(20);
+
+  // Helper to determine if an announcement is read by the current user across devices
+  const isAnnouncementRead = (a: Announcement) => {
+    const uid = userProfile?.uid || user?.uid;
+    if (uid && a) {
+      if (Array.isArray(a.readBy) && a.readBy.includes(uid)) return true;
+      if (typeof a.readBy === 'object' && a.readBy !== null && Boolean((a.readBy as any)[uid])) return true;
+      if (Array.isArray(userProfile?.readAnnouncementIds) && userProfile.readAnnouncementIds.includes(a.id)) return true;
+    }
+    if (Array.isArray(readAnnouncementIds) && a && readAnnouncementIds.includes(a.id)) return true;
+    return false;
+  };
+
+  // Sync cloud read status into local state whenever announcements or userProfile updates
+  useEffect(() => {
+    const uid = userProfile?.uid || user?.uid;
+    if (!uid) return;
+    const cloudReadIds = new Set<string>();
+    if (userProfile?.readAnnouncementIds && Array.isArray(userProfile.readAnnouncementIds)) {
+      userProfile.readAnnouncementIds.forEach(id => cloudReadIds.add(id));
+    }
+    announcements.forEach(a => {
+      const isRead = Array.isArray(a.readBy) ? a.readBy.includes(uid) : (typeof a.readBy === 'object' && a.readBy !== null ? Boolean((a.readBy as any)[uid]) : false);
+      if (isRead) {
+        cloudReadIds.add(a.id);
+      }
+    });
+    if (cloudReadIds.size > 0) {
+      setReadAnnouncementIds(prev => {
+        const merged = Array.from(new Set([...prev, ...Array.from(cloudReadIds)]));
+        if (merged.length !== prev.length) {
+          safeLocalStorage.setItem('read_announcements', JSON.stringify(merged));
+          return merged;
+        }
+        return prev;
+      });
+    }
+  }, [userProfile?.readAnnouncementIds, announcements, userProfile?.uid, user?.uid]);
+
+  // Sync active user UID to favorite drugs store for cross-device synchronization
+  useEffect(() => {
+    const activeUid = userProfile?.uid || user?.uid || null;
+    setCurrentUserUidForFavorites(activeUid);
+  }, [userProfile?.uid, user?.uid]);
 
   const getNotificationCategory = (item: any, isAnnouncement: boolean): 'clinical_alert' | 'data_update' | 'medical_news_personal' | 'system' => {
     if (item.category) return item.category;
@@ -327,7 +448,7 @@ export default function App() {
     
     // Convert announcements to unified form
     announcements.filter(a => a.showInHeader !== false).forEach(a => {
-      const isRead = readAnnouncementIds.includes(a.id);
+      const isRead = isAnnouncementRead(a);
       const category = getNotificationCategory(a, true);
       list.push({
         id: a.id,
@@ -406,27 +527,33 @@ export default function App() {
   };
 
   const toggleReadStatus = async (item: any) => {
+    const uid = userProfile?.uid || user?.uid;
     if (item.isAnnouncement) {
+      const willBeRead = !item.isRead;
       setReadAnnouncementIds(prev => {
-        let next;
-        if (item.isRead) {
-          next = prev.filter(id => id !== item.id);
-        } else {
-          next = Array.from(new Set([...prev, item.id]));
-        }
+        const next = willBeRead
+          ? Array.from(new Set([...prev, item.id]))
+          : prev.filter(id => id !== item.id);
         safeLocalStorage.setItem('read_announcements', JSON.stringify(next));
         return next;
       });
-      if (userProfile?.uid) {
+      if (uid) {
         try {
           const annRef = doc(db, 'announcements', item.id);
-          if (item.isRead) {
-            await updateDoc(annRef, { readBy: arrayRemove(userProfile.uid) });
+          const userRef = doc(db, 'users', uid);
+          if (willBeRead) {
+            await Promise.all([
+              updateDoc(annRef, { readBy: arrayUnion(uid) }).catch(() => {}),
+              updateDoc(userRef, { readAnnouncementIds: arrayUnion(item.id) }).catch(() => {})
+            ]);
           } else {
-            await updateDoc(annRef, { readBy: arrayUnion(userProfile.uid) });
+            await Promise.all([
+              updateDoc(annRef, { readBy: arrayRemove(uid) }).catch(() => {}),
+              updateDoc(userRef, { readAnnouncementIds: arrayRemove(item.id) }).catch(() => {})
+            ]);
           }
         } catch (e) {
-          console.error("Error updating announcement readBy:", e);
+          console.error("Error updating announcement readBy in Firestore:", e);
         }
       }
     } else {
@@ -485,6 +612,16 @@ export default function App() {
       });
     }
   }, [userProfile, isProfileModalOpen]);
+
+  // Global listener to open Settings modal
+  useEffect(() => {
+    const handleOpenSettingsEvent = () => {
+      setIsProfileModalOpen(true);
+      setShowSupportContact(false);
+    };
+    window.addEventListener('open-settings', handleOpenSettingsEvent);
+    return () => window.removeEventListener('open-settings', handleOpenSettingsEvent);
+  }, []);
 
   // Automated first-access of the day per device and user logger
   useEffect(() => {
@@ -558,6 +695,10 @@ export default function App() {
     const saved = safeLocalStorage.getItem('isAdminMode');
     return saved === 'true';
   });
+  const [isDataMode, setIsDataMode] = useState(() => {
+    const saved = safeLocalStorage.getItem('isDataMode');
+    return saved === 'true';
+  });
 
   const syncUserProfile = async () => {
     if (auth.currentUser) {
@@ -587,10 +728,7 @@ export default function App() {
     }
   };
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = safeLocalStorage.getItem('isSidebarCollapsed');
-    return saved === 'true';
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const [externalSelectedDrugId, setExternalSelectedDrugId] = useState<string | null>(null);
   const [externalIcdSearchQuery, setExternalIcdSearchQuery] = useState<string | null>(null);
   const [externalPatientSearchQuery, setExternalPatientSearchQuery] = useState<string | null>(null);
@@ -600,10 +738,14 @@ export default function App() {
   }, [isAdminMode]);
 
   useEffect(() => {
-    safeLocalStorage.setItem('isSidebarCollapsed', isSidebarCollapsed.toString());
+    safeLocalStorage.setItem('isDataMode', isDataMode.toString());
+  }, [isDataMode]);
+
+  useEffect(() => {
+    safeLocalStorage.setItem('isSidebarCollapsed', 'true');
     // Dispatch resize event to let components (like charts) know the layout changed
     setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
-  }, [isSidebarCollapsed]);
+  }, []);
   const [guestView, setGuestView] = useState<'none' | 'drugs' | 'icd10' | 'terms'>('none');
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
@@ -710,13 +852,17 @@ export default function App() {
       if (customEvent.detail) {
         if (typeof customEvent.detail === 'string' && customEvent.detail.startsWith('admin_') && !isAdminMode) {
           setIsAdminMode(true);
+          setIsDataMode(false);
+        } else if (typeof customEvent.detail === 'string' && customEvent.detail.startsWith('manage_') && !isDataMode) {
+          setIsDataMode(true);
+          setIsAdminMode(false);
         }
         setActiveTab(customEvent.detail);
       }
     };
     window.addEventListener('navigate-tab', handleNavigateTab);
     return () => window.removeEventListener('navigate-tab', handleNavigateTab);
-  }, [isAdminMode]);
+  }, [isAdminMode, isDataMode]);
 
   useEffect(() => {
     // When switching to a sub-page/utility, push state to history
@@ -1140,14 +1286,16 @@ export default function App() {
         const newItems = items.filter(x => !existingNotificationIds.current.includes(x.id));
         if (newItems.length > 0) {
           newItems.forEach(n => {
-            const category = getNotificationCategory(n, false);
-            addToastPopup(
-              n.id,
-              n.title || "Thông báo mới",
-              n.message || "",
-              category,
-              { ...n, isAnnouncement: false }
-            );
+            if (!n.isRead) {
+              const category = getNotificationCategory(n, false);
+              addToastPopup(
+                n.id,
+                n.title || "Thông báo mới",
+                n.message || "",
+                category,
+                { ...n, isAnnouncement: false }
+              );
+            }
           });
           existingNotificationIds.current = [
             ...existingNotificationIds.current,
@@ -1177,14 +1325,14 @@ export default function App() {
         if (userProfile?.role === 'admin') return true;
 
         // If no targets defined, it's global
-        const hasTargets = (ann.targetRoles && ann.targetRoles.length > 0) ||
-          (ann.targetTitles && ann.targetTitles.length > 0);
+        const hasTargetRoles = Array.isArray(ann.targetRoles) && ann.targetRoles.length > 0;
+        const hasTargetTitles = Array.isArray(ann.targetTitles) && ann.targetTitles.length > 0;
 
-        if (!hasTargets) return true;
+        if (!hasTargetRoles && !hasTargetTitles) return true;
 
         // Match if user role or title is in the target list
-        const roleMatched = ann.targetRoles?.includes(userProfile?.role || '');
-        const titleMatched = ann.targetTitles?.includes(userProfile?.title || '');
+        const roleMatched = hasTargetRoles && ann.targetRoles.includes(userProfile?.role || '');
+        const titleMatched = hasTargetTitles && ann.targetTitles.includes(userProfile?.title || '');
 
         return roleMatched || titleMatched;
       });
@@ -1196,15 +1344,22 @@ export default function App() {
         const newItems = filtered.filter(x => !existingAnnouncementIds.current.includes(x.id));
         if (newItems.length > 0) {
           newItems.forEach(a => {
-            const category = getNotificationCategory(a, true);
-            const title = a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống');
-            addToastPopup(
-              a.id,
-              title,
-              a.content || "",
-              category,
-              { ...a, isAnnouncement: true }
-            );
+            const uid = activeUid || userProfile?.uid || user?.uid;
+            const isReadInCloud = (uid && (Array.isArray(a.readBy) ? a.readBy.includes(uid) : (typeof a.readBy === 'object' && a.readBy !== null ? Boolean((a.readBy as any)[uid]) : false))) ||
+              (uid && Array.isArray(userProfile?.readAnnouncementIds) && userProfile.readAnnouncementIds.includes(a.id));
+            const isAlreadyRead = isReadInCloud || (Array.isArray(readAnnouncementIds) && readAnnouncementIds.includes(a.id));
+
+            if (!isAlreadyRead) {
+              const category = getNotificationCategory(a, true);
+              const title = a.title || (a.type === 'drug_update' ? `Cập bến/Cập nhật: ${a.drugName || 'Thuốc'}` : 'Thông báo hệ thống');
+              addToastPopup(
+                a.id,
+                title,
+                a.content || "",
+                category,
+                { ...a, isAnnouncement: true }
+              );
+            }
           });
           existingAnnouncementIds.current = [
             ...existingAnnouncementIds.current,
@@ -1246,6 +1401,106 @@ export default function App() {
     }
   }, [userProfile, quickWarningConfig]);
 
+  const mobileNavButtons = useMemo(() => {
+    const navConfig = systemSettings.mobileBottomNav || DEFAULT_MOBILE_BOTTOM_NAV_SETTINGS;
+    if (navConfig.enabled === false) return [];
+    const rawButtons = (navConfig.buttons && navConfig.buttons.length > 0)
+      ? navConfig.buttons
+      : DEFAULT_MOBILE_NAV_BUTTONS;
+
+    const currentRole = userProfile?.isApproved ? userProfile.role : 'unapproved';
+    return rawButtons
+      .filter(btn => btn.isVisible)
+      .filter(btn => {
+        if (!btn.rolesAllowed || btn.rolesAllowed.length === 0) return true;
+        return btn.rolesAllowed.includes(currentRole);
+      })
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [systemSettings.mobileBottomNav, userProfile]);
+
+  const mobileSwipeTabs = useMemo(() => {
+    const tabs: string[] = [];
+    mobileNavButtons.forEach(btn => {
+      let target = btn.targetTab;
+      if (!target) {
+        if (btn.actionType === 'sheet_lookup') target = 'view_directory';
+        else if (btn.actionType === 'sheet_tools') target = 'view_calendar';
+        else if (btn.actionType === 'admin') target = 'admin_general';
+        else if (btn.actionType === 'tab') target = 'dashboard';
+      }
+      if (target && !tabs.includes(target)) {
+        tabs.push(target);
+      }
+    });
+    if (!tabs.includes('settings')) {
+      tabs.push('settings');
+    }
+    return tabs;
+  }, [mobileNavButtons]);
+
+  const getTabNavIndex = (tab: string) => {
+    if (tab === 'settings' || tab === 'app_settings') {
+      const idx = mobileSwipeTabs.indexOf('settings');
+      if (idx !== -1) return idx;
+    }
+    const exact = mobileSwipeTabs.indexOf(tab);
+    if (exact !== -1) return exact;
+    if (LOOKUP_TABS.includes(tab)) {
+      const lookupBtn = mobileNavButtons.find(b => b.actionType === 'sheet_lookup' || b.targetTab === 'view_directory');
+      const target = lookupBtn?.targetTab || 'view_directory';
+      const idx = mobileSwipeTabs.indexOf(target);
+      if (idx !== -1) return idx;
+    }
+    if (TOOLS_TABS.includes(tab)) {
+      const toolsBtn = mobileNavButtons.find(b => b.actionType === 'sheet_tools' || b.targetTab === 'view_calendar');
+      const target = toolsBtn?.targetTab || 'view_calendar';
+      const idx = mobileSwipeTabs.indexOf(target);
+      if (idx !== -1) return idx;
+    }
+    if (PHARMACY_TABS.includes(tab)) {
+      const pharmacyBtn = mobileNavButtons.find(b => b.targetTab === 'manage_directory' || b.id === 'btn_pharmacy');
+      const target = pharmacyBtn?.targetTab || 'manage_directory';
+      const idx = mobileSwipeTabs.indexOf(target);
+      if (idx !== -1) return idx;
+    }
+    if (tab.startsWith('admin_') || isAdminMode) {
+      const adminBtn = mobileNavButtons.find(b => b.actionType === 'admin');
+      if (adminBtn?.targetTab) {
+        const idx = mobileSwipeTabs.indexOf(adminBtn.targetTab);
+        if (idx !== -1) return idx;
+      }
+    }
+    return 0;
+  };
+
+  const handleTabChangeWithDirection = (newTab: string, customDir?: number) => {
+    if (newTab === activeTab) return;
+    if (activeTab !== 'settings' && activeTab !== 'app_settings') {
+      setLastMainTab(activeTab);
+    }
+    if (customDir !== undefined) {
+      setTabDirection(customDir);
+    } else {
+      const oldIdx = getTabNavIndex(activeTab);
+      const newIdx = getTabNavIndex(newTab);
+      if (newIdx !== oldIdx) {
+        setTabDirection(newIdx > oldIdx ? 1 : -1);
+      } else {
+        setTabDirection(0);
+      }
+    }
+    setActiveTab(newTab);
+  };
+
+  const paginateMobileTab = (delta: number) => {
+    if (!isMobile || mobileSwipeTabs.length <= 1) return;
+    const currentIdx = getTabNavIndex(activeTab);
+    const nextIdx = currentIdx + delta;
+    if (nextIdx >= 0 && nextIdx < mobileSwipeTabs.length) {
+      handleTabChangeWithDirection(mobileSwipeTabs[nextIdx], delta);
+    }
+  };
+
   const handleAcknowledgeQuickWarn = async () => {
     if (userProfile?.uid) {
       safeLocalStorage.setItem(`has_seen_quick_warn_${userProfile.uid}`, 'true');
@@ -1278,8 +1533,9 @@ export default function App() {
   };
 
   const markAllAsRead = async () => {
+    const uid = userProfile?.uid || user?.uid;
     try {
-      // 1. Mark all personal notifications as read
+      // 1. Mark all personal notifications as read in Firestore
       const unread = notifications.filter(n => !n.isRead);
       if (unread.length > 0) {
         const batchSize = 10;
@@ -1289,13 +1545,35 @@ export default function App() {
         }
       }
 
-      // 2. Mark all announcements as read
+      // 2. Mark all announcements as read in local state and Firestore
       const allAnnIds = announcements.map(a => a.id);
       setReadAnnouncementIds(prev => {
         const next = Array.from(new Set([...prev, ...allAnnIds]));
         safeLocalStorage.setItem('read_announcements', JSON.stringify(next));
         return next;
       });
+
+      if (uid && allAnnIds.length > 0) {
+        try {
+          await updateDoc(doc(db, 'users', uid), {
+            readAnnouncementIds: allAnnIds
+          }).catch(() => {});
+        } catch (e) {
+          console.warn("Could not update user readAnnouncementIds:", e);
+        }
+
+        const unreadAnns = announcements.filter(a => {
+          const isRead = Array.isArray(a.readBy) ? a.readBy.includes(uid) : (typeof a.readBy === 'object' && a.readBy !== null ? Boolean((a.readBy as any)[uid]) : false);
+          return !isRead;
+        });
+        const batchSize = 10;
+        for (let i = 0; i < unreadAnns.length; i += batchSize) {
+          const chunk = unreadAnns.slice(i, i + batchSize);
+          await Promise.all(chunk.map(a => 
+            updateDoc(doc(db, 'announcements', a.id), { readBy: arrayUnion(uid) }).catch(() => {})
+          ));
+        }
+      }
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
     }
@@ -1851,10 +2129,26 @@ export default function App() {
   const handleLogin = async () => {
     if (loginLoading) return;
     setLoginLoading(true);
+    setGoogleLoginError(null);
     safeLocalStorage.removeItem('staff_login_session');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
+      let result: any;
+      try {
+        result = await signInWithPopup(auth, googleProvider);
+      } catch (firstErr: any) {
+        const firstCode = firstErr?.code;
+        const firstMsg = firstErr?.message || '';
+        if (firstCode === 'auth/network-request-failed' || firstMsg.includes('network-request-failed')) {
+          console.warn("First signInWithPopup attempt encountered network-request-failed, retrying once...");
+          await new Promise((r) => setTimeout(r, 600));
+          result = await signInWithPopup(auth, googleProvider);
+        } else {
+          throw firstErr;
+        }
+      }
+
+      if (result?.user) {
+        setGoogleLoginError(null);
         // Log explicit login
         const logId = Date.now().toString();
         try {
@@ -1893,21 +2187,40 @@ export default function App() {
         errorMessage.includes('auth/cancelled-popup-request');
 
       if (!isCancellation) {
-        if (errorCode === 'auth/popup-blocked') {
-          alert("Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép hiện cửa sổ bật lên (popup) trên trình duyệt của bạn và thử lại.");
+        console.error("Login error details:", error);
+
+        if (errorCode === 'auth/popup-blocked' || errorMessage.includes('popup-blocked')) {
+          setGoogleLoginError({
+            code: 'auth/popup-blocked',
+            isPopupBlocked: true,
+            message: 'Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép hiện cửa sổ bật lên (popup) trên trình duyệt của bạn hoặc mở ứng dụng trong tab mới.'
+          });
           return;
         }
 
-        console.error("Login error details:", error);
+        const isNetwork = errorCode === 'auth/network-request-failed' || errorMessage.includes('network-request-failed');
+        if (isNetwork) {
+          setGoogleLoginError({
+            code: 'auth/network-request-failed',
+            isNetworkError: true,
+            message: 'Không thể kết nối đến máy chủ xác thực Google (auth/network-request-failed).'
+          });
+          return;
+        }
+
         // If it's a Firestore error, get more details
         if (errorCode?.includes('permission') || errorMessage.toLowerCase().includes('permission')) {
           try {
             handleFirestoreError(error, OperationType.WRITE, 'auth_logs');
-          } catch (detailedError) {
-            console.error("Detailed Permission Error:", detailedError.message);
+          } catch (detailedError: any) {
+            console.error("Detailed Permission Error:", detailedError?.message);
           }
         }
-        alert("Lỗi đăng nhập: " + (errorMessage || "Lỗi không xác định"));
+
+        setGoogleLoginError({
+          code: errorCode,
+          message: errorMessage || 'Lỗi không xác định khi đăng nhập.'
+        });
       }
     } finally {
       setLoginLoading(false);
@@ -2000,13 +2313,13 @@ export default function App() {
 
     return (
       <div className={cn(
-        "h-[100dvh] flex items-center justify-center p-4 lg:p-12 relative overflow-hidden font-sans transition-colors",
-        isDarkMode ? "bg-slate-950" : "bg-slate-50"
+        "min-h-[100dvh] w-full flex flex-col justify-between p-3 sm:p-6 lg:p-12 relative overflow-x-hidden overflow-y-auto font-sans transition-colors",
+        isDarkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900"
       )}>
         <UpdateNotification isDarkMode={isDarkMode} uid={user?.uid} />
         {/* Dynamic Background */}
         {systemSettings.loginBgUrl && (
-          <div className="absolute inset-0 z-0">
+          <div className="fixed inset-0 z-0 pointer-events-none">
             <img
               src={systemSettings.loginBgUrl || undefined}
               className="w-full h-full object-cover"
@@ -2021,12 +2334,41 @@ export default function App() {
           </div>
         )}
 
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.03),transparent_50%)]" />
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-emerald-600/5 blur-[120px] rounded-full" />
+        <div className="fixed top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.03),transparent_50%)] pointer-events-none" />
+        <div className="fixed top-[-10%] left-[-5%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full pointer-events-none" />
+        <div className="fixed bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-emerald-600/5 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
-          {/* Left Side: Intro */}
+        {/* Top Floating Mobile/Desktop Utility Bar */}
+        <div className="w-full max-w-6xl mx-auto flex items-center justify-between py-2 px-1 relative z-20">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50" />
+            <span className={cn(
+              "text-[11px] sm:text-xs font-black uppercase tracking-wider",
+              isDarkMode || systemSettings.loginBgUrl ? "text-slate-300" : "text-slate-600"
+            )}>
+              Hệ thống KCB Y tế
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleThemeChange(isDarkMode ? 'light' : 'dark')}
+            className={cn(
+              "p-2 sm:px-3 sm:py-1.5 rounded-xl border transition-all active:scale-95 flex items-center gap-1.5 text-xs font-bold cursor-pointer",
+              isDarkMode || systemSettings.loginBgUrl
+                ? "bg-slate-900/80 hover:bg-slate-800 border-slate-700/80 text-amber-400 shadow-sm"
+                : "bg-white/90 hover:bg-white border-slate-200 text-slate-700 shadow-xs"
+            )}
+            title={isDarkMode ? "Chuyển sang giao diện Sáng" : "Chuyển sang giao diện Tối"}
+            aria-label="Đổi giao diện"
+          >
+            {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
+            <span className="hidden sm:inline text-[11px]">{isDarkMode ? "Giao diện Sáng" : "Giao diện Tối"}</span>
+          </button>
+        </div>
+
+        <div className="w-full max-w-6xl mx-auto my-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center relative z-10 py-4 sm:py-8">
+          {/* Left Side: Intro (Desktop only) */}
           <motion.div
             initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
@@ -2100,85 +2442,108 @@ export default function App() {
             </div>
           </motion.div>
 
-          {/* Right Side: Login Card */}
+          {/* Right Side: Login Card (Enhanced Mobile & Desktop) */}
           <motion.div
-            initial={{ opacity: 0, y: 40 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
             className={cn(
-              "w-full max-w-md mx-auto rounded-[48px] p-10 lg:p-12 relative z-10 border transition-all",
+              "w-full max-w-md mx-auto rounded-3xl sm:rounded-[36px] lg:rounded-[44px] p-5 sm:p-8 lg:p-10 relative z-10 border transition-all",
               systemSettings.loginCardGlassMode
-                ? "bg-white/10 backdrop-blur-xl border-white/20 shadow-none text-white"
-                : (isDarkMode ? "bg-slate-900 border-slate-800 shadow-none" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/50")
+                ? "bg-white/10 backdrop-blur-xl border-white/20 shadow-2xl text-white"
+                : (isDarkMode ? "bg-slate-900/95 backdrop-blur-sm border-slate-800 shadow-2xl shadow-black/40" : "bg-white border-slate-100 shadow-2xl shadow-slate-200/60")
             )}
           >
-            <div className="text-center mb-10">
+            {/* Header Brand */}
+            <div className="text-center mb-6 sm:mb-8">
               <div
                 className={cn(
-                  "w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-3",
-                  isDarkMode || systemSettings.loginCardGlassMode ? "shadow-none" : "shadow-2xl shadow-primary/20"
+                  "w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto mb-3.5 sm:mb-5 transition-transform hover:scale-105 active:scale-95",
+                  isDarkMode || systemSettings.loginCardGlassMode ? "shadow-none" : "shadow-xl shadow-primary/20"
                 )}
                 style={{ backgroundColor: systemSettings.loginPrimaryColor || '#3b82f6' }}
               >
                 {systemSettings.loginLogoUrl ? (
-                  <img src={systemSettings.loginLogoUrl || undefined} className="w-16 h-16 object-contain" alt="Logo" referrerPolicy="no-referrer" />
+                  <img src={systemSettings.loginLogoUrl || undefined} className="w-12 h-12 sm:w-16 sm:h-16 object-contain" alt="Logo" referrerPolicy="no-referrer" />
                 ) : (
-                  <img src="/icon-512.png" className="w-16 h-16 object-contain" alt="Logo" />
+                  <img src="/icon-512.png" className="w-12 h-12 sm:w-16 sm:h-16 object-contain" alt="Logo" />
                 )}
               </div>
-              <h1 className={cn("text-4xl font-black tracking-tight mb-2 transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
+              <h1 className={cn("text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight mb-1 sm:mb-1.5 transition-colors leading-tight", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
                 {systemSettings.loginTitle || systemSettings.appName}
               </h1>
-              <p className={cn("font-medium text-lg transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/60" : "text-slate-500")}>
+              <p className={cn("font-medium text-xs sm:text-sm lg:text-base transition-colors max-w-xs mx-auto", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/70" : "text-slate-500")}>
                 {systemSettings.loginSubtitle}
               </p>
             </div>
 
-            {/* Mobile Features (Visible only on mobile) */}
-            <div className="lg:hidden grid grid-cols-2 gap-3 mb-8">
-              {features.map((f, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={loginLoading}
-                  onClick={() => {
-                    const checkGuestAccess = (tabId: string) => {
-                      const settings = featureSettings[tabId] || {};
-                      const status = featureStates[tabId];
-                      if (status === 'closed' || status === 'maintenance') return false;
-                      const allowedRoles = settings.allowedRoles || [];
-                      return allowedRoles.length === 0 || allowedRoles.includes('guest');
-                    };
+            {/* Mobile Quick Access Widgets (Sleek, Compact, Touch-Friendly) */}
+            <div className="lg:hidden mb-5">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className={cn(
+                  "text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5",
+                  (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-400" : "text-slate-500"
+                )}>
+                  <Sparkles size={12} className="text-amber-500 shrink-0" />
+                  Tra cứu nhanh không cần đăng nhập
+                </span>
+                <span className={cn("text-[10px] font-bold", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-500" : "text-slate-400")}>
+                  Khách
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {features.map((f, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={loginLoading}
+                    onClick={() => {
+                      const checkGuestAccess = (tabId: string) => {
+                        const settings = featureSettings[tabId] || {};
+                        const status = featureStates[tabId];
+                        if (status === 'closed' || status === 'maintenance') return false;
+                        const allowedRoles = settings.allowedRoles || [];
+                        return allowedRoles.length === 0 || allowedRoles.includes('guest');
+                      };
 
-                    if (f.id === 'drugs') {
-                      if (checkGuestAccess('view_directory')) setGuestView('drugs');
+                      if (f.id === 'drugs') {
+                        if (checkGuestAccess('view_directory')) setGuestView('drugs');
+                        else setShowLoginPrompt(true);
+                      }
+                      else if (f.id === 'icd10') {
+                        if (checkGuestAccess('view_icd10')) setGuestView('icd10');
+                        else setShowLoginPrompt(true);
+                      }
                       else setShowLoginPrompt(true);
-                    }
-                    else if (f.id === 'icd10') {
-                      if (checkGuestAccess('view_icd10')) setGuestView('icd10');
-                      else setShowLoginPrompt(true);
-                    }
-                    else setShowLoginPrompt(true);
-                  }}
-                  className={cn(
-                    "p-3 rounded-2xl border flex flex-col items-center text-center transition-all active:scale-95 disabled:opacity-50",
-                    (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-slate-800/50 border-slate-800" : "bg-slate-50 border-slate-100"
-                  )}
-                >
-                  <div className="mb-2">{f.icon}</div>
-                  <span className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider",
-                    (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-300" : "text-slate-700"
-                  )}>{f.title}</span>
-                </button>
-              ))}
+                    }}
+                    className={cn(
+                      "p-2.5 rounded-xl border flex items-center gap-2.5 text-left transition-all active:scale-[0.97] disabled:opacity-50 min-h-[44px]",
+                      (isDarkMode || systemSettings.loginCardGlassMode) 
+                        ? "bg-slate-800/60 border-slate-700/60 hover:bg-slate-800 text-slate-200" 
+                        : "bg-slate-50/80 border-slate-200/70 hover:bg-slate-100 text-slate-800"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 shadow-xs",
+                      (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-slate-900/80" : "bg-white"
+                    )}>
+                      {f.icon}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-bold block truncate leading-tight">{f.title}</span>
+                      <span className={cn("text-[9px] block truncate opacity-60 mt-0.5")}>Tra cứu</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               {/* Staff Account Login Section */}
               <div className={cn(
-                "p-4 rounded-2xl border space-y-3 transition-all",
+                "p-3.5 sm:p-4 rounded-2xl border space-y-3 transition-all",
                 (isDarkMode || systemSettings.loginCardGlassMode) 
-                  ? "bg-slate-800/60 border-slate-700/80" 
+                  ? "bg-slate-800/60 border-slate-700/80 shadow-xs" 
                   : "bg-slate-50 border-slate-200/80 shadow-inner"
               )}>
                 <div className="flex items-center justify-between">
@@ -2186,38 +2551,62 @@ export default function App() {
                     <Users size={15} />
                     <span>Tài khoản nhanh</span>
                   </div>
-                  <span className="text-[9px] font-extrabold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                    Đăng nhập nhanh
+                  <span className="text-[9px] font-extrabold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 flex items-center gap-1">
+                    <Zap size={10} className="fill-current" />
+                    Nhân sự
                   </span>
                 </div>
 
-                <form onSubmit={handleStaffAccountLogin} className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="Nhập Mã / Tài khoản nhanh..."
-                    value={staffAccountLoginInput}
-                    onChange={(e) => {
-                      setStaffAccountLoginInput(e.target.value);
-                      if (staffLoginError) setStaffLoginError(null);
-                    }}
-                    className={cn(
-                      "w-full px-3.5 py-2.5 rounded-xl border font-bold text-sm outline-none transition-all focus:ring-2 focus:ring-primary",
-                      (isDarkMode || systemSettings.loginCardGlassMode) 
-                        ? "bg-slate-900/90 border-slate-700 text-white placeholder:text-slate-500" 
-                        : "bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                <form onSubmit={handleStaffAccountLogin} className="space-y-2.5">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <UserCheck size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Nhập Mã hoặc Tài khoản nhanh..."
+                      value={staffAccountLoginInput}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      onChange={(e) => {
+                        setStaffAccountLoginInput(e.target.value);
+                        if (staffLoginError) setStaffLoginError(null);
+                      }}
+                      className={cn(
+                        "w-full pl-9 pr-9 py-2.5 rounded-xl border font-bold text-[15px] sm:text-sm outline-none transition-all focus:ring-2 focus:ring-primary",
+                        (isDarkMode || systemSettings.loginCardGlassMode) 
+                          ? "bg-slate-900/90 border-slate-700 text-white placeholder:text-slate-500" 
+                          : "bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                      )}
+                    />
+                    {staffAccountLoginInput && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStaffAccountLoginInput('');
+                          setStaffLoginError(null);
+                        }}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                        aria-label="Xóa nội dung nhập"
+                      >
+                        <X size={14} />
+                      </button>
                     )}
-                  />
+                  </div>
+
                   {staffLoginError && (
                     <p className="text-xs font-bold text-rose-500 flex items-center gap-1 px-1">
-                      <AlertTriangle size={12} className="shrink-0" />
+                      <AlertTriangle size={13} className="shrink-0" />
                       <span>{staffLoginError}</span>
                     </p>
                   )}
+
                   <button
                     type="submit"
                     disabled={staffLoginLoading || !staffAccountLoginInput.trim()}
                     className={cn(
-                      "w-full py-2.5 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50",
+                      "w-full min-h-[44px] py-2.5 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed",
                       "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
                     )}
                   >
@@ -2226,7 +2615,7 @@ export default function App() {
                     ) : (
                       <>
                         <UserCheck size={16} />
-                        Vào hệ thống bằng TK Nhân sự
+                        <span>Đăng nhập bằng tài khoản nhanh</span>
                       </>
                     )}
                   </button>
@@ -2239,72 +2628,189 @@ export default function App() {
                 <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/10" : "bg-slate-200")} />
               </div>
 
+              {googleLoginError && (
+                <div className={cn(
+                  "p-3.5 sm:p-4 rounded-2xl border text-xs sm:text-sm space-y-3 animate-in fade-in zoom-in duration-300",
+                  (isDarkMode || systemSettings.loginCardGlassMode)
+                    ? "bg-amber-950/40 border-amber-500/40 text-amber-200"
+                    : "bg-amber-50 border-amber-300/80 text-amber-900"
+                )}>
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1 flex-1">
+                      <p className={cn(
+                        "font-black text-xs sm:text-sm",
+                        (isDarkMode || systemSettings.loginCardGlassMode) ? "text-amber-100" : "text-amber-950"
+                      )}>
+                        {googleLoginError.isNetworkError
+                          ? "Lỗi kết nối xác thực Google"
+                          : googleLoginError.isPopupBlocked
+                            ? "Cửa sổ đăng nhập bị chặn"
+                            : "Lỗi đăng nhập Google"}
+                      </p>
+                      <p className={cn(
+                        "text-[11px] sm:text-xs leading-relaxed",
+                        (isDarkMode || systemSettings.loginCardGlassMode) ? "text-amber-200/80" : "text-amber-900/80"
+                      )}>
+                        {googleLoginError.isNetworkError ? (
+                          <>
+                            Trình duyệt hoặc khung xem trước (iframe) đang chặn kết nối Google OAuth. Bạn có thể <b>mở ứng dụng ở tab mới</b> để đăng nhập trực tiếp hoặc sử dụng <b>Tài khoản nhanh</b> ở trên.
+                          </>
+                        ) : (
+                          googleLoginError.message || "Đã xảy ra lỗi trong quá trình xác thực."
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGoogleLoginError(null)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+                      aria-label="Đóng thông báo"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  <div className="pt-1 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleLoginError(null);
+                        handleLogin();
+                      }}
+                      disabled={loginLoading}
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} className={loginLoading ? "animate-spin" : ""} />
+                      <span>Thử lại</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => window.open(window.location.href, '_blank')}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <ExternalLink size={12} />
+                      <span>Mở ở tab mới</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleLoginError(null);
+                        const el = document.querySelector('input[placeholder*="Tài khoản nhanh"]') as HTMLInputElement;
+                        if (el) el.focus();
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <UserCheck size={12} />
+                      <span>Dùng Tài khoản nhanh</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {typeof window !== 'undefined' && window.self !== window.top && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => window.open(window.location.href, '_blank')}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-[11px] font-bold py-1.5 px-3 rounded-xl border transition-all active:scale-95 cursor-pointer shadow-2xs",
+                      (isDarkMode || systemSettings.loginCardGlassMode)
+                        ? "text-sky-300 border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20"
+                        : "text-sky-700 border-sky-200 bg-sky-50 hover:bg-sky-100"
+                    )}
+                  >
+                    <ExternalLink size={12} />
+                    <span>Mở ứng dụng ở tab riêng (Toàn màn hình)</span>
+                  </button>
+                </div>
+              )}
+
               {regSettings.allowNewRegistration ? (
                 <button
                   onClick={handleLogin}
                   disabled={loginLoading}
                   className={cn(
-                    "w-full py-3.5 text-white rounded-2xl font-bold text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98]",
+                    "w-full min-h-[48px] py-3 sm:py-3.5 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-center gap-3 transition-all active:scale-[0.98] cursor-pointer",
                     (isDarkMode || systemSettings.loginCardGlassMode)
-                      ? "bg-primary hover:bg-primary/90 shadow-none disabled:bg-slate-800"
-                      : "bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200 disabled:bg-slate-300"
+                      ? "bg-slate-800 hover:bg-slate-750 text-white border border-slate-700 shadow-sm disabled:bg-slate-800/50"
+                      : "bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/10 disabled:bg-slate-300"
                   )}
                 >
                   {loginLoading ? (
-                    <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      Đăng nhập với Google <LogIn size={20} />
+                      {/* Google G multi-color icon */}
+                      <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.96 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      <span>Đăng nhập với Google</span>
                     </>
                   )}
                 </button>
               ) : (
                 <div className={cn(
-                  "p-6 rounded-3xl border-2 border-dashed flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in duration-500",
+                  "p-5 sm:p-6 rounded-2xl sm:rounded-3xl border-2 border-dashed flex flex-col items-center text-center gap-3 sm:gap-4 animate-in fade-in zoom-in duration-500",
                   (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-rose-500/5 border-rose-500/20" : "bg-rose-50 border-rose-100"
                 )}>
-                  <div className="w-16 h-16 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-lg shadow-rose-500/10">
-                    <AlertOctagon size={32} />
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-500 shadow-sm">
+                    <AlertOctagon size={28} />
                   </div>
                   <div>
-                    <h3 className={cn("text-lg font-black tracking-tight mb-2", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
+                    <h3 className={cn("text-base sm:text-lg font-black tracking-tight mb-1 sm:mb-2", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white" : "text-slate-900")}>
                       Tạm dừng đăng ký mới
                     </h3>
-                    <p className={cn("text-xs font-bold leading-relaxed", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-400" : "text-slate-500")}>
+                    <p className={cn("text-xs font-medium leading-relaxed", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-400" : "text-slate-500")}>
                       {regSettings.registrationDisabledReason || "Hệ thống hiện đang tạm dừng tiếp nhận thành viên mới. Vui lòng liên hệ Quản trị viên để biết thêm chi tiết."}
                     </p>
                   </div>
                   <div className="w-full h-px bg-rose-500/10" />
-                  <p className="text-[9px] font-black uppercase tracking-widest text-rose-500/60 flex items-center gap-2">
-                    <ShieldCheck size={12} /> Protected by System Administrator
+                  <p className="text-[9px] font-black uppercase tracking-widest text-rose-500/70 flex items-center gap-1.5">
+                    <ShieldCheck size={12} /> Được bảo vệ bởi Quản trị viên
                   </p>
                 </div>
               )}
-              <div className="flex items-center gap-4 py-2">
-                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/20" : "bg-slate-100")} />
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Bảo mật bởi Google</span>
-                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/20" : "bg-slate-100")} />
-              </div>
-              <p className={cn("text-center text-sm font-medium transition-colors", (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/40" : "text-slate-400")}>
-                Vui lòng sử dụng tài khoản Google để truy cập hệ thống.
-              </p>
 
-              <div className="pt-4 space-y-4">
-                <div className="text-center">
-                  <button
-                    onClick={() => setGuestView('terms')}
-                    className={cn(
-                      "inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-wide transition-colors hover:underline",
-                      (isDarkMode || systemSettings.loginCardGlassMode) ? "text-white/30 hover:text-white/60" : "text-slate-400 hover:text-slate-600"
-                    )}
-                  >
-                    <FileText size={12} />
-                    Điều khoản sử dụng
-                  </button>
-                </div>
+              <div className="flex items-center gap-3 py-1">
+                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/10" : "bg-slate-100")} />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <ShieldCheck size={12} className="text-emerald-500" />
+                  Bảo mật Google Cloud
+                </span>
+                <div className={cn("h-px flex-1", (isDarkMode || systemSettings.loginCardGlassMode) ? "bg-white/10" : "bg-slate-100")} />
+              </div>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setGuestView('terms')}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-xs font-semibold tracking-wide transition-colors hover:underline p-2 rounded-lg cursor-pointer",
+                    (isDarkMode || systemSettings.loginCardGlassMode) ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  <FileText size={13} />
+                  <span>Điều khoản sử dụng</span>
+                </button>
               </div>
             </div>
           </motion.div>
+        </div>
+
+        {/* Mobile / Desktop Bottom Footer */}
+        <div className="w-full max-w-6xl mx-auto py-2 text-center relative z-20">
+          <p className={cn(
+            "text-[10px] sm:text-[11px] font-medium transition-colors opacity-60",
+            isDarkMode || systemSettings.loginBgUrl ? "text-slate-400" : "text-slate-500"
+          )}>
+            © {new Date().getFullYear()} {systemSettings.appName || "Phần mềm Quản lý Khám Chữa Bệnh"}. Tất cả các quyền được bảo lưu.
+          </p>
         </div>
 
         {/* Login Prompt Notification */}
@@ -2487,13 +2993,13 @@ export default function App() {
                 </div>
 
                 <div className={cn(
-                  "p-6 border-t flex items-center justify-between",
+                  "px-4 py-2.5 sm:px-6 sm:py-3 border-t flex items-center justify-between shrink-0",
                   isDarkMode ? "bg-slate-800/20 border-slate-800" : "bg-slate-50/50 border-slate-100"
                 )}>
                   <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {systemSettings.termsUpdateDate ? systemSettings.termsUpdateDate.split('-').reverse().join('/') : new Date().toLocaleDateString('vi-VN')}</p>
                   <button
                     onClick={() => setGuestView('none')}
-                    className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98]"
+                    className="px-4 py-1.5 sm:px-5 sm:py-2 bg-primary text-white rounded-xl font-bold text-[11px] sm:text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98] cursor-pointer"
                   >
                     Đã hiểu
                   </button>
@@ -2520,7 +3026,10 @@ export default function App() {
   // Dynamic permission check
   const rolePerm = rolePermissions.find(p => p.roleId === userProfile.role);
   const titlePerm = titlePermissions.find(p => p.titleId === userProfile.title);
-  const userPowerPoints: number = configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0;
+  const rolePowerPoints = configRoles.find(r => r.id === userProfile.role)?.powerPoints ?? 0;
+  const userPowerPoints: number = userProfile?.powerPoints !== undefined && userProfile?.powerPoints !== null
+    ? Math.max(Number(userProfile.powerPoints) || 0, rolePowerPoints)
+    : rolePowerPoints;
 
   const roleAllowedTabs = rolePerm?.allowedTabs || [];
   const titleAllowedTabs = titlePerm?.allowedTabs || [];
@@ -2536,6 +3045,8 @@ export default function App() {
     'view_calculator',
     'view_todo',
     'view_directory',
+    'view_national_pharmacopoeia',
+    'view_treatment_guideline',
     'view_icd10',
     'view_interaction',
     'view_adr',
@@ -2565,10 +3076,13 @@ export default function App() {
     return true;
   });
 
-  // Auto-allow admin tabs for admins
+  // Auto-allow admin and manage tabs for admins
   if (userRole === 'admin') {
-    const adminTabs = ALL_TABS.filter(t => t.id.startsWith('admin_')).map(t => t.id);
-    allowedTabs = Array.from(new Set([...allowedTabs, ...adminTabs]));
+    const adminAndManageTabs = ALL_TABS.filter(t => t.id.startsWith('admin_') || t.id.startsWith('manage_')).map(t => t.id);
+    allowedTabs = Array.from(new Set([...allowedTabs, ...adminAndManageTabs]));
+  } else if (isPrivileged) {
+    const privilegedManageTabs = ['manage_directory', 'manage_national_pharmacopoeia', 'manage_treatment_guidelines', 'manage_icd10', 'manage_interaction', 'manage_adr', 'manage_doc_lookup'];
+    allowedTabs = Array.from(new Set([...allowedTabs, ...privilegedManageTabs]));
   }
 
   // CRITICAL: Restrict access for unapproved users but allow specifically configured features
@@ -2585,6 +3099,10 @@ export default function App() {
     allowedTabs = Array.from(new Set(['dashboard', ...unapprovedAllowed]));
   }
 
+  if (!allowedTabs.includes('settings')) {
+    allowedTabs.push('settings');
+  }
+
   // Check if any utilities are active to show/hide the Header Apps Menu
   const hasUtilities = ALL_TABS.some(t => {
     const status = featureStates[t.id];
@@ -2599,6 +3117,659 @@ export default function App() {
 
   const currentTabItem = ALL_TABS.find(t => t.id === activeTab);
 
+  const renderSettingsPanelContent = (isModal: boolean = false) => {
+    if (!userProfile) return null;
+
+    const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
+    const accountString = isQuickAccount
+      ? (userProfile.staffAccount || userProfile.uid.replace(/^staff_/, '') || userProfile.email)
+      : userProfile.email;
+
+    const strength = getAccountStrength(newStaffAccountInput.trim());
+
+    return (
+      <div 
+        className="flex w-[200%] h-full transition-transform duration-500 ease-in-out flex-1" 
+        style={{ transform: showSupportContact ? 'translateX(-50%)' : 'translateX(0)' }}
+      >
+        {/* PANEL 1: SETTINGS */}
+        <div className="w-1/2 shrink-0 flex flex-col h-full">
+          <div className={cn(
+            "h-[54px] px-4 sm:px-6 border-b flex items-center justify-between shrink-0",
+            isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
+          )}>
+            {isModal ? (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    if (guestView === 'terms') setGuestView('none');
+                  }}
+                  title="Đóng / Trở về"
+                  className={cn(
+                    "p-1.5 sm:p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                    isDarkMode 
+                      ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
+                  )}
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <h3 className="text-base sm:text-lg font-black tracking-tight">Cài đặt</h3>
+              </div>
+            ) : isMobile ? (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleTabChangeWithDirection('dashboard', -1)}
+                  title="Quay về Workspace"
+                  className={cn(
+                    "p-1.5 sm:p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                    isDarkMode 
+                      ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
+                  )}
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <h3 className="text-base sm:text-lg font-black tracking-tight">Cài đặt</h3>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <h3 className="text-base sm:text-lg font-black tracking-tight">Cài đặt</h3>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowSupportContact(true)}
+                title="Hỗ trợ liên hệ"
+                className={cn(
+                  "p-2 rounded-xl transition-colors cursor-pointer",
+                  isDarkMode ? "hover:bg-slate-800 text-slate-400 hover:text-white" : "hover:bg-slate-200 text-slate-500 hover:text-slate-900"
+                )}
+              >
+                <Phone size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[calc(90vh-54px)] pb-24 sm:pb-8">
+            {/* Account Info */}
+            <div className={cn(
+              "p-4 sm:p-5 rounded-2xl border transition-all duration-200 space-y-3",
+              isDarkMode ? "bg-slate-800/40 border-slate-700/60" : "bg-slate-50/90 border-slate-200/80"
+            )}>
+              {/* Card Header */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 transition-colors overflow-hidden border",
+                    isChangingStaffAccount 
+                      ? (isDarkMode ? "bg-primary/80 border-primary/40" : "bg-primary border-primary") 
+                      : (isDarkMode ? "bg-slate-700 border-slate-600" : "bg-primary border-primary/20")
+                  )}>
+                    {isChangingStaffAccount ? (
+                      <Key size={20} />
+                    ) : userProfile.photoURL ? (
+                      <img 
+                        src={getBustedPhotoURL(userProfile.photoURL, userProfile.photoSyncToken) || userProfile.photoURL} 
+                        alt={userProfile.displayName || "Avatar"} 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer" 
+                      />
+                    ) : (
+                      <User size={20} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("text-[10px] font-black uppercase tracking-[0.18em]", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                      {isChangingStaffAccount ? (
+                        <span className="text-primary">Đổi tài khoản đăng nhập nhanh</span>
+                      ) : (
+                        <>Tài khoản đang đăng nhập {isQuickAccount && <span className="text-primary font-normal">(Nhanh)</span>}</>
+                      )}
+                    </p>
+                    {!isChangingStaffAccount && (
+                      <p className={cn("text-sm font-bold truncate tracking-wider mt-0.5", isDarkMode ? "text-white" : "text-slate-900")}>
+                        {isQuickAccount 
+                          ? (showLoginAccount ? accountString : '•'.repeat(Math.max(8, Math.min(accountString.length, 16))))
+                          : accountString}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Control Buttons */}
+                {!isChangingStaffAccount && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isQuickAccount && (
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginAccount(!showLoginAccount)}
+                        className={cn(
+                          "p-2 rounded-xl transition-all flex items-center justify-center",
+                          isDarkMode 
+                            ? "bg-slate-700/60 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                            : "bg-white hover:bg-slate-200 text-slate-600 hover:text-slate-900 shadow-sm border border-slate-200"
+                        )}
+                        title={showLoginAccount ? "Ẩn tài khoản" : "Hiện tài khoản"}
+                      >
+                        {showLoginAccount ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    )}
+
+                    {isQuickAccount && (
+                      <button
+                        type="button"
+                        onClick={handleStartChangeAccount}
+                        className={cn(
+                          "p-2 rounded-xl transition-all flex items-center justify-center shadow-sm",
+                          isDarkMode 
+                            ? "bg-primary/20 hover:bg-primary/30 text-primary-light border border-primary/40" 
+                            : "bg-white hover:bg-primary/10 text-primary border border-primary/30"
+                        )}
+                        title="Đổi tài khoản đăng nhập"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Inline Editing Form inside Card */}
+              {isChangingStaffAccount && (
+                <div className="pt-3 border-t border-slate-200/60 dark:border-slate-700/60 space-y-3.5 animate-in fade-in duration-200">
+                  {/* Success / Error Banners */}
+                  {staffAccountChangeSuccess && (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                      <Check size={16} className="shrink-0" />
+                      <span>{staffAccountChangeSuccess}</span>
+                    </div>
+                  )}
+
+                  {staffAccountChangeError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle size={16} className="shrink-0" />
+                      <span>{staffAccountChangeError}</span>
+                    </div>
+                  )}
+
+                  {/* Phase 1: Input New Account */}
+                  {staffAccountStep === 1 && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className={cn("block text-xs font-semibold mb-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                          Nhập tài khoản đăng nhập mới:
+                        </label>
+                        <input
+                          type="text"
+                          value={newStaffAccountInput}
+                          onChange={(e) => {
+                            setNewStaffAccountInput(e.target.value);
+                            if (staffAccountChangeError) setStaffAccountChangeError(null);
+                          }}
+                          placeholder="Nhập tên tài khoản mới (ví dụ: tk_nam, bs_minh...)"
+                          className={cn(
+                            "w-full px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all outline-none focus:ring-2 focus:ring-primary/40",
+                            isDarkMode 
+                              ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500" 
+                              : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-sm"
+                          )}
+                          autoFocus
+                        />
+
+                        {/* Account Strength Rating */}
+                        {newStaffAccountInput.trim().length > 0 && (
+                          <div className="mt-2.5 space-y-1">
+                            <div className="flex items-center justify-between text-[11px] font-bold">
+                              <span className={isDarkMode ? "text-slate-400" : "text-slate-500"}>Đánh giá độ mạnh tài khoản:</span>
+                              <span className={strength.textColor}>{strength.label}</span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-1.5 h-1.5 w-full">
+                              {[1, 2, 3, 4].map((level, lIdx) => (
+                                <div
+                                  key={`staff-pw-str-${level}-${lIdx}`}
+                                  className={cn(
+                                    "h-full rounded-full transition-all duration-300",
+                                    level <= strength.score 
+                                      ? strength.barColor 
+                                      : (isDarkMode ? "bg-slate-700/80" : "bg-slate-200")
+                                  )}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <p className={cn("text-[11px] mt-1.5", isDarkMode ? "text-slate-400" : "text-slate-500")}>
+                          Lưu ý: Viết liền không dấu, tối thiểu 3 ký tự.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleCancelStaffAccountChange}
+                          className={cn(
+                            "px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors",
+                            isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-white hover:bg-slate-200 text-slate-700 border border-slate-200"
+                          )}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSubmittingStaffAccount || !newStaffAccountInput.trim()}
+                          onClick={handleProceedToStep2}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1.5"
+                        >
+                          {isSubmittingStaffAccount ? <Loader2 size={14} className="animate-spin" /> : null}
+                          <span>Tiếp tục</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Phase 2: Confirm Re-entry */}
+                  {staffAccountStep === 2 && (
+                    <div className="space-y-3">
+                      <div className={cn(
+                        "p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5",
+                        isDarkMode ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-800"
+                      )}>
+                        <Lock size={16} className="shrink-0 mt-0.5" />
+                        <div>
+                          Vui lòng nhập lại chính xác chuỗi tài khoản bạn vừa nhập.
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={cn("block text-xs font-semibold mb-1", isDarkMode ? "text-slate-300" : "text-slate-700")}>
+                          Xác nhận lại tài khoản mới:
+                        </label>
+                        <input
+                          type="text"
+                          value={confirmStaffAccountInput}
+                          onChange={(e) => {
+                            setConfirmStaffAccountInput(e.target.value);
+                            if (staffAccountChangeError) setStaffAccountChangeError(null);
+                          }}
+                          placeholder="Nhập lại chính xác tài khoản mới..."
+                          className={cn(
+                            "w-full px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all outline-none focus:ring-2 focus:ring-primary/40",
+                            isDarkMode 
+                              ? "bg-slate-900 border-slate-700 text-white placeholder-slate-500" 
+                              : "bg-white border-slate-200 text-slate-900 placeholder-slate-400 shadow-sm"
+                          )}
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffAccountStep(1);
+                            setConfirmStaffAccountInput('');
+                            setStaffAccountChangeError(null);
+                          }}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                            isDarkMode ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800"
+                          )}
+                        >
+                          ← Nhập lại
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCancelStaffAccountChange}
+                            className={cn(
+                              "px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors",
+                              isDarkMode ? "bg-slate-800 hover:bg-slate-700 text-slate-300" : "bg-white hover:bg-slate-200 text-slate-700 border border-slate-200"
+                            )}
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSubmittingStaffAccount || !confirmStaffAccountInput.trim()}
+                            onClick={handleConfirmAndSaveStaffAccount}
+                            className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-1.5"
+                          >
+                            {isSubmittingStaffAccount ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                            <span>Xác nhận đổi</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Privacy Section */}
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <label className={cn(
+                  "block text-xs font-black uppercase tracking-widest transition-colors",
+                  isDarkMode ? "text-slate-500" : "text-slate-400"
+                )}>Quyền riêng tư</label>
+
+                {(() => {
+                  const hasEmailSetting = !!(userProfile?.email?.trim() && !userProfile.email.endsWith('@bv.local'));
+                  const hasZaloSetting = !!(userProfile?.zalo?.trim());
+                  return (
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <div className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                          !hasEmailSetting ? "opacity-50 pointer-events-none select-none" : "",
+                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                              <ShieldCheck size={14} className="text-primary" />
+                            </div>
+                            <div>
+                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Email</p>
+                              {hasEmailSetting && (
+                                <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                  {!profileEditData.hideEmail ? "Mọi người có thể thấy email của bạn" : "Email của bạn đang được ẩn"}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            disabled={!hasEmailSetting}
+                            onClick={() => {
+                              if (!hasEmailSetting) return;
+                              const nextHideEmail = !profileEditData.hideEmail;
+                              if (!nextHideEmail) {
+                                setPrivacyConfirmType('email');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideEmail: nextHideEmail }));
+                                handleSaveProfileField({ hideEmail: nextHideEmail });
+                              }
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors",
+                              !hasEmailSetting ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : (!profileEditData.hideEmail ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200"))
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                              !profileEditData.hideEmail && hasEmailSetting ? "left-6" : "left-1"
+                            )} />
+                          </button>
+                        </div>
+
+                        <div className={cn(
+                          "flex items-center justify-between p-3 rounded-xl border border-dashed transition-colors",
+                          !hasZaloSetting ? "opacity-50 pointer-events-none select-none" : "",
+                          isDarkMode ? "border-slate-800 bg-slate-800/20" : "border-slate-200 bg-slate-50/50"
+                        )}>
+                          <div className="flex items-center gap-3">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isDarkMode ? "bg-slate-700" : "bg-white shadow-sm")}>
+                              <MessageSquare size={14} className="text-primary" />
+                            </div>
+                            <div>
+                              <p className={cn("text-[11px] font-bold", isDarkMode ? "text-slate-200" : "text-slate-700")}>Công khai Số Zalo</p>
+                              {hasZaloSetting && (
+                                <p className={cn("text-[9px] font-medium whitespace-nowrap", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                                  {!profileEditData.hideZalo ? "Mọi người có thể thấy số Zalo của bạn" : "Số Zalo của bạn đang được ẩn"}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            disabled={!hasZaloSetting}
+                            onClick={() => {
+                              if (!hasZaloSetting) return;
+                              const nextHideZalo = !profileEditData.hideZalo;
+                              if (!nextHideZalo) {
+                                setPrivacyConfirmType('zalo');
+                                setIsPrivacyConfirmOpen(true);
+                              } else {
+                                setProfileEditData(prev => ({ ...prev, hideZalo: nextHideZalo }));
+                                handleSaveProfileField({ hideZalo: nextHideZalo });
+                              }
+                            }}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors",
+                              !hasZaloSetting ? "bg-slate-300 dark:bg-slate-700 cursor-not-allowed" : (!profileEditData.hideZalo ? "bg-primary" : (isDarkMode ? "bg-slate-700" : "bg-slate-200"))
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all shadow-sm",
+                              !profileEditData.hideZalo && hasZaloSetting ? "left-6" : "left-1"
+                            )} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className={cn(
+                  "block text-xs font-black uppercase tracking-widest mb-3 transition-colors",
+                  isDarkMode ? "text-slate-500" : "text-slate-400"
+                )}>Giao diện & Chủ đề</label>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { id: 'light', label: 'Sáng', icon: Sun },
+                    { id: 'dark', label: 'Tối', icon: Moon },
+                  ].map((t, tIdx) => (
+                    <button
+                      key={`theme-opt-${t.id}-${tIdx}`}
+                      onClick={() => handleThemeChange(t.id)}
+                      className={cn(
+                        "flex items-center gap-3 p-4 rounded-2xl border-2 transition-all",
+                        theme === t.id
+                          ? "border-primary bg-primary/5 text-primary"
+                          : (isDarkMode
+                            ? "border-transparent bg-slate-800 hover:bg-slate-700 text-slate-500"
+                            : "border-transparent bg-slate-50 hover:bg-slate-100 text-slate-500")
+                      )}
+                    >
+                      <div className={cn(
+                        "p-2 rounded-lg text-white",
+                        t.id === 'light' ? "bg-blue-500" : "bg-slate-700"
+                      )}>
+                        <t.icon size={18} />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-widest">{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {userProfile.role === 'admin' && (
+                <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      setIsAdminMode(true);
+                      setIsDataMode(false);
+                      setActiveTab('admin_general');
+                      setIsProfileModalOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
+                      isDarkMode ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-500 text-white rounded-lg shadow-lg shadow-indigo-500/20">
+                        <ShieldCheck size={16} />
+                      </div>
+                      <div className="text-left">
+                        <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>Quản trị hệ thống</p>
+                      </div>
+                    </div>
+                    <Zap size={16} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsDataMode(true);
+                      setIsAdminMode(false);
+                      setActiveTab('manage_directory');
+                      setIsProfileModalOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
+                      isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-100 hover:bg-emerald-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-500 text-white rounded-lg shadow-lg shadow-emerald-500/20">
+                        <Database size={16} />
+                      </div>
+                      <div className="text-left">
+                        <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-emerald-400" : "text-emerald-600")}>Quản lý dữ liệu</p>
+                      </div>
+                    </div>
+                    <Zap size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 pt-6 border-t border-slate-800/10 dark:border-slate-800/50 space-y-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGuestView('terms');
+                }}
+                className={cn(
+                  "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
+                  isDarkMode ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800" : "bg-white border-slate-100 hover:bg-slate-50"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    isDarkMode ? "bg-slate-700 text-slate-400" : "bg-slate-100 text-slate-500"
+                  )}>
+                    <FileText size={16} />
+                  </div>
+                  <span className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-slate-300" : "text-slate-600")}>Điều khoản sử dụng</span>
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className={cn(
+                  "w-full py-3 sm:py-3.5 bg-rose-500 text-white rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 hover:bg-rose-600 active:scale-[0.98] cursor-pointer",
+                  isDarkMode ? "shadow-none" : "shadow-lg shadow-rose-500/20"
+                )}
+              >
+                <LogOut size={16} />
+                <span>Đăng xuất</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* PANEL 2: SUPPORT */}
+        <div className="w-1/2 shrink-0 flex flex-col h-full">
+          <div className={cn(
+            "h-[54px] px-4 sm:px-6 border-b flex items-center justify-between shrink-0",
+            isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
+          )}>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSupportContact(false)}
+                title="Quay lại Cài đặt"
+                className={cn(
+                  "p-1.5 sm:p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                  isDarkMode 
+                    ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
+                )}
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <h3 className="text-base sm:text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* Empty right area */}
+            </div>
+          </div>
+
+          <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[calc(90vh-54px)] pb-8">
+            <div className={cn(
+              "p-5 rounded-2xl border relative overflow-hidden transition-all duration-300",
+              isDarkMode
+                ? "bg-slate-900/50 border-slate-800 text-white"
+                : "bg-white text-slate-900 border-slate-100 shadow-md shadow-slate-200/40"
+            )}>
+              <div className="flex items-start gap-4">
+                <div className="bg-primary/20 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
+                  <HelpCircle size={20} className="text-primary animate-spin-slow" />
+                </div>
+                <div className="flex-1">
+                  <p className={cn("text-[11px] font-bold leading-relaxed mb-4 transition-colors opacity-70", isDarkMode ? "text-slate-400" : "text-slate-600")}>
+                    Mọi thắc mắc hoặc yêu cầu hỗ trợ kỹ thuật liên quan đến ứng dụng, vui lòng liên hệ trực tiếp DS. Bảo qua Zalo để được giải quyết nhanh nhất.
+                  </p>
+                  <a
+                    href="https://zalo.me/0932621028"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      "w-full py-2.5 rounded-xl text-[10px] font-black transition-all flex items-center justify-center gap-2 uppercase tracking-widest",
+                      isDarkMode
+                        ? "bg-primary text-white hover:bg-primary/90"
+                        : "bg-primary text-white hover:bg-primary-dark shadow-lg shadow-primary/20"
+                    )}
+                  >
+                    Liên hệ qua Zalo (DS. Bảo)
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className={cn(
+              "p-4 rounded-2xl border space-y-3",
+              isDarkMode ? "bg-slate-800/30 border-slate-800" : "bg-slate-50 border-slate-100"
+            )}>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Thời gian làm việc</p>
+              <p className="text-xs font-bold">Thứ 2 - Chủ nhật: 8:00 - 22:00</p>
+              <p className="text-[10px] font-medium opacity-60">Hỗ trợ kỹ thuật khẩn cấp 24/7 đối với các sự cố nghiêm trọng ảnh hưởng đến hoạt động khám chữa bệnh.</p>
+            </div>
+          </div>
+
+          <div className={cn(
+            "p-4 sm:p-6 border-t flex flex-col gap-3",
+            isDarkMode ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50/50"
+          )}>
+            <button
+              onClick={() => setShowSupportContact(false)}
+              className={cn(
+                "w-full py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2",
+                isDarkMode 
+                  ? "bg-slate-800 hover:bg-slate-700 text-white" 
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200"
+              )}
+            >
+              Quay lại Cài đặt
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderContent = () => {
     if (!userProfile) return null;
 
@@ -2606,7 +3777,7 @@ export default function App() {
     const baseTab = activeTab.replace('manage_', '').replace('view_', '');
 
     // Security check
-    if (activeTab !== 'dashboard') {
+    if (activeTab !== 'dashboard' && activeTab !== 'settings' && activeTab !== 'app_settings') {
       const settings = featureSettings[activeTab] || {};
       const isBanned = settings.bannedUsers?.includes(userProfile.uid);
       const allowedRoles = settings.allowedRoles || [];
@@ -2709,6 +3880,19 @@ export default function App() {
     }
 
     switch (baseTab) {
+      case 'settings':
+      case 'app_settings':
+        return (
+          <div className="w-full flex-1 flex flex-col pb-20 lg:pb-8">
+            <div className={cn(
+              "relative w-full flex-1 flex flex-col transition-colors overflow-hidden",
+              isDarkMode ? "bg-slate-900 sm:bg-slate-900/90 sm:border-slate-800" : "bg-white sm:border-slate-100",
+              "sm:rounded-[32px] sm:shadow-xl sm:border sm:my-6 sm:max-w-2xl sm:mx-auto"
+            )}>
+              {renderSettingsPanelContent(false)}
+            </div>
+          </div>
+        );
       case 'dashboard':
         return <Dashboard
           setActiveTab={setActiveTab}
@@ -2733,14 +3917,18 @@ export default function App() {
       case 'calendar':
         return <Calendar isDarkMode={isDarkMode} />;
       case 'notes':
-        return <Notes isDarkMode={isDarkMode} subHeaderPortalId="mobile-subheader-portal" />;
+        return <Notes isDarkMode={isDarkMode} isActive={activeTab === 'notes'} subHeaderPortalId="mobile-subheader-portal" />;
       case 'directory':
       case 'view_directory':
+      case 'manage_directory':
         return <DrugDirectory
-          canManage={isManagementMode}
+          activeTab={activeTab}
+          isActive={activeTab === 'directory' || activeTab === 'view_directory' || activeTab === 'manage_directory'}
+          canManage={isManagementMode || userProfile.role === 'admin'}
           isDarkMode={isDarkMode}
-          subHeaderPortalId="mobile-subheader-portal"
-          featureSettings={featureSettings[activeTab]}
+          subHeaderPortalId="mobile-header-drug-portal"
+          onToggleSidebar={() => setIsSidebarOpen(true)}
+          featureSettings={featureSettings[activeTab] || featureSettings['manage_directory'] || featureSettings['view_directory']}
           userRole={userProfile.role}
           isApproved={userProfile.isApproved}
           userPowerPoints={userPowerPoints}
@@ -2754,12 +3942,15 @@ export default function App() {
         />;
       case 'interaction':
       case 'view_interaction':
+      case 'manage_interaction':
         return <InteractionChecker
-          canManage={isManagementMode}
+          isActive={activeTab === 'interaction' || activeTab === 'view_interaction' || activeTab === 'manage_interaction'}
+          canManage={isManagementMode || userProfile.role === 'admin'}
           isDarkMode={isDarkMode}
+          subHeaderPortalId="mobile-header-interaction-portal"
           currentUserUid={userProfile.uid}
           currentUserName={userProfile.displayName}
-          featureSettings={featureSettings[activeTab]}
+          featureSettings={featureSettings[activeTab] || featureSettings['manage_interaction'] || featureSettings['view_interaction']}
         />;
       case 'prescription':
       case 'view_prescription':
@@ -2771,10 +3962,14 @@ export default function App() {
         />;
       case 'icd10':
       case 'view_icd10':
+      case 'manage_icd10':
         return <ICD10Management
-          canManage={isManagementMode}
+          activeTab={activeTab}
+          isActive={activeTab === 'icd10' || activeTab === 'view_icd10' || activeTab === 'manage_icd10'}
+          canManage={isManagementMode || userProfile.role === 'admin'}
           isDarkMode={isDarkMode}
-          featureSettings={featureSettings['view_icd10']}
+          subHeaderPortalId="mobile-header-icd10-portal"
+          featureSettings={featureSettings[activeTab] || featureSettings['manage_icd10'] || featureSettings['view_icd10']}
           featureStates={featureStates}
           userRole={userProfile.role}
           userPowerPoints={userPowerPoints}
@@ -2802,12 +3997,13 @@ export default function App() {
         );
       case 'adr':
       case 'view_adr':
+      case 'manage_adr':
         return <ADRManagement
-          canManage={isManagementMode}
+          canManage={isManagementMode || userProfile.role === 'admin'}
           isDarkMode={isDarkMode}
           currentUserUid={userProfile.uid}
           currentUserName={userProfile.displayName}
-          featureSettings={featureSettings[activeTab]}
+          featureSettings={featureSettings[activeTab] || featureSettings['manage_adr'] || featureSettings['view_adr']}
           userRole={userProfile.role}
         />;
       case 'patients':
@@ -2843,14 +4039,19 @@ export default function App() {
       case 'social':
       case 'view_social':
         return <SocialWall
+          isActive={activeTab === 'social' || activeTab === 'view_social'}
           userProfile={userProfile}
           setUserProfile={setUserProfile}
           isDarkMode={isDarkMode}
-          onBack={() => setActiveTab('dashboard')}
+          onBack={() => handleTabChangeWithDirection('dashboard', -1)}
           initialTab="feed"
           featureSettings={featureSettings['view_social']}
           subHeaderPortalId="mobile-subheader-portal"
           onSyncProfile={syncUserProfile}
+          onOpenSettings={() => {
+            setIsProfileModalOpen(true);
+            setShowSupportContact(false);
+          }}
         />;
       case 'calculator':
       case 'view_calculator':
@@ -2872,6 +4073,49 @@ export default function App() {
             uid={userProfile.uid}
             onNavigateToTab={(tab) => setActiveTab(tab)}
             initialMode={activeTab === 'manage_slideshow' ? 'designer' : 'viewer'}
+          />
+        );
+      case 'national_pharmacopoeia':
+      case 'view_national_pharmacopoeia':
+      case 'manage_national_pharmacopoeia':
+        return (
+          <NationalPharmacopoeia
+            isDarkMode={isDarkMode}
+            userRole={userProfile.role}
+            userPowerPoints={userPowerPoints}
+            featureSettings={featureSettings[activeTab] || featureSettings['manage_national_pharmacopoeia'] || featureSettings['view_national_pharmacopoeia'] || {}}
+            onNavigateToTab={(tab) => handleTabChangeWithDirection(tab)}
+            subHeaderPortalId="mobile-subheader-portal"
+            canManage={activeTab === 'manage_national_pharmacopoeia'}
+            mode={activeTab === 'manage_national_pharmacopoeia' ? 'manage' : 'view'}
+          />
+        );
+      case 'treatment_guideline':
+      case 'view_treatment_guideline':
+      case 'treatment_guidelines':
+      case 'manage_treatment_guidelines':
+      case 'manage_treatment_groups':
+      case 'manage_treatment_group':
+      case 'treatment_groups':
+      case 'treatment_group':
+        return (
+          <TreatmentGuideline
+            isDarkMode={isDarkMode}
+            currentUser={userProfile}
+            mode={['manage_treatment_guidelines', 'manage_treatment_groups', 'manage_treatment_group', 'treatment_groups', 'treatment_group'].includes(activeTab) ? 'manage' : 'view'}
+            initialTab={['manage_treatment_groups', 'manage_treatment_group', 'treatment_groups', 'treatment_group'].includes(activeTab) ? 'groups' : 'guidelines'}
+            canManage={['manage_treatment_guidelines', 'manage_treatment_groups', 'admin', 'operator', 'operator_doctor', 'operator_pharmacist', 'superadmin'].includes(userProfile?.role)}
+            onNavigateToDrug={(drugName) => {
+              setActiveTab('view_directory');
+            }}
+            onNavigateToICD10={(code) => {
+              setActiveTab('view_icd10');
+            }}
+            onOpenGroupManagement={() => {
+              setIsDataMode(true);
+              setIsAdminMode(false);
+              setActiveTab('manage_treatment_guidelines');
+            }}
           />
         );
       case 'doc_lookup':
@@ -2903,14 +4147,19 @@ export default function App() {
       case 'profile':
       case 'view_profile':
         return <SocialWall
+          isActive={activeTab === 'profile' || activeTab === 'view_profile'}
           userProfile={userProfile}
           setUserProfile={setUserProfile}
           isDarkMode={isDarkMode}
-          onBack={() => setActiveTab('dashboard')}
+          onBack={() => handleTabChangeWithDirection('dashboard', -1)}
           initialTab="profile"
           featureSettings={featureSettings['view_social']}
           subHeaderPortalId="mobile-subheader-portal"
           onSyncProfile={syncUserProfile}
+          onOpenSettings={() => {
+            setIsProfileModalOpen(true);
+            setShowSupportContact(false);
+          }}
         />;
       case 'history':
         return (
@@ -2969,7 +4218,7 @@ export default function App() {
           <Sidebar
             activeTab={activeTab}
             setActiveTab={(tab, keepSidebarOpen) => {
-              setActiveTab(tab);
+              handleTabChangeWithDirection(tab);
               if (!keepSidebarOpen) {
                 setIsSidebarOpen(false);
               }
@@ -2979,6 +4228,14 @@ export default function App() {
             userRole={userProfile.role}
             displayName={userProfile.displayName}
             title={userProfile.title}
+            department={userProfile.department}
+            position={userProfile.position}
+            specialty={userProfile.specialty}
+            email={userProfile.email}
+            staffAccount={userProfile.staffAccount}
+            username={userProfile.username}
+            zalo={userProfile.zalo}
+            createdAt={userProfile.createdAt}
             photoURL={userProfile.photoURL}
             photoSyncToken={userProfile.photoSyncToken}
             isDarkMode={isDarkMode}
@@ -2990,6 +4247,8 @@ export default function App() {
             setIsCollapsed={setIsSidebarCollapsed}
             isAdminMode={isAdminMode}
             setIsAdminMode={setIsAdminMode}
+            isDataMode={isDataMode}
+            setIsDataMode={setIsDataMode}
             appName={systemSettings.appName}
             featureStates={featureStates}
             featureSettings={featureSettings}
@@ -2998,11 +4257,12 @@ export default function App() {
             drugDirectoryViewMode={drugDirectoryViewMode}
             setDrugDirectoryViewMode={setDrugDirectoryViewMode}
             onOpenUserGuide={() => setIsUserGuideOpen(true)}
+            sidebarNavOrder={systemSettings.sidebarNavOrder}
           />
 
           <MobileBottomNav
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleTabChangeWithDirection}
             userRole={userProfile.role}
             displayName={userProfile.displayName}
             title={userProfile.title}
@@ -3021,458 +4281,457 @@ export default function App() {
             setDrugDirectoryViewMode={setDrugDirectoryViewMode}
             onOpenUserGuide={() => setIsUserGuideOpen(true)}
             onOpenSettings={() => {
-              setIsProfileModalOpen(true);
-              setShowSupportContact(false);
+              handleTabChangeWithDirection('settings', 1);
             }}
+            onOpenProfile={() => {
+              handleTabChangeWithDirection('view_profile', 1);
+              window.dispatchEvent(new CustomEvent('reset-profile-view'));
+            }}
+            onOpenNotifications={() => setIsNotificationsOpen(prev => !prev)}
+            unreadNotificationsCount={
+              notifications.filter(n => !n.isRead).length + 
+              announcements.filter(a => a.showInHeader !== false && !isAnnouncementRead(a)).length
+            }
             mobileBottomNavSettings={systemSettings.mobileBottomNav}
           />
 
           <main 
             ref={(el) => { mainScrollRef.current = el; }} 
             className={cn(
-              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300 drug-list-container pb-20 lg:pb-0",
-              isSidebarCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]"
+              "flex-1 h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar transition-all duration-300 drug-list-container",
+              "pb-20 lg:pb-0 lg:ml-[72.3333px]"
             )}
             style={{ touchAction: 'pan-y' }}
           >
             {/* Mobile Header */}
+            {!(activeTab === 'view_profile' || activeTab === 'profile' || activeTab === 'settings' || activeTab === 'app_settings') && (
             <div className={cn(
-              "lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 border-b backdrop-blur-md",
+              "lg:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 h-[54px] border-b backdrop-blur-md",
               isDarkMode ? "bg-slate-950/80 border-slate-800" : "bg-white/80 border-slate-100"
             )}>
-              <div className="flex items-center gap-2">
-                {(isAdminMode || activeTab.startsWith('admin_') || activeTab === 'manage_config' || activeTab === 'config') ? (
-                  <button
-                    id="mobile-exit-admincp-btn"
-                    onClick={() => {
-                      setIsAdminMode(false);
-                      setActiveTab('dashboard');
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-1.5 rounded-xl border font-black text-xs transition-all active:scale-95 cursor-pointer group shadow-sm",
-                      isDarkMode 
-                        ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30" 
-                        : "bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-200"
-                    )}
-                    title="Thoát AdminCP"
-                  >
-                    <div className="p-1 rounded-lg bg-rose-500 text-white shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                      <ArrowLeftCircle size={14} />
-                    </div>
-                    <span className="tracking-tight uppercase">Thoát AdminCP</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setActiveTab('dashboard')}
-                    className="flex items-center gap-2.5 hover:opacity-80 transition-opacity active:scale-95 cursor-pointer"
-                  >
-                    <img src="/icon-512.png" alt="Logo" className="w-9 h-9 object-contain drop-shadow-sm" referrerPolicy="no-referrer" />
-                    <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
-                      {systemSettings.appName}
-                    </h1>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {(isAdminMode || activeTab.startsWith('admin_')) && (
-                  <div className="relative" ref={mobileSearchMenuRef}>
-                    <button
-                      onClick={() => setIsSearchFocused(!isSearchFocused)}
-                      className={cn(
-                        "p-2 rounded-xl transition-all",
-                        isSearchFocused
-                          ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                      )}
-                    >
-                      <Search size={18} />
-                    </button>
-
-                    <AnimatePresence>
-                      {isSearchFocused && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className={cn(
-                            "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
-                            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                          )}
-                        >
-                          <div className="relative mb-4">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input
-                              autoFocus
-                              type="text"
-                              placeholder="Tìm kiếm tính năng..."
-                              className={cn(
-                                "w-full pl-10 pr-10 py-3 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
-                                isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
-                              )}
-                              value={searchQuery}
-                              onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                            {searchQuery && (
-                              <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                              >
-                                <X size={16} />
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1">
-                            {(() => {
-                              const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                              const filtered = ALL_TABS.filter(item => {
-                                const status = featureStates[item.id];
-                                const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged);
-                                return isVisible &&
-                                  allowedTabs.includes(item.id) &&
-                                  (item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
-                              });
-
-                              if (filtered.length === 0) {
-                                return <p className="text-center py-8 text-slate-500 text-sm font-bold">Không tìm thấy tính năng nào</p>;
-                              }
-
-                              return filtered.map((item, idx) => (
-                                <button
-                                  key={`mob-search-${item.id}-${idx}`}
-                                  onClick={() => {
-                                    setActiveTab(item.id);
-                                    setIsSearchFocused(false);
-                                    setSearchQuery('');
-                                  }}
-                                  className={cn(
-                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
-                                    activeTab === item.id
-                                      ? "bg-primary text-white"
-                                      : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
-                                  )}
-                                >
-                                  <div className={cn(
-                                    "p-2 rounded-lg",
-                                    activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
-                                  )}>
-                                    <item.icon size={16} className={activeTab === item.id ? "text-white" : "text-primary"} />
-                                  </div>
-                                  <span className="font-bold text-sm">
-                                    {featureSettings[item.id]?.customTitle || item.label}
-                                  </span>
-                                </button>
-                              ));
-                            })()}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Mobile Quick Access - HIDDEN */}
-                {false && (() => {
-                  const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                  return ALL_TABS.filter(t => {
-                    const status = featureStates[t.id];
-                    const settings = featureSettings[t.id];
-                    const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
-                    const roleAllowed = (settings?.allowedRoles || []).length === 0 || (settings?.allowedRoles || []).includes(userProfile?.role);
-                    const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned && roleAllowed;
-                    return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_');
-                  }).map((item, mIdx) => (
-                    <button
-                      key={`mob-quick-${item.id || 'it'}-${mIdx}`}
-                      onClick={() => setActiveTab(item.id)}
-                      className={cn(
-                        "p-2 rounded-xl transition-all relative font-bold text-xs truncate max-w-[80px]",
-                        activeTab === item.id
-                          ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : (isDarkMode ? "bg-slate-900 border border-slate-800 text-slate-400" : "bg-white border border-slate-100 text-slate-500")
-                      )}
-                    >
-                      <item.icon size={18} />
-                    </button>
-                  ));
-                })()}
-
-                {hasUtilities && (
-                  <div className="relative" ref={mobileAppsMenuRef}>
-                    <button
-                      onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
-                      className={cn(
-                        "p-2 rounded-xl transition-all relative group",
-                        isAppsMenuOpen
-                          ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                      )}
-                      title="Tiện ích"
-                    >
-                      <LayoutGrid size={18} />
-                    </button>
-
-                    <AnimatePresence>
-                      {isAppsMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className={cn(
-                            "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
-                            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
-                          )}
-                        >
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Tiện ích</h3>
-                            <button
-                              onClick={() => setIsAppsMenuOpen(false)}
-                              className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
-                            >
-                              <X size={16} className="text-slate-400" />
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 p-1">
-                            {(() => {
-                              const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
-                              return ALL_TABS.filter(t => {
-                                const status = featureStates[t.id];
-                                const settings = featureSettings[t.id];
-                                const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
-                                const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned;
-                                const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
-                                return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
-                              }).map((item, idx) => (
-                                <button
-                                  key={`mob-util-${item.id}-${idx}`}
-                                  onClick={() => {
-                                    setActiveTab(item.id);
-                                    setIsAppsMenuOpen(false);
-                                  }}
-                                  className={cn(
-                                    "flex flex-col items-center gap-2 p-3 rounded-xl transition-all border",
-                                    activeTab === item.id
-                                      ? (isDarkMode ? "bg-primary/20 border-primary/50 text-primary" : "bg-primary/5 border-primary/20 text-primary")
-                                      : (isDarkMode ? "bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-600")
-                                  )}
-                                >
-                                  <div className={cn(
-                                    "p-2 rounded-lg shadow-sm",
-                                    activeTab === item.id ? "bg-primary text-white" : (isDarkMode ? "bg-slate-700" : "bg-white")
-                                  )}>
-                                    <item.icon size={18} />
-                                  </div>
-                                  <span className="text-[10px] font-bold text-center leading-tight">
-                                    {featureSettings[item.id]?.customTitle || item.label}
-                                  </span>
-                                </button>
-                              ));
-                            })()}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-                <div className="relative" ref={mobileNotificationsMenuRef}>
-                  <button
-                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                    className={cn(
-                      "p-2 rounded-xl transition-all relative",
-                      isNotificationsOpen
-                        ? "bg-primary text-white shadow-lg shadow-primary/20"
-                        : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                    )}
-                  >
-                    <Bell size={18} />
-                    {(() => {
-                      const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !readAnnouncementIds.includes(a.id)).length;
-                      if (unreadCount === 0) return null;
-                      return (
-                        <span className={cn(
-                          "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 shadow-sm animate-pulse",
-                          isDarkMode ? "border-slate-900" : "border-white"
-                        )}>
-                          {unreadCount > 99 ? "99+" : unreadCount}
-                        </span>
-                      );
-                    })()}
-                  </button>
-
-                  <AnimatePresence>
-                    {isNotificationsOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setIsNotificationsOpen(false)}
+              {(activeTab === 'view_directory' || activeTab === 'directory') ? (
+                <div key="mobile-header-drug-portal" id="mobile-header-drug-portal" className="w-full flex items-center justify-between gap-2" />
+              ) : (activeTab === 'view_icd10' || activeTab === 'icd10' || activeTab === 'manage_icd10') ? (
+                <div key="mobile-header-icd10-portal" id="mobile-header-icd10-portal" className="w-full flex items-center justify-between gap-2" />
+              ) : (activeTab === 'view_interaction' || activeTab === 'interaction' || activeTab === 'manage_interaction') ? (
+                <div key="mobile-header-interaction-portal" id="mobile-header-interaction-portal" className="w-full flex items-center justify-between gap-2" />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    {(isAdminMode || activeTab.startsWith('admin_') || activeTab === 'manage_config' || activeTab === 'config') ? (
+                      <button
+                        id="mobile-exit-admincp-btn"
+                        onClick={() => {
+                          setIsAdminMode(false);
+                          handleTabChangeWithDirection('dashboard', -1);
+                        }}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-1.5 rounded-xl border font-black text-xs transition-all active:scale-95 cursor-pointer group shadow-sm",
+                          isDarkMode 
+                            ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/30" 
+                            : "bg-rose-50 hover:bg-rose-100 text-rose-600 border-rose-200"
+                        )}
+                        title="Thoát AdminCP"
+                      >
+                        <div className="p-1 rounded-lg bg-rose-500 text-white shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                          <ArrowLeftCircle size={14} />
+                        </div>
+                        <span className="tracking-tight uppercase">Thoát AdminCP</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleTabChangeWithDirection('dashboard', -1)}
+                        className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95 cursor-pointer text-left"
+                      >
+                        <img
+                          src="/icon-512.png"
+                          alt="Logo"
+                          className="w-7 h-7 object-contain drop-shadow-sm"
+                          referrerPolicy="no-referrer"
                         />
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        <h1 className={cn("font-black text-sm tracking-tight", isDarkMode ? "text-white" : "text-slate-900")}>
+                          {systemSettings.appName}
+                        </h1>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {(isAdminMode || activeTab.startsWith('admin_')) && (
+                      <div className="relative" ref={mobileSearchMenuRef}>
+                        <button
+                          onClick={() => setIsSearchFocused(!isSearchFocused)}
                           className={cn(
-                            "fixed inset-x-4 top-16 z-50 p-4 rounded-2xl border shadow-2xl flex flex-col max-h-[85vh]",
-                            isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                            "p-2 rounded-xl transition-all",
+                            isSearchFocused
+                              ? "bg-primary text-white shadow-lg shadow-primary/20"
+                              : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
                           )}
                         >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-1.5">
-                              <Bell className="text-primary" size={14} />
-                              <h3 className={cn("font-black text-xs uppercase tracking-wider", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={markAllAsRead}
-                                className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
-                              >
-                                <CheckCheck size={12} /> Đọc tất cả
-                              </button>
-                              <button
-                                onClick={() => setIsNotificationsOpen(false)}
-                                className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
-                              >
-                                <X size={15} className="text-slate-400" />
-                              </button>
-                            </div>
-                          </div>
+                          <Search size={18} />
+                        </button>
 
-                          <div className="relative mb-2.5">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
-                            <input
-                              type="text"
-                              placeholder="Tìm kiếm thông báo, hoạt chất..."
-                              value={notifSearchQuery}
-                              onChange={(e) => {
-                                setNotifSearchQuery(e.target.value);
-                                setVisibleNotifCount(20);
-                              }}
+                        <AnimatePresence>
+                          {isSearchFocused && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
                               className={cn(
-                                "w-full pl-8 pr-8 py-1.5 rounded-lg border-none text-[10px] font-bold focus:ring-1 focus:ring-primary outline-none transition-all",
-                                isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-50 text-slate-900 placeholder-slate-400"
+                                "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
+                                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                               )}
-                            />
-                            {notifSearchQuery && (
-                              <button
-                                onClick={() => setNotifSearchQuery('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                              >
-                                <X size={11} />
-                              </button>
-                            )}
-                          </div>
+                            >
+                              <div className="relative mb-4">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  placeholder="Tìm kiếm tính năng..."
+                                  className={cn(
+                                    "w-full pl-10 pr-10 py-3 rounded-xl border-none font-bold text-sm focus:ring-2 focus:ring-primary transition-all",
+                                    isDarkMode ? "bg-slate-800 text-white" : "bg-slate-50 text-slate-900"
+                                  )}
+                                  value={searchQuery}
+                                  onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                                {searchQuery && (
+                                  <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                )}
+                              </div>
 
-                          <div className="flex items-center gap-1 overflow-x-auto pb-1.5 mb-2.5 scrollbar-none scroll-smooth">
-                            {[
-                              { id: 'all', label: 'Tất cả', icon: Bell },
-                              { id: 'clinical_alert', label: 'Cảnh báo', icon: AlertOctagon, color: 'text-rose-500' },
-                              { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
-                              { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
-                              { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
-                            ].map((tab, idx) => (
-                              <button
-                                key={`mob-notif-tab-${tab.id}-${idx}`}
-                                onClick={() => {
-                                  setNotificationTab(tab.id as any);
-                                  setVisibleNotifCount(20);
-                                }}
+                              <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1">
+                                {(() => {
+                                  const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
+                                  const filtered = ALL_TABS.filter(item => {
+                                    const status = featureStates[item.id];
+                                    const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged);
+                                    return isVisible &&
+                                      allowedTabs.includes(item.id) &&
+                                      (item.label || '').toLowerCase().includes((searchQuery || '').toLowerCase());
+                                  });
+
+                                  if (filtered.length === 0) {
+                                    return <p className="text-center py-8 text-slate-500 text-sm font-bold">Không tìm thấy tính năng nào</p>;
+                                  }
+
+                                  return filtered.map((item, idx) => (
+                                    <button
+                                      key={`mob-search-${item.id}-${idx}`}
+                                      onClick={() => {
+                                        setActiveTab(item.id);
+                                        setIsSearchFocused(false);
+                                        setSearchQuery('');
+                                      }}
+                                      className={cn(
+                                        "w-full flex items-center gap-3 p-3 rounded-xl transition-all group",
+                                        activeTab === item.id
+                                          ? "bg-primary text-white"
+                                          : (isDarkMode ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-600")
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "p-2 rounded-lg",
+                                        activeTab === item.id ? "bg-white/20" : (isDarkMode ? "bg-slate-800" : "bg-white shadow-sm")
+                                      )}>
+                                        <item.icon size={16} className={activeTab === item.id ? "text-white" : "text-primary"} />
+                                      </div>
+                                      <span className="font-bold text-sm">
+                                        {featureSettings[item.id]?.customTitle || item.label}
+                                      </span>
+                                    </button>
+                                  ));
+                                })()}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    )}
+
+                    {hasUtilities && (
+                      <div className="relative" ref={mobileAppsMenuRef}>
+                        <button
+                          onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)}
+                          className={cn(
+                            "p-2 rounded-xl transition-all relative group",
+                            isAppsMenuOpen
+                              ? "bg-primary text-white shadow-lg shadow-primary/20"
+                              : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
+                          )}
+                          title="Tiện ích"
+                        >
+                          <LayoutGrid size={18} />
+                        </button>
+
+                        <AnimatePresence>
+                          {isAppsMenuOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              className={cn(
+                                "fixed inset-x-4 top-16 z-[110] p-4 rounded-2xl border shadow-2xl",
+                                isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
+                              )}
+                            >
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Tiện ích</h3>
+                                <button
+                                  onClick={() => setIsAppsMenuOpen(false)}
+                                  className={cn("p-1 rounded-lg", isDarkMode ? "hover:bg-slate-800" : "hover:bg-slate-100")}
+                                >
+                                  <X size={16} className="text-slate-400" />
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 p-1">
+                                {(() => {
+                                  const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userProfile?.role || '');
+                                  return ALL_TABS.filter(t => {
+                                    const status = featureStates[t.id];
+                                    const settings = featureSettings[t.id];
+                                    const isBanned = settings?.bannedUsers?.includes(userProfile?.uid);
+                                    const isVisible = status !== 'closed' && (status !== 'maintenance' || isPrivileged) && !isBanned;
+                                    const showInUtilities = (settings?.hiddenLocations || []).includes('utilities_box');
+                                    return isVisible && allowedTabs.includes(t.id) && !t.id.startsWith('manage_') && showInUtilities;
+                                  }).map((item, idx) => (
+                                    <button
+                                      key={`mob-util-${item.id}-${idx}`}
+                                      onClick={() => {
+                                        setActiveTab(item.id);
+                                        setIsAppsMenuOpen(false);
+                                      }}
+                                      className={cn(
+                                        "flex flex-col items-center gap-2 p-3 rounded-xl transition-all border",
+                                        activeTab === item.id
+                                          ? (isDarkMode ? "bg-primary/20 border-primary/50 text-primary" : "bg-primary/5 border-primary/20 text-primary")
+                                          : (isDarkMode ? "bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-400" : "bg-slate-50 border-slate-100 hover:bg-slate-100 text-slate-600")
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "p-2 rounded-lg shadow-sm",
+                                        activeTab === item.id ? "bg-primary text-white" : (isDarkMode ? "bg-slate-700" : "bg-white")
+                                      )}>
+                                        <item.icon size={18} />
+                                      </div>
+                                      <span className="text-[10px] font-bold text-center leading-tight">
+                                        {featureSettings[item.id]?.customTitle || item.label}
+                                      </span>
+                                    </button>
+                                  ));
+                                })()}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    )}
+
+                    {/* On Workspace (activeTab === 'dashboard' & not in admin mode): Notification & Avatar Button */}
+                    {(activeTab === 'dashboard' && !isAdminMode) && (
+                      <>
+                        <div className="relative" ref={mobileNotificationsMenuRef}>
+                          <button
+                            id="mobile-header-notifications-btn"
+                            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                            className={cn(
+                              "p-2 rounded-xl transition-all relative group cursor-pointer",
+                              isNotificationsOpen
+                                ? "bg-primary text-white shadow-lg shadow-primary/20"
+                                : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary shadow-sm")
+                            )}
+                            title="Thông báo"
+                          >
+                            <Bell size={18} />
+                            {(() => {
+                              const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !isAnnouncementRead(a)).length;
+                              if (unreadCount === 0) return null;
+                              return (
+                                <span className={cn(
+                                  "absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-rose-500 text-white rounded-full flex items-center justify-center text-[9px] font-black border-2 shadow-sm animate-pulse",
+                                  isDarkMode ? "border-slate-900" : "border-white"
+                                )}>
+                                  {unreadCount > 99 ? "99+" : unreadCount}
+                                </span>
+                              );
+                            })()}
+                          </button>
+
+                          <AnimatePresence>
+                            {isNotificationsOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                 className={cn(
-                                  "flex items-center gap-1 px-2 py-0.5 rounded-full text-[8.5px] font-black shrink-0 transition-all border cursor-pointer",
-                                  notificationTab === tab.id
-                                    ? "bg-primary text-white border-primary shadow-sm"
-                                    : isDarkMode 
-                                      ? "bg-slate-800 border-slate-750 text-slate-400 hover:text-slate-300" 
-                                      : "bg-slate-50 border-slate-100 text-slate-500 hover:text-slate-700"
+                                  "fixed inset-x-3 top-16 z-[110] p-4 rounded-2xl border shadow-2xl flex flex-col max-h-[82vh]",
+                                  isDarkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100"
                                 )}
                               >
-                                <tab.icon size={9} className={notificationTab === tab.id ? "text-white" : tab.color} />
-                                <span>{tab.label}</span>
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 space-y-3 max-h-[55vh]">
-                            {(() => {
-                              const allFiltered = getUnifiedNotifications();
-                              const visibleItems = allFiltered.slice(0, visibleNotifCount);
-                              
-                              if (visibleItems.length === 0) {
-                                return (
-                                  <div className="py-8 text-center">
-                                    <Bell className="mx-auto text-slate-300 mb-1.5" size={24} />
-                                    <p className="text-slate-500 text-[10px] font-extrabold">Không có thông báo nào phù hợp</p>
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-1.5">
+                                    <Bell className="text-primary" size={16} />
+                                    <h3 className={cn("font-black text-xs uppercase tracking-wider", isDarkMode ? "text-white" : "text-slate-900")}>Thông báo</h3>
                                   </div>
-                                );
-                              }
-
-                              const grouped = groupNotificationsByDate(visibleItems);
-                              
-                              return (
-                                <div className="space-y-3">
-                                  {Object.entries(grouped).map(([groupName, items], gIdx) => (
-                                    <div key={`${groupName}-${gIdx}`} className="space-y-1.5">
-                                      <div className="flex items-center gap-1.5 px-0.5">
-                                        <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                                          {groupName}
-                                        </span>
-                                        <div className="flex-1 h-[1px] bg-slate-500/10" />
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        {items.map((item, idx) => renderNotificationItem(item, false, idx, groupName))}
-                                      </div>
-                                    </div>
-                                  ))}
-
-                                  {allFiltered.length > visibleNotifCount && (
+                                  <div className="flex items-center gap-2">
                                     <button
-                                      onClick={() => setVisibleNotifCount(prev => prev + 15)}
-                                      className="w-full py-1.5 mt-1.5 rounded-lg text-[8.5px] font-black uppercase tracking-widest text-primary bg-primary/5 hover:bg-primary/10 border border-dashed border-primary/20 transition-all text-center cursor-pointer"
+                                      onClick={markAllAsRead}
+                                      className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
                                     >
-                                      Tải thêm thông báo...
+                                      <CheckCheck size={13} /> Đọc tất cả
+                                    </button>
+                                    <button
+                                      onClick={() => setIsNotificationsOpen(false)}
+                                      className={cn("p-1 rounded-lg transition-colors cursor-pointer", isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500")}
+                                    >
+                                      <X size={15} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="relative mb-2.5">
+                                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13} />
+                                  <input
+                                    type="text"
+                                    placeholder="Tìm kiếm thông báo, hoạt chất..."
+                                    value={notifSearchQuery}
+                                    onChange={(e) => {
+                                      setNotifSearchQuery(e.target.value);
+                                      setVisibleNotifCount(20);
+                                    }}
+                                    className={cn(
+                                      "w-full pl-8 pr-8 py-2 rounded-xl border-none text-xs font-bold focus:ring-2 focus:ring-primary outline-none transition-all",
+                                      isDarkMode ? "bg-slate-800 text-white placeholder-slate-500" : "bg-slate-50 text-slate-900 placeholder-slate-400"
+                                    )}
+                                  />
+                                  {notifSearchQuery && (
+                                    <button
+                                      onClick={() => setNotifSearchQuery('')}
+                                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    >
+                                      <X size={12} />
                                     </button>
                                   )}
                                 </div>
-                              );
-                            })()}
-                          </div>
-                        </motion.div>
+
+                                <div className="flex items-center gap-1 overflow-x-auto pb-1.5 mb-2.5 no-scrollbar scroll-smooth">
+                                  {[
+                                    { id: 'all', label: 'Tất cả', icon: Bell },
+                                    { id: 'clinical_alert', label: 'Cảnh báo', icon: AlertOctagon, color: 'text-rose-500' },
+                                    { id: 'data_update', label: 'Dữ liệu', icon: Pill, color: 'text-amber-500' },
+                                    { id: 'medical_news_personal', label: 'Tin tức', icon: FileText, color: 'text-sky-500' },
+                                    { id: 'system', label: 'Hệ thống', icon: Settings, color: 'text-slate-400' }
+                                  ].map((tab, idx) => (
+                                    <button
+                                      key={`mob-notif-tab-${tab.id}-${idx}`}
+                                      onClick={() => {
+                                        setNotificationTab(tab.id as any);
+                                        setVisibleNotifCount(20);
+                                      }}
+                                      className={cn(
+                                        "flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black shrink-0 transition-all border cursor-pointer",
+                                        notificationTab === tab.id
+                                          ? "bg-primary text-white border-primary shadow-sm"
+                                          : isDarkMode 
+                                            ? "bg-slate-800 border-slate-750 text-slate-400 hover:text-slate-300" 
+                                            : "bg-slate-50 border-slate-100 text-slate-500 hover:text-slate-700"
+                                      )}
+                                    >
+                                      <tab.icon size={10} className={notificationTab === tab.id ? "text-white" : tab.color} />
+                                      <span>{tab.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto custom-scrollbar pr-0.5 space-y-3 max-h-[55vh]">
+                                  {(() => {
+                                    const allFiltered = getUnifiedNotifications();
+                                    const visibleItems = allFiltered.slice(0, visibleNotifCount);
+                                    
+                                    if (visibleItems.length === 0) {
+                                      return (
+                                        <div className="py-8 text-center">
+                                          <Bell className="mx-auto text-slate-300 mb-1.5" size={24} />
+                                          <p className="text-slate-500 text-[10px] font-extrabold">Không có thông báo nào phù hợp</p>
+                                        </div>
+                                      );
+                                    }
+
+                                    const grouped = groupNotificationsByDate(visibleItems);
+                                    
+                                    return (
+                                      <div className="space-y-3">
+                                        {Object.entries(grouped).map(([groupName, items], gIdx) => (
+                                          <div key={`mob-${groupName}-${gIdx}`} className="space-y-1.5">
+                                            <div className="flex items-center gap-1.5 px-0.5">
+                                              <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                {groupName}
+                                              </span>
+                                              <div className="flex-1 h-[1px] bg-slate-500/10" />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                              {items.map((item, idx) => renderNotificationItem(item, false, idx, groupName))}
+                                            </div>
+                                          </div>
+                                        ))}
+
+                                        {allFiltered.length > visibleNotifCount && (
+                                          <button
+                                            onClick={() => setVisibleNotifCount(prev => prev + 15)}
+                                            className="w-full py-2 mt-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest text-primary bg-primary/5 hover:bg-primary/10 border border-dashed border-primary/20 transition-all text-center cursor-pointer"
+                                          >
+                                            Tải thêm thông báo...
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </>
                     )}
-                  </AnimatePresence>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsProfileModalOpen(true);
-                    setShowSupportContact(false);
-                  }}
-                  className={cn(
-                    "p-2 rounded-xl transition-all relative group",
-                    isProfileModalOpen
-                      ? "bg-primary text-white shadow-lg shadow-primary/20"
-                      : (isDarkMode ? "bg-slate-900 text-slate-400 hover:text-white" : "bg-slate-50 text-slate-500 hover:text-primary")
-                  )}
-                  title="Cài đặt"
-                >
-                  <Settings size={18} className="group-hover:rotate-90 transition-transform duration-500" />
-                </button>
-              </div>
+                  </div>
+                </>
+              )}
             </div>
+            )}
 
             {/* Desktop Header */}
             <div className={cn(
-              "hidden lg:flex sticky top-0 z-30 items-center justify-between px-6 py-3 border-b backdrop-blur-md",
+              "hidden lg:flex sticky top-0 z-30 items-center justify-between px-6 h-[54px] border-b backdrop-blur-md",
               isDarkMode ? "bg-slate-950/80 border-slate-800" : "bg-white/80 border-slate-100"
             )}>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95 group"
-                  title="Trở về Workspace"
-                >
-                  <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
-                  <span className="font-bold text-sm hidden xl:inline-block">{systemSettings.appName}</span>
-                </button>
-              </div>
+              {!(activeTab === 'view_directory' || activeTab === 'directory' || activeTab === 'manage_directory') && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity active:scale-95 group shrink-0"
+                    title="Trở về Workspace"
+                  >
+                    <img src="/icon-512.png" alt="Logo" className="w-10 h-10 object-contain transition-all" referrerPolicy="no-referrer" />
+                    <span className="font-bold text-sm hidden xl:inline-block">{systemSettings.appName}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Desktop Header Navigation / Drug Tabs Portal */}
+              <div
+                id="desktop-header-tabs-portal"
+                className={cn(
+                  "flex items-center gap-1.5 min-w-0 overflow-x-auto no-scrollbar scrollbar-hide [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden h-full",
+                  (activeTab === 'view_directory' || activeTab === 'directory' || activeTab === 'manage_directory')
+                    ? "flex-1 w-full max-w-full justify-start px-0"
+                    : "flex-1 max-w-3xl px-3"
+                )}
+              />
 
               {/* Search Bar - Only in AdminCP */}
               {(isAdminMode || activeTab.startsWith('admin_')) && (
@@ -3651,7 +4910,7 @@ export default function App() {
                 >
                   <Bell size={18} />
                   {(() => {
-                    const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !readAnnouncementIds.includes(a.id)).length;
+                    const unreadCount = notifications.filter(n => !n.isRead).length + announcements.filter(a => a.showInHeader !== false && !isAnnouncementRead(a)).length;
                     if (unreadCount === 0) return null;
                     return (
                       <span className={cn(
@@ -3810,7 +5069,7 @@ export default function App() {
 
     {/* Sub Header */ }
   {
-    activeTab !== 'dashboard' && (
+    activeTab !== 'dashboard' && activeTab !== 'directory' && activeTab !== 'view_directory' && activeTab !== 'view_national_pharmacopoeia' && activeTab !== 'manage_national_pharmacopoeia' && activeTab !== 'view_treatment_guideline' && activeTab !== 'treatment_guideline' && activeTab !== 'view_icd10' && activeTab !== 'icd10' && activeTab !== 'manage_icd10' && activeTab !== 'interaction' && activeTab !== 'view_interaction' && activeTab !== 'manage_interaction' && activeTab !== 'view_profile' && activeTab !== 'profile' && activeTab !== 'settings' && activeTab !== 'app_settings' && (
       <div className={cn(
         "lg:hidden sticky top-[57px] z-20 flex items-center gap-3 lg:gap-4 px-4 lg:px-6 py-2 border-b transition-colors",
         isDarkMode ? "bg-slate-900/95 border-slate-800 backdrop-blur-md" : "bg-slate-50/95 border-slate-100 backdrop-blur-md"
@@ -3852,28 +5111,117 @@ export default function App() {
   }
 
 
-  <AnimatePresence mode="wait">
-    <motion.div
-      key={activeTab}
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -6, pointerEvents: 'none' }}
-      transition={{ duration: 0.15 }}
-      style={{ minHeight: '100%' }}
-    >
-
-      <Suspense fallback={
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-          <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-            Đang tải giao diện...
+  {/* Check if any modal/overlay is open so swipe does not interfere */}
+  {quotaExceeded && (
+    <div className={cn(
+      "mx-4 my-2.5 p-3 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xs",
+      isDarkMode 
+        ? "bg-amber-500/10 border-amber-500/30 text-amber-300" 
+        : "bg-amber-50 border-amber-200 text-amber-800"
+    )}>
+      <div className="flex items-center gap-2.5">
+        <AlertTriangle className={cn("shrink-0", isDarkMode ? "text-amber-400" : "text-amber-600")} size={18} />
+        <div>
+          <p className="font-bold">Hạn ngạch đọc Firestore trong ngày đã đạt mức tối đa gói miễn phí (Spark Quota Limit Exceeded).</p>
+          <p className={cn("text-[11px] mt-0.5 font-normal", isDarkMode ? "text-amber-300/80" : "text-amber-700")}>
+            Hạn ngạch đọc miễn phí sẽ tự động được làm mới vào ngày hôm sau. Quản trị viên có thể kiểm tra trực tiếp hoặc nâng cấp hạn mức tại{' '}
+            <a
+              href="https://console.firebase.google.com/project/gen-lang-client-0938760627/firestore/databases/ai-studio-6c70cbe6-596b-4455-9dd2-018f5266af09/data?openUpgradeDialog=true"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn("underline font-bold hover:underline", isDarkMode ? "text-amber-200 hover:text-amber-100" : "text-amber-900 hover:text-amber-950")}
+            >
+              Firebase Console
+            </a>
+            .
           </p>
         </div>
-      }>
-        {renderContent()}
-      </Suspense>
-    </motion.div>
-  </AnimatePresence>
+      </div>
+      <button
+        onClick={() => setQuotaExceeded(false)}
+        className={cn(
+          "p-1 rounded-lg transition-colors shrink-0 cursor-pointer",
+          isDarkMode 
+            ? "hover:bg-amber-500/20 text-amber-400" 
+            : "hover:bg-amber-200/60 text-amber-700"
+        )}
+        title="Ẩn thông báo"
+      >
+        <X size={15} />
+      </button>
+    </div>
+  )}
+  {(() => {
+    const isModalInDOM = typeof document !== 'undefined' && !!document.querySelector('[data-no-swipe="true"]:not(#mobile-drug-fixed-pagination):not(#mobile-icd-fixed-pagination), #drug-detail-header, #drug-detail-dialog, [role="dialog"]');
+    const isSwipeDisabledForTab = activeTab === 'view_profile' || activeTab === 'profile';
+    const isAnyModalOpen = isProfileModalOpen || isNotificationsOpen || isGlobalDrugModalOpen || isUserGuideOpen || isSwipeLocked || isSwipeDisabledForTab || isModalInDOM;
+    const currentTabIndex = getTabNavIndex(activeTab);
+
+    return (
+      <AnimatePresence initial={false} custom={tabDirection} mode="popLayout">
+        <motion.div
+          key={activeTab}
+          custom={tabDirection}
+          variants={(isMobile ? SLIDE_VARIANTS : DESKTOP_VARIANTS) as any}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={
+            isMobile
+              ? {
+                  x: { duration: 0.28, ease: [0.32, 0.72, 0, 1] },
+                }
+              : { duration: 0 }
+          }
+          drag={isMobile && !isAnyModalOpen ? "x" : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={
+            isMobile && !isAnyModalOpen
+              ? {
+                  left: 0.6,
+                  right: currentTabIndex === 0 ? 0.05 : 0.6,
+                }
+              : 0
+          }
+          onDragStart={(e) => {
+            const target = e?.target as HTMLElement | null;
+            if (target?.closest?.('[data-no-swipe], [data-prevent-swipe], #drug-detail-header, #drug-detail-dialog, [role="dialog"]')) {
+              return;
+            }
+          }}
+          onDragEnd={(e, { offset, velocity }) => {
+            if (!isMobile || isAnyModalOpen) return;
+            const target = e?.target as HTMLElement | null;
+            if (target?.closest?.('[data-no-swipe], [data-prevent-swipe], #drug-detail-header, #drug-detail-dialog, [role="dialog"]')) {
+              return;
+            }
+            const activeEl = document.activeElement?.tagName?.toLowerCase();
+            if (activeEl === 'input' || activeEl === 'textarea' || activeEl === 'select') return;
+            const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 400;
+            if (swipe) {
+              if (offset.x < 0) {
+                paginateMobileTab(1);
+              } else {
+                paginateMobileTab(-1);
+              }
+            }
+          }}
+          className="w-full min-h-full touch-pan-y flex flex-col"
+        >
+          <Suspense fallback={
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
+              <p className={cn("text-[10px] font-black uppercase tracking-widest", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                Đang tải giao diện...
+              </p>
+            </div>
+          }>
+            {renderContent()}
+          </Suspense>
+        </motion.div>
+      </AnimatePresence>
+    );
+  })()}
 
 
   {/* Profile Modal */ }
@@ -3894,15 +5242,43 @@ export default function App() {
           )}
         />
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            y: 0,
-            x: guestView === 'terms' ? (window.innerWidth < 1440 ? '-100%' : '-560px') : 0
+          initial={isMobile ? { x: "100%", opacity: 1 } : { opacity: 0, scale: 0.95, y: 20 }}
+          animate={
+            isMobile
+              ? {
+                  x: guestView === 'terms' ? (window.innerWidth < 1440 ? '-100%' : '-560px') : 0,
+                  opacity: 1,
+                  scale: 1,
+                  y: 0
+                }
+              : {
+                  opacity: 1,
+                  scale: 1,
+                  y: 0,
+                  x: guestView === 'terms' ? (window.innerWidth < 1440 ? '-100%' : '-560px') : 0
+                }
+          }
+          exit={isMobile ? { x: "100%", opacity: 1 } : { opacity: 0, scale: 0.95, y: 20 }}
+          transition={
+            isMobile
+              ? {
+                  x: { duration: 0.28, ease: [0.32, 0.72, 0, 1] },
+                  opacity: { duration: 0.2 }
+                }
+              : { type: "spring", damping: 25, stiffness: 180 }
+          }
+          drag={isMobile ? "x" : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={{ left: 0, right: 0.6 }}
+          onDragEnd={(e, { offset, velocity }) => {
+            if (!isMobile) return;
+            const activeEl = document.activeElement?.tagName?.toLowerCase();
+            if (activeEl === 'input' || activeEl === 'textarea' || activeEl === 'select') return;
+            if (offset.x > 60 || velocity.x > 350) {
+              setIsProfileModalOpen(false);
+              if (guestView === 'terms') setGuestView('none');
+            }
           }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          transition={{ type: "spring", damping: 25, stiffness: 180 }}
           className={cn(
             "relative w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg rounded-none sm:rounded-[32px] shadow-2xl overflow-hidden border-0 sm:border transition-colors flex flex-col pointer-events-auto",
             isDarkMode ? "bg-slate-900 sm:border-slate-800" : "bg-white sm:border-slate-100"
@@ -3915,7 +5291,7 @@ export default function App() {
             {/* PANEL 1: SETTINGS */}
             <div className="w-1/2 shrink-0 flex flex-col h-full">
               <div className={cn(
-                "p-4 sm:p-6 border-b flex items-center justify-between shrink-0",
+                "h-[54px] px-4 sm:px-6 border-b flex items-center justify-between shrink-0",
                 isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
                 <div className="flex items-center gap-3">
@@ -3927,15 +5303,15 @@ export default function App() {
                     }}
                     title="Đóng / Trở về"
                     className={cn(
-                      "p-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                      "p-1.5 sm:p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
                       isDarkMode 
                         ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
                         : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
                     )}
                   >
-                    <ArrowLeft size={20} />
+                    <ArrowLeft size={18} />
                   </button>
-                  <h3 className="text-lg font-black tracking-tight">Cài đặt</h3>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight">Cài đặt</h3>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -3951,7 +5327,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[60vh] pb-8">
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[calc(90vh-54px)] pb-8">
                 {/* Account Info */}
                 {(() => {
                   const isQuickAccount = userProfile.uid.startsWith('staff_') || !!userProfile.staffAccount || userProfile.email.endsWith('@bv.local');
@@ -4361,16 +5737,17 @@ export default function App() {
                   </div>
 
                   {userProfile.role === 'admin' && (
-                    <div className="pt-2">
+                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <button
                         onClick={() => {
                           setIsAdminMode(true);
+                          setIsDataMode(false);
                           setActiveTab('admin_general');
                           setIsProfileModalOpen(false);
                         }}
                         className={cn(
-                          "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group",
-                          isDarkMode ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-50/20" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
+                          "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
+                          isDarkMode ? "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100"
                         )}
                       >
                         <div className="flex items-center gap-3">
@@ -4379,23 +5756,45 @@ export default function App() {
                           </div>
                           <div className="text-left">
                             <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-indigo-400" : "text-indigo-600")}>Quản trị hệ thống</p>
-                            <p className={cn("text-xs font-bold", isDarkMode ? "text-slate-300" : "text-slate-600")}>Cấu hình tên app, logo và các thiết lập chung</p>
                           </div>
                         </div>
                         <Zap size={16} className="text-indigo-500 group-hover:scale-110 transition-transform" />
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsDataMode(true);
+                          setIsAdminMode(false);
+                          setActiveTab('manage_directory');
+                          setIsProfileModalOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
+                          isDarkMode ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-100 hover:bg-emerald-100"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-emerald-500 text-white rounded-lg shadow-lg shadow-emerald-500/20">
+                            <Database size={16} />
+                          </div>
+                          <div className="text-left">
+                            <p className={cn("text-xs font-black uppercase tracking-widest", isDarkMode ? "text-emerald-400" : "text-emerald-600")}>Quản lý dữ liệu</p>
+                          </div>
+                        </div>
+                        <Zap size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
                       </button>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-slate-800/10 dark:border-slate-800/50">
+                <div className="mt-6 pt-6 border-t border-slate-800/10 dark:border-slate-800/50 space-y-3">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setGuestView('terms');
                     }}
                     className={cn(
-                      "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group",
+                      "w-full flex items-center justify-between p-4 rounded-2xl border transition-all group cursor-pointer",
                       isDarkMode ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800" : "bg-white border-slate-100 hover:bg-slate-50"
                     )}
                   >
@@ -4410,30 +5809,25 @@ export default function App() {
                     </div>
                     <ChevronRight size={16} className="text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </button>
-                </div>
-              </div>
 
-              <div className={cn(
-                "p-4 sm:p-6 border-t flex flex-col gap-3",
-                isDarkMode ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50/50"
-              )}>
-                <button
-                  onClick={handleLogout}
-                  className={cn(
-                    "w-full py-2.5 sm:py-3 bg-rose-500 text-white rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 hover:bg-rose-600",
-                    isDarkMode ? "shadow-none" : "shadow-lg shadow-rose-500/20"
-                  )}
-                >
-                  <LogOut size={16} />
-                  <span>Đăng xuất</span>
-                </button>
+                  <button
+                    onClick={handleLogout}
+                    className={cn(
+                      "w-full py-3 sm:py-3.5 bg-rose-500 text-white rounded-2xl font-black text-xs sm:text-sm transition-all flex items-center justify-center gap-2 hover:bg-rose-600 active:scale-[0.98] cursor-pointer",
+                      isDarkMode ? "shadow-none" : "shadow-lg shadow-rose-500/20"
+                    )}
+                  >
+                    <LogOut size={16} />
+                    <span>Đăng xuất</span>
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* PANEL 2: SUPPORT */}
             <div className="w-1/2 shrink-0 flex flex-col h-full">
               <div className={cn(
-                "p-4 sm:p-6 border-b flex items-center justify-between shrink-0",
+                "h-[54px] px-4 sm:px-6 border-b flex items-center justify-between shrink-0",
                 isDarkMode ? "bg-slate-800/50 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
                 <div className="flex items-center gap-3">
@@ -4442,22 +5836,22 @@ export default function App() {
                     onClick={() => setShowSupportContact(false)}
                     title="Quay lại Cài đặt"
                     className={cn(
-                      "p-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
+                      "p-1.5 sm:p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer active:scale-95",
                       isDarkMode 
                         ? "bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white" 
                         : "bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900"
                     )}
                   >
-                    <ArrowLeft size={20} />
+                    <ArrowLeft size={18} />
                   </button>
-                  <h3 className="text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight">Hỗ trợ kỹ thuật</h3>
                 </div>
                 <div className="flex items-center gap-1.5">
                   {/* Empty right area without X button */}
                 </div>
               </div>
 
-              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[60vh] pb-8">
+              <div className="overflow-y-auto p-4 sm:p-8 space-y-6 custom-scrollbar flex-1 sm:max-h-[calc(90vh-54px)] pb-8">
                 <div className={cn(
                   "p-5 rounded-2xl border relative overflow-hidden transition-all duration-300",
                   isDarkMode
@@ -4672,13 +6066,13 @@ export default function App() {
               </div>
 
               <div className={cn(
-                "p-6 border-t flex items-center justify-between",
+                "px-4 py-2.5 sm:px-6 sm:py-3 border-t flex items-center justify-between shrink-0",
                 isDarkMode ? "bg-slate-800/20 border-slate-800" : "bg-slate-50/50 border-slate-100"
               )}>
                 <p className="text-[10px] text-slate-500 font-medium">Bản cập nhật cuối: {systemSettings.termsUpdateDate ? systemSettings.termsUpdateDate.split('-').reverse().join('/') : new Date().toLocaleDateString('vi-VN')}</p>
                 <button 
                   onClick={() => setGuestView('none')}
-                  className="px-6 py-2 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98]"
+                  className="px-4 py-1.5 sm:px-5 sm:py-2 bg-primary text-white rounded-xl font-bold text-[11px] sm:text-xs uppercase tracking-widest hover:bg-primary/90 transition-all active:scale-[0.98] cursor-pointer"
                 >
                   Đã hiểu
                 </button>
@@ -4726,7 +6120,8 @@ export default function App() {
             isOpen={isGlobalDrugModalOpen}
             onClose={() => setIsGlobalDrugModalOpen(false)}
             isDarkMode={isDarkMode}
-            userPowerPoints={userProfile?.powerPoints || 0}
+            userPowerPoints={userPowerPoints}
+            userRole={userProfile?.role}
           />
 
           {/* Live Toast Popups Container */}

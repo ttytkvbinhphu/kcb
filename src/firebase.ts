@@ -44,6 +44,9 @@ if (typeof window !== 'undefined') {
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 export enum OperationType {
   CREATE = 'create',
@@ -152,7 +155,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
 
-  const isQuotaError = errInfo.error.includes('Quota exceeded') || errInfo.error.includes('Quota limit exceeded');
+  const isQuotaError = 
+    errInfo.error.includes('Quota exceeded') || 
+    errInfo.error.includes('Quota limit exceeded') ||
+    errInfo.error.includes('resource-exhausted') ||
+    errInfo.error.includes('Free daily read units');
   if (isQuotaError) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('firestore-quota-exceeded', { detail: errInfo }));

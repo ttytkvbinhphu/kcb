@@ -27,7 +27,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'All' | 'Chưa duyệt' | 'Bác sĩ' | 'Dược sĩ' | 'Điều dưỡng' | 'Y sĩ' | 'Kỹ thuật viên' | 'Admin'>('All');
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [editForm, setEditForm] = useState({ displayName: '', title: '', position: '', specialty: '', department: '', zalo: '' });
+  const [editForm, setEditForm] = useState({ displayName: '', gender: '', title: '', position: '', specialty: '', department: '', zalo: '' });
   
   const [configTitles, setConfigTitles] = useState<string[]>([]);
   const [configPositions, setConfigPositions] = useState<string[]>([]);
@@ -218,6 +218,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     setEditingUser(user);
     setEditForm({
       displayName: user.displayName || '',
+      gender: user.gender || '',
       title: user.title || '',
       position: user.position || '',
       specialty: user.specialty || 'Không',
@@ -231,6 +232,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     try {
       await updateDoc(doc(db, 'users', editingUser.uid), {
         displayName: editForm.displayName,
+        gender: editForm.gender,
         title: editForm.title,
         position: editForm.position,
         specialty: editForm.specialty,
@@ -270,6 +272,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
     const matchesSearch = 
       (user.email || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
       (user.displayName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (user.gender || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
       (user.zalo || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
       (user.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
 
@@ -479,6 +482,18 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                             </h3>
                           </div>
                           <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            {user.gender && (
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border shadow-xs inline-block",
+                                user.gender === 'Nam'
+                                  ? (isDarkMode ? "bg-blue-900/40 text-blue-400 border-blue-800/50" : "bg-blue-50 text-blue-700 border-blue-200")
+                                  : user.gender === 'Nữ'
+                                    ? (isDarkMode ? "bg-rose-900/40 text-rose-400 border-rose-800/50" : "bg-rose-50 text-rose-700 border-rose-200")
+                                    : (isDarkMode ? "bg-purple-900/40 text-purple-400 border-purple-800/50" : "bg-purple-50 text-purple-700 border-purple-200")
+                              )}>
+                                {user.gender}
+                              </span>
+                            )}
                             {user.title && (
                               <span className={cn(
                                 "px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border shadow-xs inline-block",
@@ -574,6 +589,15 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         <p className="text-[11px] font-bold truncate">{user.email || '---'}</p>
                       </div>
                       <div className="space-y-0.5">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Giới tính</p>
+                        <p className={cn(
+                          "text-[11px] font-bold truncate",
+                          user.gender === 'Nam' ? (isDarkMode ? "text-blue-400" : "text-blue-600") :
+                          user.gender === 'Nữ' ? (isDarkMode ? "text-rose-400" : "text-rose-600") :
+                          (isDarkMode ? "text-slate-300" : "text-slate-700")
+                        )}>{user.gender || '---'}</p>
+                      </div>
+                      <div className="space-y-0.5">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Chuyên môn</p>
                         <p className="text-[11px] font-bold truncate">{user.specialty || '---'}</p>
                       </div>
@@ -581,7 +605,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Khoa / Phòng</p>
                         <p className="text-[11px] font-bold break-words whitespace-normal">{user.department || '---'}</p>
                       </div>
-                      <div className="space-y-0.5">
+                      <div className="space-y-0.5 col-span-2">
                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Zalo / SĐT</p>
                         <p className="text-[11px] font-bold truncate">{user.zalo || '---'}</p>
                       </div>
@@ -602,6 +626,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                     isDarkMode ? "bg-slate-800/90 border-slate-700 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-500"
                   )}>
                     <th className="py-3.5 px-4">Người dùng</th>
+                    <th className="py-3.5 px-3 text-center">Giới tính</th>
                     <th className="py-3.5 px-3">Chức danh</th>
                     <th className="py-3.5 px-3">Chuyên môn / Chức vụ</th>
                     <th className="py-3.5 px-3">Khoa / Phòng</th>
@@ -654,6 +679,24 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                               </div>
                             </div>
                           </div>
+                        </td>
+
+                        {/* Giới tính */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          {user.gender ? (
+                            <span className={cn(
+                              "inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border",
+                              user.gender === 'Nam'
+                                ? (isDarkMode ? "bg-blue-900/40 text-blue-400 border-blue-500/30" : "bg-blue-50 text-blue-700 border-blue-200")
+                                : user.gender === 'Nữ'
+                                  ? (isDarkMode ? "bg-rose-900/40 text-rose-400 border-rose-500/30" : "bg-rose-50 text-rose-700 border-rose-200")
+                                  : (isDarkMode ? "bg-purple-900/40 text-purple-400 border-purple-500/30" : "bg-purple-50 text-purple-700 border-purple-200")
+                            )}>
+                              {user.gender}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs font-semibold">---</span>
+                          )}
                         </td>
 
                         {/* Chức danh */}
@@ -906,8 +949,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
               
               <div className={cn("flex-1 p-6 space-y-6 overflow-y-auto custom-scrollbar", isDarkMode ? "bg-slate-900" : "bg-white")}>
                 {/* Basic Info Row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="space-y-2 md:col-span-5">
                     <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
                       <UserIcon size={12} /> Họ và tên
                     </label>
@@ -922,9 +965,39 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       placeholder="Nhập họ và tên..."
                     />
                   </div>
-                  <div className="space-y-2">
+                  
+                  {/* Giới tính */}
+                  <div className="space-y-2 md:col-span-3">
                     <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
-                      <Phone size={12} /> Số Zalo
+                      <Users size={12} /> Giới tính
+                    </label>
+                    <div className="flex gap-1.5 h-[48px] items-center">
+                      {(['Nam', 'Nữ', 'Khác'] as const).map((g) => (
+                        <button
+                          key={`gender-opt-${g}`}
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, gender: editForm.gender === g ? '' : g })}
+                          className={cn(
+                            "flex-1 h-full rounded-2xl font-black text-xs uppercase tracking-wider transition-all border-2 flex items-center justify-center gap-1 shadow-sm active:scale-95",
+                            editForm.gender === g
+                              ? (g === 'Nam' 
+                                  ? (isDarkMode ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-blue-500/10" : "bg-blue-50 border-blue-600 text-blue-700 shadow-blue-500/10")
+                                  : g === 'Nữ'
+                                    ? (isDarkMode ? "bg-rose-500/20 border-rose-500 text-rose-400 shadow-rose-500/10" : "bg-rose-50 border-rose-600 text-rose-700 shadow-rose-500/10")
+                                    : (isDarkMode ? "bg-purple-500/20 border-purple-500 text-purple-400 shadow-purple-500/10" : "bg-purple-50 border-purple-600 text-purple-700 shadow-purple-500/10")
+                                )
+                              : (isDarkMode ? "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700/60" : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100")
+                          )}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-4">
+                    <label className={cn("flex items-center gap-2 text-[10px] font-black uppercase tracking-widest ml-1", isDarkMode ? "text-slate-500" : "text-slate-400")}>
+                      <Phone size={12} /> Số Zalo / SĐT
                     </label>
                     <input
                       type="tel"
@@ -934,7 +1007,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDarkMode }) => {
                       )}
                       value={editForm.zalo || ''}
                       onChange={(e) => setEditForm({ ...editForm, zalo: e.target.value })}
-                      placeholder="Nhập số Zalo..."
+                      placeholder="Nhập số Zalo / SĐT..."
                     />
                   </div>
                 </div>

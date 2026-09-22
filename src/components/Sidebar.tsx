@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import ReactDOM from 'react-dom';
-import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ChevronDown, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch, FolderTree, Database, HelpCircle, LayoutTemplate } from 'lucide-react';
+import { Search, ShieldAlert, FileText, History, LayoutDashboard, LayoutGrid, Pill, ClipboardList, Settings, Users, UserCheck, AlertTriangle, MessageSquare, MessageSquarePlus, GripVertical, X, Briefcase, Calendar, Activity, Globe, Award, ShieldCheck, GraduationCap, Lock, LogOut, Sun, Calculator, ChevronLeft, ChevronRight, ChevronDown, ListTodo, ArrowLeftCircle, Info as InfoIcon, FileSearch, FolderTree, Database, HelpCircle, LayoutTemplate, Building2, Phone, Mail, Clock, MapPin, BookOpen, Stethoscope } from 'lucide-react';
 import { cn, getBustedPhotoURL, sanitizeFirestoreData } from '../lib/utils';
 import { Reorder, motion, AnimatePresence } from 'motion/react';
 import { db, collection, query, where, orderBy, limit, onSnapshot } from '../firebase';
-import { VersionLog } from '../types';
+import { VersionLog, SidebarNavOrderSettings } from '../types';
 
 interface SidebarProps {
   activeTab: string;
@@ -12,6 +11,14 @@ interface SidebarProps {
   userRole: 'admin' | 'operator' | 'operator_doctor' | 'operator_pharmacist' | 'member' | 'unapproved';
   displayName: string;
   title?: string;
+  department?: string;
+  position?: string;
+  specialty?: string;
+  email?: string;
+  staffAccount?: string;
+  username?: string;
+  zalo?: string;
+  createdAt?: string;
   photoURL?: string;
   photoSyncToken?: string;
   isDarkMode?: boolean;
@@ -23,6 +30,8 @@ interface SidebarProps {
   setIsCollapsed?: (val: boolean) => void;
   isAdminMode?: boolean;
   setIsAdminMode?: (val: boolean) => void;
+  isDataMode?: boolean;
+  setIsDataMode?: (val: boolean) => void;
   appName: string;
   featureStates?: Record<string, 'open' | 'closed' | 'maintenance'>;
   featureSettings?: Record<string, any>;
@@ -31,14 +40,15 @@ interface SidebarProps {
   drugDirectoryViewMode?: 'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies';
   setDrugDirectoryViewMode?: (mode: 'drugs' | 'groups' | 'ingredients' | 'ingredient_categories' | 'excipients' | 'excipient_categories' | 'companies') => void;
   onOpenUserGuide?: () => void;
+  sidebarNavOrder?: SidebarNavOrderSettings;
 }
 
 interface SidebarItem {
   id: string;
   label: string;
   icon: any;
-  section: 'member' | 'admin';
-  group?: 'general' | 'pharmacy' | 'admin';
+  section: 'member' | 'admin' | 'data';
+  group?: 'general' | 'pharmacy' | 'admin' | 'data';
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -47,8 +57,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   userRole, 
   displayName, 
   title, 
+  department,
+  position,
+  specialty,
   photoURL, 
   photoSyncToken,
+  email,
+  staffAccount,
+  username,
+  zalo,
+  createdAt,
   isDarkMode, 
   allowedTabs, 
   isEditMode, 
@@ -58,6 +76,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
   isAdminMode,
   setIsAdminMode,
+  isDataMode,
+  setIsDataMode,
   appName,
   featureStates = {},
   featureSettings = {},
@@ -65,16 +85,65 @@ const Sidebar: React.FC<SidebarProps> = ({
   isApproved = true,
   drugDirectoryViewMode = 'drugs',
   setDrugDirectoryViewMode,
-  onOpenUserGuide
+  onOpenUserGuide,
+  sidebarNavOrder
 }) => {
   const [items, setItems] = useState<SidebarItem[]>([]);
-  const [pharmacyItems, setPharmacyItems] = useState<SidebarItem[]>([]);
+  const [liveNavOrder, setLiveNavOrder] = useState<SidebarNavOrderSettings | undefined>(sidebarNavOrder);
   const [latestVersion, setLatestVersion] = useState<VersionLog | null>(null);
-  const [tooltip, setTooltip] = useState<{ label: string; y: number; isMaintenance?: boolean; isClosed?: boolean } | null>(null);
+
+  useEffect(() => {
+    setLiveNavOrder(sidebarNavOrder);
+  }, [sidebarNavOrder]);
+
+  useEffect(() => {
+    const handleOrderUpdate = (e: any) => {
+      if (e.detail && e.detail.section && e.detail.order) {
+        setLiveNavOrder(prev => ({
+          ...(prev || {}),
+          [e.detail.section]: e.detail.order
+        }));
+      }
+    };
+    window.addEventListener('sidebar-order-updated', handleOrderUpdate);
+    return () => window.removeEventListener('sidebar-order-updated', handleOrderUpdate);
+  }, []);
   const [viewedProfileUid, setViewedProfileUid] = useState<string | null>(null);
   const [isViewDirectoryExpanded, setIsViewDirectoryExpanded] = useState(activeTab === 'view_directory');
   const [isManageDirectoryExpanded, setIsManageDirectoryExpanded] = useState(activeTab === 'manage_directory');
   const sidebarRef = useRef<HTMLDivElement>(null);
+
+  const calculateTenure = (dateStr?: string) => {
+    if (!dateStr) return '1 năm 6 tháng';
+    try {
+      const start = new Date(dateStr);
+      const now = new Date();
+      if (isNaN(start.getTime())) return '1 năm 6 tháng';
+      
+      let years = now.getFullYear() - start.getFullYear();
+      let months = now.getMonth() - start.getMonth();
+      let days = now.getDate() - start.getDate();
+
+      if (days < 0) {
+        months -= 1;
+        const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+        days += prevMonth.getDate();
+      }
+      if (months < 0) {
+        years -= 1;
+        months += 12;
+      }
+
+      const parts = [];
+      if (years > 0) parts.push(`${years} năm`);
+      if (months > 0) parts.push(`${months} tháng`);
+      if (days > 0 || parts.length === 0) parts.push(`${days} ngày`);
+
+      return parts.join(' ');
+    } catch {
+      return '1 năm 6 tháng';
+    }
+  };
 
   useEffect(() => {
     if (activeTab === 'view_directory') {
@@ -118,6 +187,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'view_todo', label: featureSettings['view_todo']?.customTitle || 'Việc cần làm', icon: ListTodo, section: 'member', group: 'general' },
       { id: 'view_doc_lookup', label: featureSettings['view_doc_lookup']?.customTitle || 'Tra cứu văn bản', icon: FileSearch, section: 'member', group: 'general' },
       { id: 'view_directory', label: featureSettings['view_directory']?.customTitle || 'Tra cứu thuốc', icon: Pill, section: 'member', group: 'general' },
+      { id: 'view_national_pharmacopoeia', label: featureSettings['view_national_pharmacopoeia']?.customTitle || 'Dược thư Quốc gia', icon: BookOpen, section: 'member', group: 'general' },
+      { id: 'view_treatment_guideline', label: featureSettings['view_treatment_guideline']?.customTitle || 'Hướng dẫn điều trị', icon: Stethoscope, section: 'member', group: 'general' },
       { id: 'view_icd10', label: featureSettings['view_icd10']?.customTitle || 'Tra cứu ICD-10', icon: ClipboardList, section: 'member', group: 'general' },
       { id: 'view_interaction', label: featureSettings['view_interaction']?.customTitle || 'Tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'general' },
       { id: 'view_adr', label: featureSettings['view_adr']?.customTitle || 'Tra cứu ADR', icon: AlertTriangle, section: 'member', group: 'general' },
@@ -131,17 +202,20 @@ const Sidebar: React.FC<SidebarProps> = ({
       { id: 'admin_registration', label: 'Đăng nhập/Đăng ký', icon: UserCheck, section: 'admin', group: 'admin' },
       { id: 'admin_home', label: 'Công cụ', icon: LayoutGrid, section: 'admin', group: 'admin' },
       { id: 'admin_notifications', label: 'Thông báo/Tin nhắn', icon: MessageSquare, section: 'admin', group: 'admin' },
+      { id: 'admin_feedbacks', label: 'Góp ý/Báo cáo', icon: MessageSquarePlus, section: 'admin', group: 'admin' },
       { id: 'admin_theme', label: 'Quản lý Giao diện', icon: Sun, section: 'admin', group: 'admin' },
       { id: 'admin_slideshow', label: 'Quản lý Slide Showcase', icon: LayoutTemplate, section: 'admin', group: 'admin' },
       { id: 'admin_hr', label: 'Quản lý Nhân sự', icon: Users, section: 'admin', group: 'admin' },
       { id: 'admin_guide', label: 'Hướng dẫn/Trợ giúp', icon: HelpCircle, section: 'admin', group: 'admin' },
       
       { id: 'manage_users', label: 'Quản lý người dùng', icon: Users, section: 'admin', group: 'admin' },
-      { id: 'manage_directory', label: featureSettings['manage_directory']?.customTitle || 'Quản lý thuốc', icon: Pill, section: 'member', group: 'pharmacy' },
-      { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'member', group: 'pharmacy' },
-      { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'member', group: 'pharmacy' },
-      { id: 'manage_adr', label: featureSettings['manage_adr']?.customTitle || 'Quản lý ADR', icon: AlertTriangle, section: 'member', group: 'pharmacy' },
-      { id: 'manage_doc_lookup', label: featureSettings['manage_doc_lookup']?.customTitle || 'Quản lý văn bản', icon: FileText, section: 'member', group: 'pharmacy' },
+      { id: 'manage_directory', label: featureSettings['manage_directory']?.customTitle || 'Quản lý thuốc', icon: Pill, section: 'data', group: 'data' },
+      { id: 'manage_national_pharmacopoeia', label: featureSettings['manage_national_pharmacopoeia']?.customTitle || 'Dược thư Quốc gia', icon: BookOpen, section: 'data', group: 'data' },
+      { id: 'manage_treatment_guidelines', label: featureSettings['manage_treatment_guidelines']?.customTitle || 'Hướng dẫn điều trị (BYT)', icon: Stethoscope, section: 'data', group: 'data' },
+      { id: 'manage_icd10', label: featureSettings['manage_icd10']?.customTitle || 'Quản lý ICD-10', icon: ClipboardList, section: 'data', group: 'data' },
+      { id: 'manage_interaction', label: featureSettings['manage_interaction']?.customTitle || 'Quản lý tương tác thuốc', icon: ShieldAlert, section: 'data', group: 'data' },
+      { id: 'manage_adr', label: featureSettings['manage_adr']?.customTitle || 'Quản lý ADR', icon: AlertTriangle, section: 'data', group: 'data' },
+      { id: 'manage_doc_lookup', label: featureSettings['manage_doc_lookup']?.customTitle || 'Quản lý văn bản', icon: FileText, section: 'data', group: 'data' },
     ];
 
     const isPrivileged = ['admin', 'operator', 'operator_doctor', 'operator_pharmacist'].includes(userRole);
@@ -159,14 +233,16 @@ const Sidebar: React.FC<SidebarProps> = ({
       if (allowedRoles.length > 0 && !allowedRoles.includes(checkRole)) return false;
       
       // Hide if restricted location
-      // manage_interaction follows view_interaction's sidebar setting (linked features)
-      // manage_adr follows view_adr's sidebar setting (linked features)
       if (item.id === 'manage_interaction') {
         if (featureSettings['view_interaction']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (item.id === 'manage_adr') {
         if (featureSettings['view_adr']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (item.id === 'manage_doc_lookup') {
         if (featureSettings['view_doc_lookup']?.hiddenLocations?.includes('sidebar')) return false;
+      } else if (item.id === 'manage_national_pharmacopoeia') {
+        if (featureSettings['view_national_pharmacopoeia']?.hiddenLocations?.includes('sidebar') || featureSettings['manage_national_pharmacopoeia']?.hiddenLocations?.includes('sidebar')) return false;
+      } else if (item.id === 'manage_treatment_groups' || item.id === 'manage_treatment_guidelines') {
+        if (featureSettings['view_treatment_guideline']?.hiddenLocations?.includes('sidebar') || featureSettings['manage_treatment_groups']?.hiddenLocations?.includes('sidebar') || featureSettings['manage_treatment_guidelines']?.hiddenLocations?.includes('sidebar')) return false;
       } else if (settings?.hiddenLocations?.includes('sidebar')) {
         return false;
       }
@@ -177,7 +253,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       // Strict block for unapproved users on admin/manage tabs
       if (!isApproved && (item.id.startsWith('admin_') || item.id.startsWith('manage_'))) return false;
 
-      return allowedTabs.includes(item.id) || item.id.startsWith('admin_');
+      return allowedTabs.includes(item.id) || 
+             item.id.startsWith('admin_') || 
+             (userRole === 'admin' && item.id.startsWith('manage_')) ||
+             (isPrivileged && (item.section === 'data' || item.group === 'data' || item.group === 'pharmacy')) ||
+             (isDataMode && isApproved && (item.section === 'data' || item.group === 'data' || item.group === 'pharmacy'));
     });
 
     // Custom Server-side order handling
@@ -191,45 +271,105 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     if (isAdminMode) {
       const adminOnly = sortItems(filteredItems.filter(item => item.section === 'admin'));
-      const savedOrder = localStorage.getItem(`sidebar_order_${userRole}_admin`);
-      if (savedOrder) {
+      const targetOrder = (liveNavOrder?.admin && liveNavOrder.admin.length > 0)
+        ? liveNavOrder.admin
+        : (() => {
+            const saved = localStorage.getItem(`sidebar_order_${userRole}_admin`);
+            if (saved) {
+              try { return JSON.parse(saved); } catch (e) { return null; }
+            }
+            return null;
+          })();
+
+      if (targetOrder && Array.isArray(targetOrder)) {
         try {
-          const orderIds = Array.from(new Set(JSON.parse(savedOrder) as string[]));
+          const orderIds = Array.from(new Set(targetOrder as string[]));
           const ordered = orderIds.map(id => adminOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
           const orderedIds = new Set(ordered.map(item => item.id));
           const missing = adminOnly.filter(item => !orderedIds.has(item.id));
           setItems([...ordered, ...missing]);
         } catch (e) { setItems(adminOnly); }
       } else { setItems(adminOnly); }
+    } else if (isDataMode) {
+      const dataOnly = sortItems(filteredItems.filter(item => item.section === 'data' || item.group === 'data' || item.group === 'pharmacy'));
+      const targetOrder = (liveNavOrder?.data && liveNavOrder.data.length > 0)
+        ? liveNavOrder.data
+        : (() => {
+            const saved = localStorage.getItem(`sidebar_order_${userRole}_data`);
+            if (saved) {
+              try { return JSON.parse(saved); } catch (e) { return null; }
+            }
+            return null;
+          })();
+
+      if (targetOrder && Array.isArray(targetOrder)) {
+        try {
+          const orderIds = Array.from(new Set(targetOrder as string[]));
+          const ordered = orderIds.map(id => dataOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
+          const orderedIds = new Set(ordered.map(item => item.id));
+          const missing = dataOnly.filter(item => !orderedIds.has(item.id));
+          
+          let merged = [...ordered];
+          missing.forEach(mItem => {
+            if (mItem.id === 'manage_national_pharmacopoeia') {
+              const dirIdx = merged.findIndex(i => i.id === 'manage_directory');
+              if (dirIdx !== -1) {
+                merged.splice(dirIdx + 1, 0, mItem);
+                return;
+              }
+            }
+            if (mItem.id === 'manage_treatment_groups' || mItem.id === 'manage_treatment_guidelines') {
+              const anchorIdx = merged.findIndex(i => i.id === 'manage_national_pharmacopoeia') !== -1
+                ? merged.findIndex(i => i.id === 'manage_national_pharmacopoeia')
+                : merged.findIndex(i => i.id === 'manage_directory');
+              if (anchorIdx !== -1) {
+                merged.splice(anchorIdx + 1, 0, mItem);
+                return;
+              }
+            }
+            merged.push(mItem);
+          });
+          setItems(merged);
+        } catch (e) { setItems(dataOnly); }
+      } else { setItems(dataOnly); }
     } else {
       const generalOnly = sortItems(filteredItems.filter(item => item.section === 'member' && item.group === 'general'));
-      const pharmacyOnly = sortItems(filteredItems.filter(item => item.section === 'member' && item.group === 'pharmacy'));
+      const targetOrder = (liveNavOrder?.general && liveNavOrder.general.length > 0)
+        ? liveNavOrder.general
+        : (() => {
+            const saved = localStorage.getItem(`sidebar_order_${userRole}_member_general`);
+            if (saved) {
+              try { return JSON.parse(saved); } catch (e) { return null; }
+            }
+            return null;
+          })();
 
-      // Handle general items order
-      const savedGeneralOrder = localStorage.getItem(`sidebar_order_${userRole}_member_general`);
-      if (savedGeneralOrder) {
+      if (targetOrder && Array.isArray(targetOrder)) {
         try {
-          const orderIds = Array.from(new Set(JSON.parse(savedGeneralOrder) as string[]));
+          const orderIds = Array.from(new Set(targetOrder as string[]));
           const ordered = orderIds.map(id => generalOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
           const orderedIds = new Set(ordered.map(item => item.id));
           const missing = generalOnly.filter(item => !orderedIds.has(item.id));
-          setItems([...ordered, ...missing]);
+          
+          // Smart positioning for newly added tabs (e.g. view_treatment_guideline)
+          let merged = [...ordered];
+          missing.forEach(mItem => {
+            if (mItem.id === 'view_treatment_guideline') {
+              const anchorIdx = merged.findIndex(i => i.id === 'view_national_pharmacopoeia') !== -1
+                ? merged.findIndex(i => i.id === 'view_national_pharmacopoeia')
+                : merged.findIndex(i => i.id === 'view_directory');
+              if (anchorIdx !== -1) {
+                merged.splice(anchorIdx + 1, 0, mItem);
+                return;
+              }
+            }
+            merged.push(mItem);
+          });
+          setItems(merged);
         } catch (e) { setItems(generalOnly); }
       } else { setItems(generalOnly); }
-
-      // Handle pharmacy items order
-      const savedPharmacyOrder = localStorage.getItem(`sidebar_order_${userRole}_member_pharmacy`);
-      if (savedPharmacyOrder) {
-        try {
-          const orderIds = Array.from(new Set(JSON.parse(savedPharmacyOrder) as string[]));
-          const ordered = orderIds.map(id => pharmacyOnly.find(item => item.id === id)).filter(Boolean) as SidebarItem[];
-          const orderedIds = new Set(ordered.map(item => item.id));
-          const missing = pharmacyOnly.filter(item => !orderedIds.has(item.id));
-          setPharmacyItems([...ordered, ...missing]);
-        } catch (e) { setPharmacyItems(pharmacyOnly); }
-      } else { setPharmacyItems(pharmacyOnly); }
     }
-  }, [userRole, title, allowedTabs, isAdminMode, featureSettings, featureStates]);
+  }, [userRole, title, allowedTabs, isAdminMode, isDataMode, featureSettings, featureStates, liveNavOrder]);
 
   useEffect(() => {
     const handleProfileChange = (e: any) => {
@@ -264,13 +404,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleReorder = (newOrder: SidebarItem[]) => {
     setItems(newOrder);
-    const suffix = isAdminMode ? 'admin' : 'member_general';
+    const suffix = isAdminMode ? 'admin' : isDataMode ? 'data' : 'member_general';
     localStorage.setItem(`sidebar_order_${userRole}_${suffix}`, JSON.stringify(newOrder.map(i => i.id)));
-  };
-
-  const handleReorderPharmacy = (newOrder: SidebarItem[]) => {
-    setPharmacyItems(newOrder);
-    localStorage.setItem(`sidebar_order_${userRole}_member_pharmacy`, JSON.stringify(newOrder.map(i => i.id)));
   };
 
   const renderItem = (item: SidebarItem, idx: number, section: string = 'main') => {
@@ -279,479 +414,258 @@ const Sidebar: React.FC<SidebarProps> = ({
     const isClosed = status === 'closed';
     const isActive = activeTab === item.id;
 
-    const handleMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
-      if (!isCollapsed || isEditMode) return;
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      setTooltip({
-        label: item.label,
-        y: rect.top + rect.height / 2,
-        isMaintenance,
-        isClosed,
-      });
-    };
-
     return (
       <Reorder.Item
         key={`sb-${section}-${item.id || 'item'}-${idx}`}
         value={item}
         drag={isEditMode ? "y" : false}
         layout="position"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={() => setTooltip(null)}
         className={cn(
-          "relative group",
+          "relative group px-1",
           isEditMode && "cursor-default"
         )}
       >
         <button
+          type="button"
           onClick={() => {
             if (isEditMode) return;
             setActiveTab(item.id, item.id === 'view_directory' || item.id === 'manage_directory');
-            if (item.id === 'view_directory') {
-              setIsViewDirectoryExpanded(!isViewDirectoryExpanded);
-            } else if (item.id === 'manage_directory') {
-              setIsManageDirectoryExpanded(!isManageDirectoryExpanded);
-            }
           }}
           className={cn(
-            "w-full flex items-center gap-2 py-2 rounded-lg transition-all duration-300 overflow-hidden",
-            isCollapsed ? "justify-center px-0 gap-0" : "px-2",
+            "w-full min-h-[58px] py-1.5 px-1 rounded-lg flex flex-col items-center justify-center transition-all duration-200 overflow-hidden cursor-pointer group select-none relative text-center",
             isEditMode && "border border-dashed border-primary/30 bg-primary/5",
             isActive
-              ? (isAdminMode ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/20" :
-                "bg-primary text-white shadow-lg shadow-primary/20")
-              : (isDarkMode ? "text-slate-400 hover:bg-slate-800 hover:text-white" : "text-slate-500 hover:bg-primary-light/50 hover:text-primary")
+              ? (isAdminMode 
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/30 font-bold" 
+                  : isDataMode 
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-900/30 font-bold" 
+                    : "bg-primary text-white shadow-md shadow-primary/25 font-bold")
+              : (isDarkMode 
+                  ? "text-slate-400 hover:bg-slate-800/80 hover:text-white" 
+                  : isDataMode
+                    ? "text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                    : "text-slate-600 hover:bg-primary-light/50 hover:text-primary")
           )}
+          title={item.label}
         >
-          <div className={cn("flex items-center min-w-0 transition-all duration-300", isCollapsed ? "justify-center flex-none w-full gap-0" : "flex-1 gap-2 overflow-hidden")}>
-            <div className={cn(
-              "flex items-center justify-center shrink-0 transition-all duration-300",
-              isCollapsed ? "w-9 h-9 rounded-xl" : "w-6 h-6",
-              !isActive && isCollapsed && (isDarkMode
-                ? "group-hover:bg-slate-700 group-hover:ring-2 group-hover:ring-primary/30"
-                : "group-hover:bg-primary/10 group-hover:ring-2 group-hover:ring-primary/20")
-            )}>
-              <item.icon size={isCollapsed ? 20 : 16} className={cn(
-                "transition-all duration-300 group-hover:scale-110 shrink-0",
-                isActive ? "text-white" : cn(
-                  isDarkMode ? "text-slate-400" : "text-slate-400",
-                  isAdminMode ? "group-hover:text-indigo-400" : "group-hover:text-primary"
-                )
-              )} />
-            </div>
-
-            <span className={cn(
-              "font-bold text-[14px] whitespace-nowrap transition-all duration-300 ease-in-out truncate overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
-            )}>
-              {item.label}
-            </span>
-          </div>
-
-          <div className={cn(
-            "flex items-center gap-1.5 shrink-0 ml-auto transition-all duration-300 ease-in-out overflow-hidden",
-            isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[100px]"
-          )}>
+          {/* Icon (trên) */}
+          <div className="relative flex items-center justify-center shrink-0 mb-1">
+            <item.icon
+              size={19}
+              className={cn(
+                "transition-transform duration-200 group-hover:scale-110 shrink-0",
+                isActive
+                  ? "text-white"
+                  : cn(
+                      isDarkMode ? "text-slate-400" : "text-slate-500",
+                      isAdminMode ? "group-hover:text-indigo-400" : isDataMode ? "group-hover:text-emerald-500" : "group-hover:text-primary"
+                    )
+              )}
+            />
             {isMaintenance && !isAdminMode && (
-              <div className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tighter whitespace-nowrap">
-                Bảo trì
-              </div>
+              <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900" title="Bảo trì" />
             )}
             {isClosed && !isAdminMode && (
-              <div className="px-1.5 py-0.5 rounded-md bg-rose-500 text-[8px] font-black text-white uppercase tracking-tighter whitespace-nowrap">
-                Đóng
-              </div>
-            )}
-            {isEditMode && (
-              <div className="opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1">
-                <GripVertical size={14} className="text-primary" />
-              </div>
-            )}
-            {(item.id === 'view_directory' || item.id === 'manage_directory') && (
-              <div className="transition-transform duration-200">
-                {item.id === 'view_directory' ? (
-                  isViewDirectoryExpanded ? <ChevronDown size={14} className="opacity-80" /> : <ChevronRight size={14} className="opacity-80" />
-                ) : (
-                  isManageDirectoryExpanded ? <ChevronDown size={14} className="opacity-80" /> : <ChevronRight size={14} className="opacity-80" />
-                )}
-              </div>
+              <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" title="Đóng" />
             )}
           </div>
+
+          {/* Tên (dưới) */}
+          <span
+            className={cn(
+              "text-[9.5px] leading-[11.5px] font-semibold text-center line-clamp-2 break-words max-w-[62px] tracking-tight transition-colors",
+              isActive
+                ? "text-white font-bold"
+                : isDarkMode
+                  ? "text-slate-300 group-hover:text-white"
+                  : "text-slate-600 group-hover:text-slate-900"
+            )}
+          >
+            {item.label}
+          </span>
+
+          {isEditMode && (
+            <div className="absolute top-1 right-1 opacity-70 cursor-grab active:cursor-grabbing p-0.5">
+              <GripVertical size={11} className={isActive ? "text-white" : "text-primary"} />
+            </div>
+          )}
         </button>
-
-        <AnimatePresence initial={false}>
-          {!isCollapsed && item.id === 'view_directory' && isViewDirectoryExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden pl-6 mt-1 mb-2 space-y-1 border-l-2 border-primary/20 dark:border-primary/30 ml-4"
-            >
-              {[
-                { id: 'drugs', label: 'Biệt dược', icon: Pill },
-                { id: 'groups', label: 'Nhóm thuốc', icon: FolderTree },
-                { id: 'ingredients', label: 'Hoạt chất', icon: Activity }
-              ].map((subItem, subIdx) => {
-                const isSubActive = activeTab === 'view_directory' && drugDirectoryViewMode === subItem.id;
-                const SubIcon = subItem.icon;
-                return (
-                  <button
-                    key={`view-sub-${subItem.id}-${subIdx}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveTab('view_directory');
-                      if (setDrugDirectoryViewMode) {
-                        setDrugDirectoryViewMode(subItem.id as any);
-                      }
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150",
-                      isSubActive
-                        ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-400 font-extrabold"
-                        : isDarkMode
-                          ? "text-slate-400 hover:bg-slate-800/60 hover:text-white"
-                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                    )}
-                  >
-                    <SubIcon size={12} className={isSubActive ? "text-primary dark:text-blue-400" : "text-slate-400"} />
-                    <span>{subItem.label}</span>
-                  </button>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-          {!isCollapsed && item.id === 'manage_directory' && isManageDirectoryExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              className="overflow-hidden pl-6 mt-1 mb-2 space-y-1 border-l-2 border-primary/20 dark:border-primary/30 ml-4"
-            >
-              {[
-                { id: 'drugs', label: 'Biệt dược', icon: Pill },
-                { id: 'groups', label: 'Nhóm thuốc', icon: FolderTree },
-                { id: 'ingredients', label: 'Hoạt chất', icon: Activity },
-                { id: 'excipients', label: 'Tá dược', icon: Database },
-                { id: 'companies', label: 'Công ty', icon: Briefcase }
-              ].map((subItem, subIdx) => {
-                const isSubActive = activeTab === 'manage_directory' && drugDirectoryViewMode === subItem.id;
-                const SubIcon = subItem.icon;
-                return (
-                  <button
-                    key={`manage-sub-${subItem.id}-${subIdx}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveTab('manage_directory');
-                      if (setDrugDirectoryViewMode) {
-                        setDrugDirectoryViewMode(subItem.id as any);
-                      }
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150",
-                      isSubActive
-                        ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-400 font-extrabold"
-                        : isDarkMode
-                          ? "text-slate-400 hover:bg-slate-800/60 hover:text-white"
-                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                    )}
-                  >
-                    <SubIcon size={12} className={isSubActive ? "text-primary dark:text-blue-400" : "text-slate-400"} />
-                    <span>{subItem.label}</span>
-                  </button>
-                );
-              })}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </Reorder.Item>
     );
   };
 
   return (
-    <>
-      {/* Portal Tooltip for collapsed sidebar */}
-      {isCollapsed && tooltip && ReactDOM.createPortal(
-        <div
-          className="pointer-events-none"
-          style={{
-            position: 'fixed',
-            left: 92,
-            top: tooltip.y,
-            transform: 'translateY(-50%)',
-            zIndex: 9999,
-          }}
-        >
-          <div className={cn(
-            "flex items-center gap-2 px-3.5 py-2 rounded-xl shadow-2xl whitespace-nowrap",
-            "animate-in fade-in slide-in-from-left-2 duration-150",
-            isDarkMode
-              ? "bg-slate-800 border border-slate-600/80 text-white shadow-black/40"
-              : "bg-white border border-slate-200 text-slate-800 shadow-slate-300/50"
-          )}>
-            {/* Arrow */}
-            <div className={cn(
-              "absolute -left-[5px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 border-l border-b",
-              isDarkMode ? "bg-slate-800 border-slate-600/80" : "bg-white border-slate-200"
-            )} />
-            <span className={cn(
-              "text-[13px] font-bold relative z-10",
-              isDarkMode ? "text-white" : "text-slate-800"
-            )}>
-              {tooltip.label}
-            </span>
-            {tooltip.isMaintenance && !isAdminMode && (
-              <span className="px-1.5 py-0.5 rounded-md bg-amber-500 text-[8px] font-black text-white uppercase tracking-tight">
-                Bảo trì
-              </span>
-            )}
-            {tooltip.isClosed && !isAdminMode && (
-              <span className="px-1.5 py-0.5 rounded-md bg-rose-500 text-[8px] font-black text-white uppercase tracking-tight">
-                Đóng
-              </span>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Desktop Sidebar (hidden on mobile, replaced by MobileBottomNav) */}
-      <aside className={cn(
-        "h-[100dvh] max-h-[100dvh] hidden lg:flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 translate-x-0",
-        isCollapsed ? "w-[80px]" : "w-[260px]",
+    <aside 
+      style={{ width: '72.3333px' }}
+      className={cn(
+        "h-[100dvh] max-h-[100dvh] hidden lg:flex flex-col fixed left-0 top-0 shadow-xl border-r transition-all duration-300 z-50 translate-x-0 w-[72.3333px]",
         isAdminMode 
           ? (isDarkMode ? "bg-slate-950 border-indigo-900/30 text-white" : "bg-white border-indigo-100 text-slate-900")
-          : (isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900")
+          : isDataMode 
+            ? (isDarkMode ? "bg-slate-950 border-emerald-900/30 text-white" : "bg-white border-emerald-100 text-slate-900")
+            : (isDarkMode ? "bg-slate-950 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900")
+      )}
+    >
+      <div className={cn(
+        "border-b relative p-1.5 transition-all duration-300", 
+        isDarkMode ? "border-slate-800" : "border-slate-100"
       )}>
-        <div className={cn("p-2 sm:p-3 border-b relative", isDarkMode ? "border-slate-800" : "border-slate-100")}>
-          {/* Pc Toggle Button */}
-          {setIsCollapsed && (
+        {isAdminMode && setIsAdminMode && (
+          <div className="py-2 px-1 flex justify-center">
             <button 
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className={cn(
-                "hidden lg:flex absolute -right-3 top-6 w-6 h-6 rounded-full border items-center justify-center z-[60] transition-all cursor-pointer",
-                isDarkMode ? "bg-slate-900 border-slate-700 hover:text-white" : "bg-white border-slate-200 hover:text-primary shadow-sm"
-              )}
-              title={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
-            >
-              {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-            </button>
-          )}
-
-
-
-          {isAdminMode && setIsAdminMode && (
-            <button 
+              type="button"
               onClick={() => {
                 setIsAdminMode(false);
                 setActiveTab('dashboard');
               }}
               className={cn(
-                "w-full p-2 rounded-lg border flex items-center transition-all duration-300 group/back mb-3 overflow-hidden",
-                isCollapsed ? "justify-center px-0 gap-0" : "gap-2",
+                "rounded-lg border flex flex-col items-center justify-center transition-all duration-200 group/back py-1.5 px-1 w-full min-h-[54px] cursor-pointer text-center",
                 isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
               )}
-              title={isCollapsed ? "Thoát AdminCP" : undefined}
+              title="Thoát AdminCP"
             >
-              <div className="p-1.5 bg-rose-500 text-white rounded-md shadow-sm group-hover/back:scale-110 transition-transform shrink-0">
-                <ArrowLeftCircle size={12} />
+              <div className="p-1 bg-rose-500 text-white rounded-lg shadow-xs group-hover/back:scale-110 transition-transform shrink-0 mb-1">
+                <ArrowLeftCircle size={16} />
               </div>
-              <span className={cn(
-                "text-[14px] font-black uppercase tracking-widest text-rose-500 truncate whitespace-nowrap transition-all duration-300 ease-in-out overflow-hidden",
-                isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
-              )}>
-                Thoát AdminCP
+              <span className="text-[9px] font-black uppercase tracking-wider text-rose-500 text-center leading-tight">
+                Thoát
               </span>
             </button>
-          )}
+          </div>
+        )}
 
-          <button 
-            onClick={() => {
-              setActiveTab('view_profile');
-              setViewedProfileUid(null);
-              window.dispatchEvent(new CustomEvent('reset-profile-view'));
-            }}
-            className={cn(
-              "w-full p-2.5 rounded-xl border flex items-center transition-all duration-300 group/profile mb-2 overflow-hidden",
-              isCollapsed ? "justify-center px-0 gap-0" : "gap-2.5",
-              isOwnProfileActive
-                ? "bg-primary text-white border-primary shadow-lg shadow-primary/25 ring-2 ring-primary/30"
-                : (isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800/80 text-slate-300" : "bg-white border-slate-100 shadow-sm hover:border-slate-200 hover:bg-slate-50 text-slate-900")
-            )}
-            title={isCollapsed ? displayName : undefined}
-          >
-            {photoURL ? (
-              <img 
-                src={getBustedPhotoURL(photoURL, photoSyncToken)} 
-                alt={displayName} 
-                className={cn(
-                  "w-8 h-8 rounded-full border-2 shadow-sm transition-transform group-hover/profile:scale-110 shrink-0 object-cover", 
-                  isOwnProfileActive ? "border-white/80" : (isDarkMode ? "border-slate-800" : "border-white")
+        {isDataMode && setIsDataMode && (
+          <div className="py-2 px-1 flex justify-center">
+            <button 
+              type="button"
+              onClick={() => {
+                setIsDataMode(false);
+                setActiveTab('dashboard');
+              }}
+              className={cn(
+                "rounded-lg border flex flex-col items-center justify-center transition-all duration-200 group/back py-1.5 px-1 w-full min-h-[54px] cursor-pointer text-center",
+                isDarkMode ? "bg-slate-900 border-slate-800 hover:border-slate-700" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+              )}
+              title="Thoát Quản lý Dữ liệu"
+            >
+              <div className="p-1 bg-emerald-500 text-white rounded-lg shadow-xs group-hover/back:scale-110 transition-transform shrink-0 mb-1">
+                <ArrowLeftCircle size={16} />
+              </div>
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500 text-center leading-tight">
+                Thoát
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* Profile Card Header (Chỉ hiển thị khi KHÔNG ở AdminCP và KHÔNG ở DataMode) */}
+        {!isAdminMode && !isDataMode && (
+          <div className="py-2 px-1 flex justify-center">
+            <button 
+              type="button"
+              onClick={() => {
+                setActiveTab('view_profile');
+                setViewedProfileUid(null);
+                window.dispatchEvent(new CustomEvent('reset-profile-view'));
+              }}
+              className={cn(
+                "flex flex-col items-center justify-center w-full py-1.5 px-1 rounded-lg transition-all duration-200 group/profile cursor-pointer text-center select-none",
+                isOwnProfileActive
+                  ? (isDarkMode ? "bg-primary/20 ring-1 ring-primary text-white" : "bg-primary/10 ring-1 ring-primary text-primary")
+                  : (isDarkMode ? "hover:bg-slate-800/80 text-slate-300" : "hover:bg-slate-100 text-slate-700")
+              )}
+              title={`${displayName}${title ? ` • ${title}` : ''}${department ? ` • ${department}` : ''} (Nhấn để xem hồ sơ)`}
+            >
+              <div className="relative mb-1">
+                {photoURL ? (
+                  <img 
+                    src={getBustedPhotoURL(photoURL, photoSyncToken)} 
+                    alt={displayName} 
+                    className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm object-cover group-hover/profile:scale-105 transition-transform duration-200"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-sm bg-gradient-to-br from-blue-500 to-cyan-500 text-white border-2 border-white dark:border-slate-800 shadow-sm group-hover/profile:scale-105 transition-transform duration-200">
+                    {displayName ? displayName.charAt(0).toUpperCase() : <Users size={18} />}
+                  </div>
                 )}
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center transition-transform group-hover/profile:scale-110 shrink-0", 
-                isOwnProfileActive ? "bg-white/20 text-white" : (isDarkMode ? "bg-slate-800 text-slate-400" : "bg-slate-100 text-slate-500 shadow-sm")
-              )}>
-                <Users size={16} />
+                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 absolute bottom-0 right-0 shadow-xs ring-1 ring-emerald-400/40" />
               </div>
-            )}
-            <div className={cn(
-              "flex-1 min-w-0 text-left whitespace-nowrap transition-all duration-300 ease-in-out overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
-            )}>
-              <p className={cn(
-                "text-[9px] font-black uppercase tracking-wider truncate",
-                isOwnProfileActive ? "text-white/80" : "text-slate-500"
+              <span className={cn(
+                "text-[9.5px] font-bold leading-tight line-clamp-1 truncate max-w-[62px] tracking-tight",
+                isOwnProfileActive
+                  ? "text-primary dark:text-blue-400 font-black"
+                  : isDarkMode ? "text-slate-300 group-hover/profile:text-white" : "text-slate-700 group-hover/profile:text-slate-900"
               )}>
-                {!isApproved ? 'Đang chờ duyệt' : (title || (userRole === 'admin' ? 'Quản trị viên' : 'Thành viên'))}
-              </p>
-              <p className={cn(
-                "text-[14px] font-bold truncate transition-colors", 
-                isOwnProfileActive ? "text-white" : (isDarkMode ? "text-slate-200" : "text-slate-900")
-              )}>
-                {displayName}
-              </p>
-            </div>
-          </button>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-6 mt-2">
-          <div>
-            {!isCollapsed && (
-              <div className="px-2 mb-2 flex items-center gap-2 overflow-hidden transition-all duration-300">
-                <div className={cn(
-                  "h-px flex-1 transition-all duration-300", 
-                  isAdminMode 
-                    ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
-                    : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
-                )} />
-                <p className={cn(
-                  "text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap transition-all duration-300 ease-in-out",
-                  isAdminMode 
-                    ? (isDarkMode ? "text-indigo-400" : "text-indigo-500") 
-                    : (isDarkMode ? "text-slate-500" : "text-slate-400")
-                )}>
-                  {isAdminMode ? "Admin Control Panel" : "Tính năng Y tế"}
-                </p>
-                <div className={cn(
-                  "h-px flex-1 transition-all duration-300", 
-                  isAdminMode 
-                    ? (isDarkMode ? "bg-indigo-900/30" : "bg-indigo-200/50") 
-                    : (isDarkMode ? "bg-slate-800" : "bg-slate-200")
-                )} />
-              </div>
-            )}
-            <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="space-y-0.5">
-              {items.map((item, idx) => renderItem(item, idx, isAdminMode ? 'admin' : 'general'))}
-            </Reorder.Group>
+                {displayName ? displayName.trim().split(' ').slice(-1)[0] : 'Hồ sơ'}
+              </span>
+            </button>
           </div>
+        )}
+      </div>
+      
+      <div 
+        style={{ width: '72.3333px' }}
+        className="flex-1 overflow-y-auto no-scrollbar py-2 px-1 w-[72.3333px]"
+      >
+        <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="space-y-1">
+          {items.map((item, idx) => renderItem(item, idx, isAdminMode ? 'admin' : isDataMode ? 'data' : 'general'))}
+        </Reorder.Group>
+      </div>
 
-          {!isAdminMode && pharmacyItems.length > 0 && (
-            <div>
-              <div className={cn("px-2 mb-2 flex items-center gap-2 overflow-hidden transition-all duration-300", isCollapsed ? "justify-center" : "")}>
-                <div className={cn("h-px flex-1 transition-all duration-300", isCollapsed ? "opacity-0 w-0 flex-none" : "opacity-100", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
-                <p className={cn(
-                  "text-[9px] font-black uppercase tracking-[0.15em] whitespace-nowrap transition-all duration-300 ease-in-out",
-                  isDarkMode ? "text-slate-500" : "text-slate-400"
-                )}>
-                  {isCollapsed ? "•" : "- Dược - Vật tư -"}
-                </p>
-                <div className={cn("h-px flex-1 transition-all duration-300", isCollapsed ? "opacity-0 w-0 flex-none" : "opacity-100", isDarkMode ? "bg-slate-800" : "bg-slate-200")} />
-              </div>
-              <Reorder.Group axis="y" values={pharmacyItems} onReorder={handleReorderPharmacy} className="space-y-0.5">
-                {pharmacyItems.map((item, idx) => renderItem(item, idx, 'pharmacy'))}
-              </Reorder.Group>
-            </div>
+      <div className={cn(
+        "border-t p-1.5 space-y-1.5 shrink-0",
+        isDarkMode ? "border-slate-800" : "border-slate-100"
+      )}>
+        {/* User Guide ("Hỗ trợ sử dụng") Card */}
+        <div 
+          id="sidebar-user-guide-card"
+          onClick={onOpenUserGuide}
+          className={cn(
+            "rounded-lg border transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center py-1.5 px-1 w-full text-center relative overflow-hidden select-none min-h-[50px]",
+            isDarkMode 
+              ? "bg-slate-900/40 hover:bg-slate-900/80 border-slate-800 text-white" 
+              : "bg-indigo-50/40 hover:bg-indigo-50/70 border-indigo-100/30 text-slate-900"
           )}
+          title="Hỗ trợ sử dụng - Xem hướng dẫn hệ thống"
+        >
+          <HelpCircle size={18} className="text-primary group-hover:scale-110 transition-transform mb-0.5 shrink-0" />
+          <span className="text-[9.5px] font-semibold text-slate-600 dark:text-slate-300 group-hover:text-primary leading-tight line-clamp-1 truncate max-w-[62px]">
+            Hướng dẫn
+          </span>
         </div>
 
-        <div className={cn("p-2 border-t space-y-2", isDarkMode ? "border-slate-800" : "border-slate-100")}>
-          {/* User Guide ("Hỗ trợ sử dụng") Card */}
-          <div 
-            id="sidebar-user-guide-card"
-            onClick={onOpenUserGuide}
-            className={cn(
-              "p-2.5 rounded-xl border transition-all duration-300 cursor-pointer group flex items-center overflow-hidden relative",
-              isCollapsed ? "justify-center p-2 gap-0 px-0" : "gap-2",
-              isDarkMode 
-                ? "bg-slate-900/40 hover:bg-slate-900/80 border-slate-800 text-white" 
-                : "bg-indigo-50/40 hover:bg-indigo-50/70 border-indigo-100/30 text-slate-900"
-            )}
-            title={isCollapsed ? "Hỗ trợ sử dụng" : undefined}
-          >
-            {/* Ambient Glow */}
-            <div className="absolute -right-3 -top-3 w-12 h-12 rounded-full bg-primary/10 blur-xl group-hover:scale-125 transition-transform duration-500" />
-            
-            <div className={cn(
-              "p-1.5 rounded-lg transition-transform group-hover:scale-110 shrink-0",
-              isDarkMode ? "bg-slate-800 text-primary" : "bg-white text-primary shadow-sm"
-            )}>
-              <HelpCircle size={14} className="text-primary" />
-            </div>
-
-            <div className={cn(
-              "min-w-0 flex-1 transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
-            )}>
-              <p className={cn(
-                "text-[10px] font-black uppercase tracking-wider leading-none",
-                isDarkMode ? "text-slate-200" : "text-slate-900"
-              )}>
-                Hỗ trợ sử dụng
-              </p>
-              <p className={cn(
-                "text-[9px] font-medium leading-none mt-0.5 opacity-60 truncate",
-                isDarkMode ? "text-slate-400" : "text-slate-500"
-              )}>
-                Xem hướng dẫn hệ thống
-              </p>
-            </div>
-          </div>
-
-          <button 
-            type="button"
-            onClick={() => {
-              if (isAdminMode || activeTab.startsWith('admin_')) {
-                setActiveTab('admin_version');
-              } else {
-                window.dispatchEvent(new CustomEvent('open-whats-new'));
-              }
-            }}
-            className={cn(
-              "w-full px-2 py-1.5 rounded-lg text-[14px] font-bold flex items-center transition-all duration-300 overflow-hidden cursor-pointer group",
-              isCollapsed ? "justify-center px-0 gap-0" : "gap-2",
-              activeTab === 'admin_version' 
-                ? "bg-primary/10 text-primary border border-primary/20"
-                : isDarkMode 
-                  ? "text-slate-400 bg-slate-900/50 hover:bg-slate-800/80 hover:text-slate-200 border border-slate-800/50" 
-                  : "text-slate-500 bg-white border border-slate-100 shadow-sm hover:bg-slate-50 hover:text-slate-900"
-            )}
-            title={
-              (isAdminMode || activeTab.startsWith('admin_'))
-                ? "Chỉnh sửa & quản lý thông tin phiên bản"
-                : (isCollapsed ? `Phiên bản ${latestVersion?.versionName || 'v1.0.0'} - Nhấn để xem Có gì mới` : "Nhấn để xem nhật ký Có gì mới")
+        <button 
+          type="button"
+          onClick={() => {
+            if (isAdminMode || activeTab.startsWith('admin_')) {
+              setActiveTab('admin_version');
+            } else {
+              window.dispatchEvent(new CustomEvent('open-whats-new'));
             }
-          >
-            <History size={12} className={cn("shrink-0 transition-transform group-hover:scale-110", activeTab === 'admin_version' ? "text-primary" : "text-primary")} />
-            <div className={cn(
-              "flex-1 flex items-center justify-between min-w-0 whitespace-nowrap overflow-hidden transition-all duration-300 ease-in-out",
-              isCollapsed ? "opacity-0 max-w-0 pointer-events-none hidden" : "opacity-100 max-w-[180px]"
-            )}>
-              <span className="text-[10px] font-black uppercase tracking-tight leading-none">Phiên bản</span>
-              <span className="truncate text-[10px] leading-tight font-black opacity-60 ml-2 group-hover:opacity-100">{latestVersion?.versionName || 'v1.0.0'}</span>
-            </div>
-          </button>
-        </div>
+          }}
+          className={cn(
+            "rounded-lg font-bold flex flex-col items-center justify-center transition-all duration-200 overflow-hidden cursor-pointer group py-1.5 px-1 w-full text-center border min-h-[48px] select-none",
+            activeTab === 'admin_version' 
+              ? "bg-primary/10 text-primary border border-primary/20"
+              : isDarkMode 
+                ? "text-slate-400 bg-slate-900/50 hover:bg-slate-800/80 hover:text-slate-200 border border-slate-800/50" 
+                : "text-slate-500 bg-white border border-slate-100 shadow-xs hover:bg-slate-50 hover:text-slate-900"
+          )}
+          title={
+            (isAdminMode || activeTab.startsWith('admin_'))
+              ? "Chỉnh sửa & quản lý thông tin phiên bản"
+              : `Phiên bản ${latestVersion?.versionName || 'v1.0.0'} - Nhấn để xem Có gì mới`
+          }
+        >
+          <History size={16} className="shrink-0 transition-transform group-hover:scale-110 text-primary mb-0.5" />
+          <span className="text-[8.5px] font-mono font-black text-slate-500 dark:text-slate-400 group-hover:text-primary leading-tight tracking-tighter truncate max-w-[60px]">
+            {latestVersion?.versionName ? (latestVersion.versionName.startsWith('v') ? latestVersion.versionName : `v${latestVersion.versionName}`) : 'v1.0.0'}
+          </span>
+        </button>
+      </div>
 
-      </aside>
-    </>
+    </aside>
   );
 };
 

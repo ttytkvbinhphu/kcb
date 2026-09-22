@@ -252,6 +252,38 @@ async function startServer() {
     return res.json({ error: readableErrorMsg });
   });
 
+  // Reverse proxy for Firebase Auth helper
+  app.use("/__/auth", async (req, res) => {
+    try {
+      const targetUrl = `https://gen-lang-client-0938760627.firebaseapp.com${req.originalUrl}`;
+      const headers: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (typeof v === 'string' && !['host', 'content-length'].includes(k.toLowerCase())) {
+          headers[k] = v;
+        }
+      }
+      headers['host'] = 'gen-lang-client-0938760627.firebaseapp.com';
+
+      const response = await fetch(targetUrl, {
+        method: req.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(req.method) ? undefined : (req as any).body ? JSON.stringify((req as any).body) : undefined,
+      });
+
+      res.status(response.status);
+      response.headers.forEach((val, key) => {
+        if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+          res.setHeader(key, val);
+        }
+      });
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err) {
+      console.warn("Proxy /__/auth error:", err);
+      res.status(502).send("Auth proxy error");
+    }
+  });
+
   // Vite middleware for development vs static files for production
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
@@ -262,7 +294,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath, { maxAge: '1h', index: false }));
+    app.use(express.static(distPath));
     app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
